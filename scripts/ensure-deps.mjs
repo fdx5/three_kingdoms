@@ -38,7 +38,18 @@ const missing = needed.filter((name) => {
   }
 });
 
-if (missing.length === 0) process.exit(0);
+/*
+ * 통과할 때도 한 줄은 남긴다.
+ *
+ * 배포 로그에서 "이 단계가 돌기는 했는가"를 확인할 수 있어야 한다. 이 줄이 안
+ * 보이면 render.com 이 npm 스크립트를 아예 안 부른 것이고(대시보드의 Build/Start
+ * Command 가 다른 것으로 덮여 있다는 뜻), 보이는데 그 뒤가 없으면 그때부터가
+ * 진짜 코드 문제다. 원인을 가르는 데 이 한 줄이 로그값을 한다.
+ */
+if (missing.length === 0) {
+  console.log(`[ensure-deps] ${needed.join(', ')} 확인됨.`);
+  process.exit(0);
+}
 
 console.log(`[ensure-deps] 의존성이 없다(${missing.join(', ')}). 설치한다.`);
 
