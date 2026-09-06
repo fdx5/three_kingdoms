@@ -33,6 +33,27 @@ export default defineConfig({
       '/api': { target: 'http://localhost:8787', changeOrigin: true },
     },
   },
+  /*
+   * preview 도 배포 환경의 규칙을 따르게 한다.
+   *
+   * `vite preview` 는 기본값이 localhost:4173 이다. PORT 를 줘도 무시하고,
+   * 루프백에만 붙어서 컨테이너 밖에서는 안 보인다. 그 상태로 render.com 에
+   * 올리면 프로세스는 멀쩡히 살아 있는데 포트를 못 찾아 `No open ports detected`
+   * 로 영원히 스캔만 하다 실패한다 — 죽지도 않으니 로그에 단서도 안 남는다.
+   *
+   * 배포의 정답은 `npm start`(server/index.ts — API 까지 서빙한다)이지 preview 가
+   * 아니다. 다만 실수로 preview 가 기동 명령이 되더라도 최소한 붙기는 하도록,
+   * 여기서 PORT 와 0.0.0.0 을 지켜 준다.
+   */
+  preview: {
+    host: true,
+    port: Number.parseInt(process.env.PORT ?? '', 10) || 4173,
+    // dev 와 같은 이유로 API 를 같은 오리진에 붙여 준다.
+    proxy: {
+      '/api': { target: 'http://localhost:8787', changeOrigin: true },
+    },
+  },
+
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
