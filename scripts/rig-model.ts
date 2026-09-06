@@ -706,7 +706,15 @@ function findBlade(
   return { grip: at(tMin), top: at(tMax), dir, r: radius, tMin: 0, tMax: tMax - tMin };
 }
 
-function analyze(P: Float32Array, n: number, detectStaff = false, detectBlades = false, bulky = false): MeshStats {
+/**
+ * 칼날 캡슐을 어느 손에서 찾을 것인가.
+ *   none  안 찾는다
+ *   one   **무기를 든 쪽 한 손만** — 한 손 무기(swing)
+ *   both  양손 다 — 쌍칼(dual_swing)
+ */
+type BladeMode = 'none' | 'one' | 'both';
+
+function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: BladeMode = 'none', bulky = false): MeshStats {
   let minY = Infinity;
   let maxY = -Infinity;
   for (let i = 0; i < n; i++) {
@@ -905,10 +913,23 @@ function analyze(P: Float32Array, n: number, detectStaff = false, detectBlades =
 
   const staff = detectStaff ? findStaff(P, n, minY, height, bodyH, axisX, axisZ) : null;
   const headY = minY + bodyH * 0.86;
-  const bladeL = detectBlades
+  /*
+   * 한 손 무기(one)는 **빈 손 쪽에서 칼날을 찾지 않는다.**
+   *
+   * findBlade 는 "몸통 축에서 가장 먼 점"으로 축을 맞추므로, 아무것도 안 든 손
+   * 쪽에서는 팔·갑주 자락·장화가 세로로 늘어선 줄을 칼날로 잡아 버린다. 그걸 팔
+   * 뼈에 통째로 묶으면 팔을 들 때 허벅지가 따라 올라간다.
+   *
+   * 실측(장각): 칼을 든 왼손은 길이 0.855 짜리 대도가 제대로 잡혔지만, 빈
+   * 오른손에서도 0.451 짜리가 잡혀 오른 허벅지 정점 90개를 팔 뼈로 끌어갔다.
+   * 무기 하나짜리 모델은 무기가 있는 쪽만 본다.
+   */
+  const wantL = bladeMode === 'both' || (bladeMode === 'one' && weaponSide === 'L');
+  const wantR = bladeMode === 'both' || (bladeMode === 'one' && weaponSide === 'R');
+  const bladeL = wantL
     ? findBlade(P, n, -1, axisX, axisZ, minY, bodyH, headY, [axisX - shoulderOff, shoulderY, axisZ])
     : null;
-  const bladeR = detectBlades
+  const bladeR = wantR
     ? findBlade(P, n, 1, axisX, axisZ, minY, bodyH, headY, [axisX + shoulderOff, shoulderY, axisZ])
     : null;
 
@@ -1959,8 +1980,9 @@ export async function rig(
    * (실측: 강동 수병 1.60, 야습대 1.58 — 몸 높이가 1.8인데 그만한 칼은 없다).
    * 그걸 팔 뼈에 통째로 묶으면 팔을 들 때 다리가 따라 올라간다.
    */
-  const detectBlades = opts.attackStyle === 'dual_swing' || opts.blade === true;
-  const stats = analyze(P, n, opts.staff === true, detectBlades, opts.bulky === true);
+  const bladeMode: BladeMode =
+    opts.attackStyle === 'dual_swing' ? 'both' : opts.blade === true ? 'one' : 'none';
+  const stats = analyze(P, n, opts.staff === true, bladeMode, opts.bulky === true);
   console.log(
     `[rig] bbox 높이 ${stats.height.toFixed(3)}  몸 높이 ${(stats.bodyTopY - stats.minY).toFixed(3)}  ` +
       `(bodyTopY ${stats.bodyTopY.toFixed(3)} / maxY ${stats.maxY.toFixed(3)})`,

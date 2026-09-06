@@ -25,10 +25,10 @@ export const SOUND_MAP: Record<string, SoundMapping> = {
   /**
    * 성문의 사격음. 무기 종류(arrow/cannon/flame)로 갈린다 —
    * 성문은 타워가 아니라 강화 단계가 무기를 바꾸므로 towerId로는 고를 수 없다.
-   * 화살 단계는 소리를 두지 않는다: 성문 앞에 수십 기가 붙어 초당 여러 번 쏘므로
-   * 화살음까지 얹으면 전투음이 통째로 뭉갠다.
+   * 일제사격마다 한 번 재생해 여러 발의 발사음이 겹치지 않게 한다.
    */
   'castle:fired': {
+    arrow: 'sfx_bow',
     cannon: 'sfx_cannon',
   },
   'projectile:hit': 'sfx_hit',

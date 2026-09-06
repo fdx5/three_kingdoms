@@ -238,6 +238,9 @@ const RECIPES: Record<string, Recipe> = {
     targetHeight: 34,
     armMode: 'split',
     attackStyle: 'swing',
+    // 위 주석이 말하는 그 플래그다. 이게 빠져 있어서 칼이 걸을 때마다 휘었다.
+    // dual_swing 모델은 자동으로 켜지지만 한 손 swing 은 이렇게 명시해야 한다.
+    blade: true,
     cadence: 1.35,
     walkStride: 1.12,
     kneeBend: 0.16,

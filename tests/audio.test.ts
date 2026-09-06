@@ -50,10 +50,12 @@ describe('사운드 매핑', () => {
     expect(manifest.audio.sfx_cannon).toBe('audio/cannon.mp3');
   });
 
-  it('성문 사격음은 대포 단계에만 붙는다 (화살은 초당 여러 번이라 뭉갠다)', () => {
+  it('성문의 활 발사는 arrow.mp3를 사용한다', () => {
     const castle = SOUND_MAP['castle:fired'];
     if (typeof castle === 'string') throw new Error('맵이어야 한다');
-    expect(castle.arrow).toBeUndefined();
+    expect(castle.arrow).toBe('sfx_bow');
+    expect(manifest.audio[castle.arrow]).toBe('audio/arrow.mp3');
+    expect(readFileSync(`public/assets/${manifest.audio[castle.arrow]}`)).toEqual(readFileSync('sound/arrow.mp3'));
     // 표에 적힌 키는 실제로 존재하는 무기 종류여야 한다
     const kinds = new Set(CASTLE_LEVELS.map((l) => l.weapon.kind));
     for (const key of Object.keys(castle)) expect(kinds.has(key as never), key).toBe(true);

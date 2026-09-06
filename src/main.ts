@@ -480,7 +480,7 @@ class Game {
     /*
      * 성문 사격음. 시뮬은 일제사격 한 번에 이 이벤트를 한 번만 낸다 —
      * 대포 4발마다 굉음이 네 번 겹치면 그건 포성이 아니라 잡음이 된다.
-     * 화살 단계는 매핑이 없어 소리가 나지 않는다(SOUND_MAP 주석 참고).
+     * 활과 대포는 SOUND_MAP에서 각각 arrow.mp3와 cannon.mp3로 연결한다.
      */
     bus.on('castle:fired', ({ kind }) => {
       const gate = this.world.castlePosition();
