@@ -249,6 +249,46 @@ const RECIPES: Record<string, Recipe> = {
 
 
   /**
+   * 하북 창병 (3장 주력) — 바닥까지 닿는 긴 창을 **한 손**으로 세워 들었다.
+   *
+   * staff 를 켠 이유: 창대가 발밑에서 머리 위까지 이어진다. 거리 스키닝은 그
+   * 창을 다리·골반·가슴·머리로 토막 내므로, 켜지 않으면 걷기만 해도 창이 활처럼
+   * 휜다(장각의 대도와 같은 병이다). 켜면 창대가 통째로 weapon 뼈 하나가 되어
+   * 손에 붙는다.
+   *
+   * armMode 는 split — 한 손으로 든다. 반대 손은 허리의 환도 쪽에 비어 있다.
+   * single 로 묶으면 빈 손까지 창에 딸려가 두 손으로 잡은 모양이 된다.
+   *
+   * attackStyle 은 thrust — 성문을 창으로 찌른다.
+   */
+  ys_spear: {
+    kind: 'humanoid',
+    input: 'img/하복 창병.glb',
+    output: 'public/assets/models/ys_spear.glb',
+    tris: 6000,
+    tex: 1024,
+    staff: true,
+    /*
+     * 갑주 자락 — 허리에서 허벅지까지 덮는 판이다.
+     *
+     * 켜지 않으면 자락의 왼쪽 절반은 왼다리가, 오른쪽 절반은 오른다리가 가져가서
+     * 걸을 때 두 쪽으로 찢어져 판때기처럼 날아다닌다(실측: 첫 굽기의 walk·attack
+     * 프레임에서 자락이 발보다 앞까지 뻗어 나갔다).
+     */
+    skirt: { toRatio: 0.34, legInfluence: 0.25 },
+    forwardDeg: 0,
+    targetHeight: 34,
+    armMode: 'split',
+    attackStyle: 'thrust',
+    // 체력 130 에 속도 44 — 3장에서 가장 느리고 무거운 잡병이다.
+    // 보병(0.9s)보다 느긋하게, 창을 세워 든 무게가 보이도록 잡는다.
+    cadence: 1.15,
+    walkStride: 0.72,
+    kneeBend: 0.12,
+    legCloseFactor: 0.10,
+  },
+
+  /**
    * 강동 수병 (4장 잡병) — 왼손에 둥근 방패, 오른손에 환도.
    *
    * 서량 방패병과 같은 구성이라 같은 값에서 출발한다(split + swing). 다른 것은

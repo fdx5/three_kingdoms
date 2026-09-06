@@ -8,6 +8,7 @@
     "xl_healer": { "url": "models/healer.glb" },
     "zhangjiao": { "url": "models/zhangjiao.glb" },
     "yuanshao": { "url": "models/yuanshao.glb" },
+    "ys_spear": { "url": "models/ys_spear.glb" },
     "archer_tower": { "url": "models/archer_tower.glb" },
     "catapult": { "url": "models/catapult.glb" },
     "fire_tower": { "url": "models/fire_tower.glb" },

@@ -100,7 +100,9 @@ export const YUAN_UNITS: Record<string, UnitDef> = {
     castleDamage: 22,
     scale: 1.12,
     kind: 'minion',
-    view: { primitive: spearPrimitive() },
+    // 3장 주력이라 전용 모델을 붙였다. 한 손에 세워 든 긴 창 —
+    // 걸을 때는 창을 세우고, 성문 앞에서는 눕혀 내지른다.
+    view: { primitive: spearPrimitive(), modelId: 'ys_spear' },
     audio: { die: 'sfx_die_small', hit: 'sfx_hit' },
     // 방패병만큼 화살을 튕기지는 않는다. 레벨 3의 문제는 저항이 아니라 물량이다.
     traits: { rangedResist: 0.3 },

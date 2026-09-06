@@ -869,7 +869,9 @@ async function level3Pass(page: Page): Promise<void> {
   console.log('\n[초기 상태]');
   console.table(initial);
   if (initial.drawCalls === 0) fail('드로우콜이 0이다 — 레벨 3 씬이 그려지지 않았다');
-  if (initial.gold !== '225') fail(`레벨 3 시작 골드가 225가 아니다: ${initial.gold}`);
+  // level03.ts 의 startGold 와 맞춘다. 225 로 남아 있어 스모크가 늘 실패하고 있었다 —
+  // 레벨 쪽은 "시작하자마자 궁노+벽력거 뼈대를 세운다"로 400 으로 바뀌었는데 여기가 안 따라왔다.
+  if (initial.gold !== '400') fail(`레벨 3 시작 골드가 400이 아니다: ${initial.gold}`);
   if (initial.castle !== '500') fail(`레벨 3 시작 성 체력이 500이 아니다: ${initial.castle}`);
 
   // 3장부터도 화공과 얼음폭풍을 사용할 수 있다.

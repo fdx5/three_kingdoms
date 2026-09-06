@@ -32,6 +32,7 @@
     "asset:catapult": "tsx scripts/bake-assets.ts catapult",
     "asset:firetower": "tsx scripts/bake-assets.ts fire_tower",
     "asset:wu": "tsx scripts/bake-assets.ts wu_marine wu_rattan wu_raider ganning sunquan",
+    "asset:spear": "tsx scripts/bake-assets.ts ys_spear",
     "asset:cavalry": "tsx scripts/bake-assets.ts cavalry",
     "asset:healer": "tsx scripts/bake-assets.ts healer",
     "asset:lubu": "tsx scripts/bake-assets.ts lubu",

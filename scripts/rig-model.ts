@@ -376,8 +376,17 @@ interface StaffInfo {
   top: Vec3;
   /** 봉 축 (정규화, 위쪽) */
   dir: Vec3;
-  /** 축에서 이 거리 안이면 봉 (쥔 손가락까지 들어온다) */
+  /** 축에서 이 거리 안이면 봉 — **손 위쪽** 기준 (쥔 손가락과 창날·술까지 들어온다) */
   r: number;
+  /**
+   * 손 **아래쪽**에 쓰는 반경. 위쪽보다 좁다.
+   *
+   * 손 위의 봉은 허공에 있어 넉넉히 잡아도 봉밖에 안 들어온다. 그런데 손 아래는
+   * 다리와 갑주 자락이 바로 옆에 있어서, 같은 반경으로 잡으면 자락을 물어 버린다.
+   * 그러면 그 조각이 봉을 따라 돌아 허공을 날아다닌다(실측: 찌르기에서 병사
+   * 오른쪽에 검은 덩어리가 떠다녔다). 아래는 대의 굵기만 잡는다.
+   */
+  rLow: number;
   /** grip 기준 축 방향 범위 */
   tMin: number;
   tMax: number;
@@ -403,6 +412,50 @@ function alongAxis(p: Vec3, origin: Vec3, dir: Vec3): { t: number; d: number } {
  * 멀리 떨어진 채 위아래로 길다. 실측(서량 종군 도사): 봉 셀 dist 0.175~0.184,
  * 몸통 셀은 0.10 이하 — 사이가 확실히 비어 있어 가장 먼 셀에서 뭉치면 봉만 잡힌다.
  */
+/**
+ * 기울어진 봉의 씨앗 축을 찾는다 — 격자 방식이 실패했을 때의 대안.
+ *
+ * 격자 방식은 (x,z) 칸 **하나**가 세로로 키의 90% 를 덮어야 봉으로 인정한다.
+ * 곧게 세운 봉에는 잘 맞지만 기울어진 봉은 여러 칸에 나뉘어 어느 칸도 기준을
+ * 못 채운다 (실측 — 하북 창병의 창은 아래 x=-0.30·z=-0.02 에서 위 x=-0.40·z=0.24
+ * 로 0.28 흘러가 네 칸에 걸쳐 있었고, 가장 긴 칸도 89.7% 에서 멎었다).
+ *
+ * 여기서는 칸을 세지 않고 **몸통에서 충분히 떨어진 점들의 위아래 끝**을 잡아
+ * 그 둘을 잇는 선을 씨앗으로 준다. 기울기와 무관하다. 이 씨앗을 넘기면 뒤의
+ * 주성분 다듬기가 실제 봉 축으로 수렴한다.
+ *
+ * 몸이 아니라 봉임을 어떻게 아는가: 몸통축에서 bodyH*0.18 밖이어야 하고(발·어깨는
+ * 그 안쪽이다), 그 바깥 점들이 키의 75% 이상을 세로로 덮어야 한다. 게다가 이
+ * 함수는 모델이 staff 를 켰을 때만 불린다.
+ */
+function tiltedStaffSeed(
+  P: Float32Array,
+  n: number,
+  height: number,
+  bodyH: number,
+  axisX: number,
+  axisZ: number,
+): { origin: Vec3; dir: Vec3 } | null {
+  const outer = bodyH * 0.18;
+  let top: Vec3 | null = null;
+  let bot: Vec3 | null = null;
+  for (let i = 0; i < n; i++) {
+    const x = P[i * 3];
+    const y = P[i * 3 + 1];
+    const z = P[i * 3 + 2];
+    if (Math.hypot(x - axisX, z - axisZ) < outer) continue;
+    if (!top || y > top[1]) top = [x, y, z];
+    if (!bot || y < bot[1]) bot = [x, y, z];
+  }
+  if (!top || !bot || top[1] - bot[1] < height * 0.75) return null;
+  const d: Vec3 = [top[0] - bot[0], top[1] - bot[1], top[2] - bot[2]];
+  const L = Math.hypot(d[0], d[1], d[2]) || 1;
+  return {
+    origin: [(top[0] + bot[0]) / 2, (top[1] + bot[1]) / 2, (top[2] + bot[2]) / 2],
+    dir: [d[0] / L, d[1] / L, d[2] / L],
+  };
+}
+
 function findStaff(
   P: Float32Array,
   n: number,
@@ -449,35 +502,56 @@ function findStaff(
 
   const seed = tall[0];
   // 몸통에서 충분히 떨어져 있어야 봉이다. 가까우면 그냥 몸통 기둥이다.
-  if (!seed || seed.dist < bodyH * 0.10) return null;
+  const seedOk = seed !== undefined && seed.dist >= bodyH * 0.10;
 
-  // 씨앗 셀 주변만 모은다 — 반대쪽 팔이나 옷자락이 딸려오지 않게
-  const near = tall.filter((g) => Math.hypot(g.cx - seed.cx, g.cz - seed.cz) <= cell * 1.6);
-  let sx = 0;
-  let sz = 0;
-  let sc = 0;
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const g of near) {
-    sx += g.cx * g.c;
-    sz += g.cz * g.c;
-    sc += g.c;
-    if (g.lo < lo) lo = g.lo;
-    if (g.hi > hi) hi = g.hi;
+  let cx: number;
+  let cz: number;
+  let r: number;
+  /** 씨앗 축 — 격자로 잡았으면 수직에서 시작하고, 기운 봉이면 그 기울기에서 시작한다 */
+  let seedOrigin: Vec3;
+  let seedDir: Vec3;
+
+  if (seedOk) {
+    // 씨앗 셀 주변만 모은다 — 반대쪽 팔이나 옷자락이 딸려오지 않게
+    const near = tall.filter((g) => Math.hypot(g.cx - seed.cx, g.cz - seed.cz) <= cell * 1.6);
+    let sx = 0;
+    let sz = 0;
+    let sc = 0;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const g of near) {
+      sx += g.cx * g.c;
+      sz += g.cz * g.c;
+      sc += g.c;
+      if (g.lo < lo) lo = g.lo;
+      if (g.hi > hi) hi = g.hi;
+    }
+    cx = sx / sc;
+    cz = sz / sc;
+    let spread = 0;
+    for (const g of near) spread = Math.max(spread, Math.hypot(g.cx - cx, g.cz - cz));
+    r = spread + cell * 0.9;
+    seedOrigin = [cx, (lo + hi) / 2, cz];
+    seedDir = [0, 1, 0];
+  } else {
+    // 격자가 못 잡았다 — 기울어진 봉일 수 있다.
+    const tilted = tiltedStaffSeed(P, n, height, bodyH, axisX, axisZ);
+    if (!tilted) return null;
+    seedOrigin = tilted.origin;
+    seedDir = tilted.dir;
+    cx = tilted.origin[0];
+    cz = tilted.origin[2];
+    // 반경은 아래에서 bodyH*0.07 로 묶인다. 여기서는 그 상한을 그대로 쓴다.
+    r = bodyH * 0.07;
   }
-  const cx = sx / sc;
-  const cz = sz / sc;
-  let spread = 0;
-  for (const g of near) spread = Math.max(spread, Math.hypot(g.cx - cx, g.cz - cz));
-  const r = spread + cell * 0.9;
 
   /*
    * 축 맞추기 — 대략의 기둥 안 정점들로 주성분(가장 길게 퍼진 방향)을 찾는다.
    * 봉은 가늘고 길어서 이 방향이 곧 봉의 축이다. 두 번 반복하면
    * 처음에 놓친 아래끝까지 들어와 축이 안정된다.
    */
-  let origin: Vec3 = [cx, (lo + hi) / 2, cz];
-  let dir: Vec3 = [0, 1, 0];
+  let origin: Vec3 = seedOrigin;
+  let dir: Vec3 = seedDir;
   /*
    * 반경은 고정한다. 반복할 때마다 실제 분포에서 다시 재게 했더니 손·소매가
    * 섞이면서 점점 커져 몸통까지 삼켰다(정점 991개 = 모델의 절반).
@@ -518,12 +592,53 @@ function findStaff(
     dir = e[1] < 0 ? [-e[0], -e[1], -e[2]] : e; // 항상 위쪽을 향하게
   }
 
+  /*
+   * 축이 정해졌으니 **봉의 실제 굵기**를 재서 반경을 좁힌다.
+   *
+   * 위의 radius 는 축을 찾기 위한 넉넉한 탐색 반경이다. 그걸 그대로 가중치에
+   * 쓰면 캡슐이 봉 주변의 살·갑주 자락까지 통째로 삼킨다 — 그러면 자락 절반은
+   * 봉을 따라가고 나머지 절반은 다리를 따라가서, 그 경계의 삼각형이 걸음마다
+   * 판때기처럼 늘어난다(실측: 하북 창병의 창 캡슐 반경 0.115 에 정점 690개가
+   * 0.00~0.115 전 구간에 고루 퍼져 있었다. 가는 창대라면 0.03 안쪽에 몰려야 한다).
+   *
+   * 굵기는 **손 위쪽 구간에서만** 잰다. 아래쪽은 몸에 붙어 있어 어디까지가 봉이고
+   * 어디부터가 옷인지 구분할 수 없지만, 위쪽 자유 구간은 봉밖에 없다.
+   */
+  const poleR = ((): number => {
+    const along: { t: number; d: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = alongAxis([P[i * 3], P[i * 3 + 1], P[i * 3 + 2]], origin, dir);
+      if (a.d <= radius) along.push(a);
+    }
+    if (along.length < 24) return radius;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const a of along) {
+      if (a.t < lo) lo = a.t;
+      if (a.t > hi) hi = a.t;
+    }
+    /*
+     * 재는 구간은 **손 위쪽 대의 중간**이다 (축 범위의 60~90%).
+     *   - 손 근처를 넣으면 손·소매가 섞여 굵어진다
+     *   - 맨 끝을 넣으면 창날과 술이 섞여 굵어진다
+     * 그리고 **중앙값**을 쓴다. 백분위수는 이 구간에도 조금씩 끼어드는 팔·소매에
+     * 그대로 끌려간다(실측: 95퍼센타일로 재니 0.115 로 되레 커졌다).
+     * 중앙값은 대의 정점이 다수라 대의 굵기를 가리킨다.
+     */
+    const a1 = lo + (hi - lo) * 0.6;
+    const a2 = lo + (hi - lo) * 0.9;
+    const ds = along.filter((a) => a.t >= a1 && a.t <= a2).map((a) => a.d).sort((x, y) => x - y);
+    if (ds.length < 12) return radius;
+    const med = ds[ds.length >> 1];
+    return Math.min(radius, Math.max(bodyH * 0.012, med * 1.5));
+  })();
+
   // 축 방향 범위
   let tMin = Infinity;
   let tMax = -Infinity;
   for (let i = 0; i < n; i++) {
     const a = alongAxis([P[i * 3], P[i * 3 + 1], P[i * 3 + 2]], origin, dir);
-    if (a.d > radius) continue;
+    if (a.d > poleR) continue;
     if (a.t < tMin) tMin = a.t;
     if (a.t > tMax) tMax = a.t;
   }
@@ -537,13 +652,22 @@ function findStaff(
     const t = (p[1] - minY) / bodyH;
     if (t < 0.45 || t > 0.95) continue;
     const a = alongAxis(p, origin, dir);
-    if (a.d > radius && a.d < radius * 2.4) hands.push(a.t);
+    if (a.d > poleR && a.d < poleR * 2.4 + radius * 0.6) hands.push(a.t);
   }
   hands.sort((a, b) => a - b);
   const gripT = hands.length > 0 ? hands[hands.length >> 1] : (minY + bodyH * 0.62 - origin[1]) / (dir[1] || 1);
   const at = (t: number): Vec3 => [origin[0] + dir[0] * t, origin[1] + dir[1] * t, origin[2] + dir[2] * t];
 
-  return { grip: at(gripT), top: at(tMax), dir, r: radius, tMin: tMin - gripT, tMax: tMax - gripT };
+  return {
+    grip: at(gripT),
+    top: at(tMax),
+    dir,
+    // 손 위쪽은 넉넉히(창날·술까지), 아래쪽은 대의 굵기만
+    r: radius,
+    rLow: poleR,
+    tMin: tMin - gripT,
+    tMax: tMax - gripT,
+  };
 }
 
 /**
@@ -703,7 +827,8 @@ function findBlade(
   }
   const { origin, dir, tMin, tMax } = best;
   const at = (t: number): Vec3 => [origin[0] + dir[0] * t, origin[1] + dir[1] * t, origin[2] + dir[2] * t];
-  return { grip: at(tMin), top: at(tMax), dir, r: radius, tMin: 0, tMax: tMax - tMin };
+  // 칼날은 손 위아래를 나누지 않는다 — 봉처럼 바닥까지 내려가지 않아 몸과 겹칠 일이 없다.
+  return { grip: at(tMin), top: at(tMax), dir, r: radius, rLow: radius, tMin: 0, tMax: tMax - tMin };
 }
 
 /**
@@ -1740,6 +1865,23 @@ function buildClips(
         // 앞다리로 딛고 뒷다리로 민다
         rot('legL', AT, [0, 0.14, -0.34, 0], swingAxis),
         rot('legR', AT, [0, -0.14, 0.26, 0], swingAxis),
+        /*
+         * 세워 든 창을 **눕혀서** 내지른다.
+         *
+         * 봉 뼈가 없으면(staff 를 안 켰으면) 창은 팔에 딸린 살덩이라 팔이 도는
+         * 만큼만 움직인다 — 팔 0.55rad(31도)로는 창이 여전히 하늘을 보고 있어서
+         * "앞으로 몸을 기울였다"로만 읽히고 찌르기로는 안 읽힌다(실측: 첫 굽기의
+         * attack 프레임에서 창이 끝까지 수직이었다).
+         *
+         * 걷기에서 staffCounter 가 팔이 돌린 만큼 창을 **되세운다면**, 여기서는
+         * 반대로 팔 위에 각도를 **더 얹어** 창을 지면과 나란히 만든다.
+         * 부모(팔)와 같은 축이라 각도는 그냥 더해진다.
+         *   당길 때  팔 -0.42 + 창 0.80 = 0.38rad (22도)  — 창을 뒤로 빼며 눕히기 시작
+         *   찌를 때  팔  0.55 + 창 0.95 = 1.50rad (86도)  — 지면과 나란하다
+         * 회전 중심은 손이다. 창끝이 앞으로 나가는 만큼 물미는 뒤로 빠진다 —
+         * 실제로 창을 내지를 때 나오는 모양이다.
+         */
+        ...(m.staff ? [rot('weapon', AT, [0, 0.8, 0.95, 0], swingAxis)] : []),
       ],
     };
   }
@@ -1998,7 +2140,7 @@ export async function rig(
       const tiltDeg = (Math.acos(Math.min(1, Math.abs(st.dir[1]))) * 180) / Math.PI;
       console.log(
         `[rig] 봉: 손(${st.grip.map((v) => v.toFixed(3)).join(', ')}) 끝(${st.top.map((v) => v.toFixed(3)).join(', ')})` +
-          `  반경 ${st.r.toFixed(3)}  기울기 ${tiltDeg.toFixed(1)}도  길이 ${(st.tMax - st.tMin).toFixed(3)}`,
+          `  반경 위 ${st.r.toFixed(3)}/아래 ${st.rLow.toFixed(3)}  기울기 ${tiltDeg.toFixed(1)}도  길이 ${(st.tMax - st.tMin).toFixed(3)}`,
       );
     } else {
       console.warn('[rig] 봉을 찾지 못했다 — 일반 스키닝으로 진행한다');
@@ -2131,7 +2273,9 @@ export async function rig(
       staff !== null &&
       (() => {
         const a = alongAxis(p, staff.grip, staff.dir);
-        return a.d <= staff.r && a.t >= staff.tMin - staff.r && a.t <= staff.tMax + staff.r;
+        // 손(t=0) 위아래로 반경이 다르다 — 위는 허공, 아래는 몸 옆이다
+        const rr = a.t < 0 ? staff.rLow : staff.r;
+        return a.d <= rr && a.t >= staff.tMin - rr && a.t <= staff.tMax + rr;
       })();
     if (staffMask && onStaff) {
       joints[i * 4] = weaponIndex;
@@ -2188,8 +2332,151 @@ export async function rig(
     );
   }
 
+  /*
+   * 봉 경계를 다듬는다 — 이웃이 거의 다 몸이면 그 정점도 몸으로 되돌린다.
+   *
+   * 캡슐은 원통이라 봉 옆을 스치는 살점(자락 끝, 장화 옆면)을 몇 점씩 문다.
+   * 그렇게 물린 점들은 몸 한복판에 박힌 **외딴 섬**이라, 아래에서 이음매를
+   * 자르고 나면 어디에도 안 붙은 채 봉을 따라 날아다닌다. 삼각형을 지워
+   * 치우는 것보다 **애초에 봉으로 치지 않는 것**이 맞다 — 구멍도 안 생긴다.
+   *
+   * 판단은 메시의 이웃으로 한다. 진짜 봉의 정점은 이웃도 거의 다 봉이고,
+   * 잘못 물린 살점은 이웃이 거의 다 몸이다. 두 번 돌리면 한 겹 더 벗겨진다.
+   */
+  if (staffMask) {
+    const idx0 = prim.getIndices();
+    const arr0 = idx0?.getArray();
+    if (arr0) {
+      const adj: number[][] = Array.from({ length: n }, () => []);
+      for (let t = 0; t + 2 < arr0.length; t += 3) {
+        const v = [arr0[t], arr0[t + 1], arr0[t + 2]];
+        for (let a = 0; a < 3; a++)
+          for (let b = 0; b < 3; b++) if (a !== b) adj[v[a]].push(v[b]);
+      }
+      let freed = 0;
+      for (let pass = 0; pass < 2; pass++) {
+        const flip: number[] = [];
+        for (let i = 0; i < n; i++) {
+          if (staffMask[i] !== 1 || adj[i].length === 0) continue;
+          let same = 0;
+          for (const j of adj[i]) if (staffMask[j] === 1) same++;
+          if (same / adj[i].length < 0.34) flip.push(i);
+        }
+        if (flip.length === 0) break;
+        for (const i of flip) {
+          staffMask[i] = 0;
+          const p: Vec3 = [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]];
+          const { joints: j2, weights: w2 } = skinVertex(p, bones, tails);
+          for (let k = 0; k < 4; k++) {
+            joints[i * 4 + k] = j2[k];
+            weights[i * 4 + k] = w2[k];
+          }
+        }
+        freed += flip.length;
+      }
+      if (freed > 0) console.log(`[rig] 봉 경계 정리: 잘못 물린 정점 ${freed}개를 몸으로 되돌렸다`);
+    }
+  }
+
   prim.setAttribute('JOINTS_0', floatAccessor(doc, new Float32Array(joints), 'VEC4').setArray(joints));
   prim.setAttribute('WEIGHTS_0', floatAccessor(doc, weights, 'VEC4'));
+
+  /*
+   * 봉과 몸을 잇는 삼각형을 잘라낸다.
+   *
+   * 원본이 사람과 무기를 **하나의 껍질**로 만들어 놓은 경우가 있다(이미지에서
+   * 생성한 모델이 대개 그렇다). 그러면 창대와 갑주 자락이 한 면으로 이어져 있고,
+   * 창을 손에서 돌리는 순간 그 이음매의 삼각형이 창을 따라 끌려가 부채처럼
+   * 펼쳐진다 — 실측: 하북 창병의 찌르기에서 발과 창을 잇는 모서리가 키의 40배로
+   * 늘어났고, 화면에는 허리에서 뻗어 나온 판때기로 보였다.
+   *
+   * 가중치를 아무리 잘 나눠도 이건 못 고친다. 한 삼각형의 세 꼭짓점이 서로 다른
+   * 물체에 속해 있다는 것 자체가 문제이기 때문이다. 그 삼각형은 실제 표면이
+   * 아니라 두 물체가 붙어 나온 자국이므로 지우는 것이 맞다. 창대가 그 자리를
+   * 가리고 있어 구멍은 보이지 않는다.
+   */
+  if (staffMask) {
+    const idx = prim.getIndices();
+    const src = idx?.getArray();
+    if (idx && src) {
+      const keep: number[] = [];
+      let cut = 0;
+      for (let t = 0; t + 2 < src.length; t += 3) {
+        const a = staffMask[src[t]];
+        if (a === staffMask[src[t + 1]] && a === staffMask[src[t + 2]]) {
+          keep.push(src[t], src[t + 1], src[t + 2]);
+        } else {
+          cut++;
+        }
+      }
+      if (cut > 0) {
+        /*
+         * 잘라 내고 나면 **부스러기 섬**이 남는다.
+         *
+         * 봉 캡슐은 원통이라 봉 주변의 살점(갑주 자락 끝, 장화 옆면)을 조금씩
+         * 물고 있다. 이음매를 자르기 전에는 그것들이 몸에 붙어 있어 티가 안 났지만,
+         * 자르고 나면 어디에도 안 붙은 조각이 되어 봉을 따라 허공을 날아다닌다
+         * (실측: 찌르기 프레임에서 병사 오른쪽 허공에 검은 덩어리가 떠다녔다).
+         *
+         * 그래서 남은 삼각형을 연결 요소로 묶고, 아주 작은 덩어리는 버린다.
+         * 사람 모델은 몸통 하나와 봉 하나가 큰 덩어리로 남고, 그보다 작은 것은
+         * 전부 자국이다. 기준을 넉넉히 잡아도(전체의 1%) 진짜 부품은 안 걸린다.
+         */
+        const parent = new Int32Array(n).fill(-1);
+        const find = (x: number): number => {
+          let root = x;
+          while (parent[root] >= 0) root = parent[root];
+          while (parent[x] >= 0) {
+            const nx = parent[x];
+            parent[x] = root;
+            x = nx;
+          }
+          return root;
+        };
+        const union = (a: number, b: number): void => {
+          const ra = find(a);
+          const rb = find(b);
+          if (ra !== rb) parent[ra] = rb;
+        };
+        for (let t = 0; t + 2 < keep.length; t += 3) {
+          union(keep[t], keep[t + 1]);
+          union(keep[t + 1], keep[t + 2]);
+        }
+        const size = new Map<number, number>();
+        for (let t = 0; t + 2 < keep.length; t += 3) {
+          const r = find(keep[t]);
+          size.set(r, (size.get(r) ?? 0) + 1);
+        }
+        /*
+         * 버리는 것은 **봉 쪽의 작은 덩어리뿐이다.**
+         *
+         * 두 번 틀렸다. 처음에는 "봉 쪽은 가장 큰 덩어리 하나만 남긴다"고 했는데,
+         * 이음매를 자르면 봉 자체가 여러 토막으로 나뉘므로 가장 큰 것이 손잡이
+         * 토막 하나였고 창이 통째로 사라졌다. 다음에는 크기만 보고 버렸더니
+         * 이번에는 **몸 쪽 부품**이 사라졌다 — 승려의 소매가 원래부터 따로 떨어진
+         * 작은 덩어리였는데 그게 지워져 가슴에 구멍이 뚫렸다.
+         *
+         * 몸 쪽 덩어리는 이 코드가 만든 것이 아니라 원본이 원래 그렇게 생긴
+         * 것이므로 건드리지 않는다. 이 코드가 책임질 것은 봉을 떼어 내면서
+         * 생긴 봉 쪽 부스러기뿐이다.
+         */
+        const minPart = Math.max(6, Math.floor((keep.length / 3) * 0.01));
+        const kept2: number[] = [];
+        let debris = 0;
+        for (let t = 0; t + 2 < keep.length; t += 3) {
+          const root = find(keep[t]);
+          const drop = staffMask[root] === 1 && (size.get(root) ?? 0) < minPart;
+          if (!drop) kept2.push(keep[t], keep[t + 1], keep[t + 2]);
+          else debris++;
+        }
+        idx.setArray(Uint32Array.from(kept2));
+        console.log(
+          `[rig] 봉↔몸 이음 삼각형 ${cut}개를 잘랐다 (${((cut / (src.length / 3)) * 100).toFixed(1)}%)` +
+            (debris > 0 ? `, 부스러기 ${debris}개도 버렸다(덩어리 ${minPart}개 미만)` : ''),
+        );
+      }
+    }
+  }
 
   // 뼈 노드 — 로컬 위치는 부모와의 차이
   const nodeByName = new Map<string, Node>();
