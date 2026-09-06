@@ -1,7 +1,13 @@
 # render.com 블루프린트 — 서비스 하나로 게임과 API를 같이 올린다.
 #
 # 대시보드에서 New > Blueprint 로 이 저장소를 고르면 아래대로 만들어진다.
-# 이미 Web Service 를 손으로 만들었다면 Settings 에 같은 값을 넣으면 된다.
+#
+# ⚠ 손으로 만든 Web Service 는 이 파일을 **읽지 않는다**. 그 경우 Settings 의
+#   Build Command / Start Command 에 아래 값을 직접 넣어야 한다. 안 넣으면
+#   설치가 돌지 않은 채 빌드만 시도해서 `sh: 1: vite: not found` 로 죽는다.
+#   (그래도 죽지 않도록 package.json 에 prebuild 안전장치를 뒀다 —
+#    scripts/ensure-deps.mjs 가 의존성이 없으면 그 자리에서 깐다.)
+#
 # 토르소 접속 정보만 대시보드에서 직접 채운다(sync: false = 저장소에 값이 없다).
 services:
   - type: web
@@ -13,7 +19,7 @@ services:
 
     # 플래그가 필요 없다. Render 가 NODE_ENV=production 을 넣어 devDependencies 를
     # 건너뛰어도, 빌드와 기동에 필요한 것(vite · tsx · three · @libsql/client)은
-    # 전부 dependencies 에 있다. 실측: 이 명령으로 22개가 깔리고 빌드가 끝난다.
+    # 전부 dependencies 에 있다. 실측(리눅스): 이 명령으로 30개가 깔리고 빌드가 끝난다.
     #
     # `build` 는 vite build 하나다. tsc --noEmit 을 여기 묶어 두면 배포가 타입 검사
     # 때문에 멈추는데, 그건 로컬(`npm run typecheck`)의 몫이다.
