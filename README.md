@@ -224,18 +224,21 @@ Web Service 를 손으로 만들었다면 Settings 에 같은 값을 넣는다.
 | 설정 | 값 |
 | ---- | -- |
 | Runtime | Node |
-| Build Command | `npm ci --include=dev && VITE_API_BASE=/api npm run build:app` |
+| Build Command | `npm ci --include=dev && VITE_API_BASE=/api npm run build` |
 | Start Command | `npm start` |
 | Health Check Path | `/api/health` |
 | Environment | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `NODE_VERSION=22` |
 
-**`--include=dev` 가 빠지면 빌드가 깨진다.** Render 는 Node 서비스에 `NODE_ENV=production`
-을 기본으로 넣고, 그러면 npm 이 devDependencies 를 건너뛴다. 그런데 빌드 도구(vite,
-그리고 `vite.config.ts` 가 import 하는 vitest)는 전부 거기 있다.
+**devDependencies 가 설치되어야 빌드가 된다.** Render 는 Node 서비스에
+`NODE_ENV=production` 을 기본으로 넣고, 그러면 npm 이 devDependencies 를 건너뛴다.
+그런데 빌드 도구(vite, 그리고 `vite.config.ts` 가 import 하는 vitest)는 전부 거기 있다.
+실측: 그대로 두면 **12개**만 설치되고 vite 가 없다. 저장소의 `.npmrc` 에
+`include=dev` 를 박아 두어 어떤 빌드 명령을 쓰든 **147개**가 설치되게 했다.
 
-**빌드는 `build:app`(= `vite build`) 을 쓴다.** `build` 는 앞에 `tsc --noEmit` 이 붙는데
-그건 `scripts/` 의 에셋 파이프라인까지 훑는다 — 배포 서버에서 돌릴 이유가 없다.
-타입 검사는 로컬의 몫이다(`npm run typecheck`).
+**`npm run build` 는 `vite build` 하나다.** 타입 검사를 여기 묶어 두면 배포가 그것 때문에
+멈춘다 — 게다가 devDependencies 가 없는 채로 `tsc` 를 부르면 전역의 다른 버전이 잡혀
+`TS5102: baseUrl has been removed` 같은 엉뚱한 오류가 난다(실제로 그랬다).
+타입 검사는 `npm run typecheck` 로 로컬에서 돌린다.
 
 접속 정보를 아직 안 넣었어도 **서버는 뜬다.** 정적 파일은 계속 서빙되고 API 는 503 과
 함께 무엇이 없는지 말해 준다 — `/api/health` 를 열어 보면 한 줄로 나온다.

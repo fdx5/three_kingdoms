@@ -20,10 +20,12 @@
     "skipLibCheck": true,
     "noEmit": true,
 
-    "baseUrl": ".",
+    // baseUrl 은 쓰지 않는다 — TypeScript 7 에서 제거된 옵션이라 새 컴파일러를 만나면
+    // TS5102 로 빌드가 통째로 멈춘다(배포에서 실제로 그랬다).
+    // paths 는 4.1 부터 baseUrl 없이도 이 파일 위치를 기준으로 풀린다.
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "tests", "scripts", "vite.config.ts"]
+  "include": ["src", "server", "tests", "scripts", "vite.config.ts"]
 }

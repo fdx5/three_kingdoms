@@ -6,8 +6,7 @@
   "description": "삼국지 TD — Three Kingdoms Tower Defense (6장 · three.js · 토르소 DB)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "build:app": "vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "server": "tsx server/index.ts",
     "start": "tsx server/index.ts",

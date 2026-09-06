@@ -11,19 +11,18 @@ services:
     # 토르소 DB가 도쿄(ap-northeast-1)에 있다. 무료 플랜에서 고를 수 있는 것 중 가장 가깝다.
     region: singapore
 
-    # `--include=dev` 가 핵심이다.
+    # devDependencies 는 저장소의 .npmrc(include=dev) 가 책임진다.
+    # Render 가 NODE_ENV=production 을 넣어도 vite 와 typescript 가 설치된다 —
+    # 이게 없으면 12개만 깔리고 vite 가 없어서 빌드가 통째로 멈춘다(실측).
+    # 여기 --include=dev 를 한 번 더 적은 것은 대시보드에서 이 줄만 복사해 가도
+    # 되게 하려는 것이다. 둘 다 있어도 문제 없다.
     #
-    # Render 는 Node 서비스에 NODE_ENV=production 을 기본으로 넣는다. 그대로 두면
-    # npm 이 devDependencies 를 건너뛰어 vite 와 typescript 가 없는 채로 빌드에 들어간다.
-    # 빌드 도구는 전부 devDependencies 에 있으므로 설치 단계에서만 명시적으로 켠다.
-    #
-    # 빌드는 `build:app`(= vite build) 을 쓴다. `build` 는 tsc --noEmit 이 앞에 붙는데,
-    # 그건 scripts/ 의 에셋 파이프라인까지 훑어서 배포 서버에서 돌릴 이유가 없다.
-    # 타입 검사는 로컬과 CI 의 몫이다.
+    # `build` 는 vite build 하나다. tsc --noEmit 을 여기 묶어 두면 배포가 타입 검사
+    # 때문에 멈추는데, 그건 로컬(`npm run typecheck`)의 몫이다.
     #
     # VITE_API_BASE=/api 를 빌드에 박는다 — 배포된 게임은 같은 오리진의 API 를 쓴다.
     # 로컬 .env 에서는 비워 두므로 개발할 때는 서버 없이 localStorage 로 논다.
-    buildCommand: npm ci --include=dev && VITE_API_BASE=/api npm run build:app
+    buildCommand: npm ci --include=dev && VITE_API_BASE=/api npm run build
 
     startCommand: npm start
     healthCheckPath: /api/health
