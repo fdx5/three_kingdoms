@@ -1,0 +1,58 @@
+# 배포된 서비스를 깨워 두고, 죽으면 알려 준다.
+#
+# render.com 무료 플랜은 15분 동안 들어오는 요청이 없으면 인스턴스를 재운다.
+# 서버가 스스로도 자기를 두드리지만(server/keepalive.ts), **한 번 잠들면 스스로는
+# 못 깬다** — 타이머도 같이 멈추기 때문이다. 배포 교체나 재시작으로 틈이 한 번
+# 생기면 그 뒤로는 영영 자고 있게 된다. 밖에서 두드리는 이 워크플로가 그 틈을 메운다.
+#
+# 검사에 실패하면 GitHub 가 메일을 보낸다 — 그게 이 저장소의 가동 감시다.
+#
+# 알아 둘 것
+#   - 예약 실행은 정시에 오지 않는다. GitHub 가 붐비면 10~30분씩 밀린다.
+#     그래서 서버 쪽 자가 두드림과 **둘 다** 둔다. 이쪽은 깨우는 쪽이 본업이다.
+#   - 저장소에 60일 동안 커밋이 없으면 GitHub 가 예약 실행을 자동으로 끈다.
+#     그때는 Actions 탭에서 다시 켜야 한다.
+#   - 무료 플랜은 계정 전체 월 750 인스턴스시간이다. 31일 내내 켜 두면 744시간이라
+#     웹 서비스 하나면 겨우 들어간다. 무료 서비스를 하나 더 올리면 월말에 멈춘다.
+name: keepalive
+
+on:
+  schedule:
+    # 10분마다. 15분 창을 한 번 놓쳐도 다음 차례가 창 안에 들어온다.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+# 앞 실행이 밀려 겹치면 새것만 남긴다 — 줄 서서 몰려 두드릴 이유가 없다.
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: /api/health 를 두드린다
+        env:
+          # 다른 주소로 옮기면 저장소 Variables 에 HEALTH_URL 을 넣으면 된다.
+          HEALTH_URL: ${{ vars.HEALTH_URL || 'https://three-kingdoms-cmus.onrender.com/api/health' }}
+        run: |
+          set -u
+          # 잠들어 있으면 콜드 스타트가 30초~1분이다. 넉넉히 기다리고, 그래도
+          # 안 되면 한 번 더 — 깨우는 중에 한 번 끊기는 일이 실제로 있다.
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 90 "$HEALTH_URL" || echo 000)
+            echo "시도 $attempt — HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/health.json; echo
+              # 서버는 살아 있는데 DB 가 끊긴 경우도 200 이다(그게 /health 의 규약이다).
+              # 그건 실패로 보지 않고 경고만 남긴다 — 정적 파일은 계속 서빙되고 있다.
+              if ! grep -q '"db":"ok"' /tmp/health.json; then
+                echo "::warning::서버는 떴는데 DB 가 정상이 아니다"
+              fi
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::$HEALTH_URL 이 세 번 다 응답하지 않았다 (마지막 HTTP $code)"
+          exit 1

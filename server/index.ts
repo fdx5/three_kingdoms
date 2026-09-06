@@ -24,6 +24,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import type { Row } from '@libsql/client';
 import { db, loadEnv } from './db';
+import { startKeepAlive } from './keepalive';
 
 loadEnv();
 
@@ -568,11 +569,18 @@ process.on('unhandledRejection', (reason) => {
 for (const sig of ['SIGTERM', 'SIGINT'] as const) {
   process.on(sig, () => {
     console.log(`[server] ${sig} — 받는 중인 요청을 끝내고 닫는다.`);
+    stopKeepAlive();
     server.close(() => process.exit(0));
     // 안 닫히는 연결이 있어도 10초 뒤에는 나간다. 배포가 이것 때문에 멈추면 안 된다.
     setTimeout(() => process.exit(0), 10_000).unref();
   });
 }
+
+/*
+ * 스핀다운 방지. 뜨기 전에 선언해 두는 이유는 위의 종료 처리가 이 이름을 쓰기
+ * 때문이다 — 실제로 타이머가 걸리는 것은 listen 이 끝난 뒤다.
+ */
+let stopKeepAlive: () => void = () => {};
 
 server.listen(PORT, HOST, () => {
   const addr = server.address();
@@ -583,4 +591,10 @@ server.listen(PORT, HOST, () => {
     `[server] dist ${existsSync(DIST) ? '있음' : '없음 — npm run build 필요'}, ` +
       `DB ${dbError ? `불가: ${dbError}` : '연결 준비됨'}`,
   );
+  /*
+   * 다 뜬 뒤에 건다. 먼저 걸면 첫 두드림이 아직 안 듣는 포트로 갈 수 있다.
+   * 무료 플랜이 15분 무접속으로 인스턴스를 재우는 것을 막는다 — 자세한 것은
+   * server/keepalive.ts 머리말.
+   */
+  stopKeepAlive = startKeepAlive();
 });
