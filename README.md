@@ -218,10 +218,30 @@ import할 수 없고 ESLint가 이를 강제한다. 그래서 렌더 없이 20�
 
 ### 배포 (render.com)
 
-`render.yaml` 이 블루프린트다. New > Blueprint 에서 이 저장소를 고르면
-`npm ci && VITE_API_BASE=/api npm run build` → `npm start` 로 서비스 하나가 뜬다.
-`TURSO_DATABASE_URL` 과 `TURSO_AUTH_TOKEN` 은 `sync: false` 라 대시보드에서 직접 넣는다.
-헬스체크는 `/api/health`.
+`render.yaml` 이 블루프린트다. New > Blueprint 로 이 저장소를 고르면 그대로 만들어진다.
+Web Service 를 손으로 만들었다면 Settings 에 같은 값을 넣는다.
+
+| 설정 | 값 |
+| ---- | -- |
+| Runtime | Node |
+| Build Command | `npm ci --include=dev && VITE_API_BASE=/api npm run build:app` |
+| Start Command | `npm start` |
+| Health Check Path | `/api/health` |
+| Environment | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `NODE_VERSION=22` |
+
+**`--include=dev` 가 빠지면 빌드가 깨진다.** Render 는 Node 서비스에 `NODE_ENV=production`
+을 기본으로 넣고, 그러면 npm 이 devDependencies 를 건너뛴다. 그런데 빌드 도구(vite,
+그리고 `vite.config.ts` 가 import 하는 vitest)는 전부 거기 있다.
+
+**빌드는 `build:app`(= `vite build`) 을 쓴다.** `build` 는 앞에 `tsc --noEmit` 이 붙는데
+그건 `scripts/` 의 에셋 파이프라인까지 훑는다 — 배포 서버에서 돌릴 이유가 없다.
+타입 검사는 로컬의 몫이다(`npm run typecheck`).
+
+접속 정보를 아직 안 넣었어도 **서버는 뜬다.** 정적 파일은 계속 서빙되고 API 는 503 과
+함께 무엇이 없는지 말해 준다 — `/api/health` 를 열어 보면 한 줄로 나온다.
+(헬스체크는 실패하므로 배포는 "unhealthy" 로 남는다. 환경변수를 넣고 다시 배포하면 된다.)
+
+무료 플랜은 한동안 요청이 없으면 잠들고, 다음 첫 요청이 느리다(수십 초).
 
 ## 계략 (2장)
 

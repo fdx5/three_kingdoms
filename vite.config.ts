@@ -33,7 +33,14 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    sourcemap: true,
+    /*
+     * 소스맵은 로컬에서만 만든다.
+     *
+     * three.js 를 통째로 물고 있어 맵이 7MB 나오는데, 배포(render.com 무료 플랜)는
+     * 램이 512MB 라 그만큼이 빌드 시간과 메모리를 그대로 잡아먹는다.
+     * CI 나 배포에서는 NODE_ENV=production 이 잡히므로 그때는 끈다.
+     */
+    sourcemap: process.env.NODE_ENV !== 'production',
   },
   test: {
     environment: 'node',

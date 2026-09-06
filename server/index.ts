@@ -26,9 +26,38 @@ import type { Row } from '@libsql/client';
 import { db, loadEnv } from './db';
 
 loadEnv();
-const client = db();
 const PORT = Number(process.env.PORT ?? 8787);
 const DIST = resolve(process.cwd(), 'dist');
+
+/*
+ * DB 연결은 **미루고, 실패해도 프로세스를 죽이지 않는다.**
+ *
+ * 예전에는 여기서 곧바로 db() 를 불렀다. 그러면 접속 정보가 없을 때 모듈을 읽는
+ * 도중에 예외가 나서 프로세스가 통째로 죽고, 배포판(render.com)은 그걸 크래시
+ * 루프로 본다 — 로그에는 스택만 남고 "환경변수를 안 넣었다"는 사실은 안 보인다.
+ *
+ * 이제는 서버가 뜬 채로 정적 파일을 계속 서빙하고, API 는 503 과 함께 무엇이
+ * 없는지 말해 준다. /api/health 를 열어 보면 원인이 한 줄로 나온다.
+ */
+let dbError: string | null = null;
+let cached: ReturnType<typeof db> | null = null;
+
+function client(): ReturnType<typeof db> {
+  if (cached) return cached;
+  cached = db();
+  return cached;
+}
+
+/** 연결이 되는지 한 번 확인해 둔다. 안 되면 이유를 들고 있는다. */
+function checkDb(): void {
+  try {
+    client();
+    dbError = null;
+  } catch (err) {
+    dbError = err instanceof Error ? err.message : String(err);
+  }
+}
+checkDb();
 
 // ── 도메인 <-> 행 변환 ────────────────────────────────────────────────
 //
@@ -149,8 +178,28 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
   const method = req.method ?? 'GET';
 
   if (path === '/health') {
-    const r = await client.execute('SELECT COUNT(*) AS n FROM levels');
-    send(res, 200, { ok: true, levels: num(r.rows[0]?.n), now: Date.now() });
+    if (dbError) {
+      send(res, 503, { ok: false, db: 'unavailable', error: dbError, now: Date.now() });
+      return true;
+    }
+    try {
+      const r = await client().execute('SELECT COUNT(*) AS n FROM levels');
+      send(res, 200, { ok: true, levels: num(r.rows[0]?.n), now: Date.now() });
+    } catch (err) {
+      // 접속 정보는 있는데 실제로 못 붙는 경우 — 토큰 만료·DB 삭제 같은 것들
+      send(res, 503, {
+        ok: false,
+        db: 'unreachable',
+        error: err instanceof Error ? err.message : String(err),
+        now: Date.now(),
+      });
+    }
+    return true;
+  }
+
+  // 여기부터는 전부 DB 가 있어야 한다.
+  if (dbError) {
+    send(res, 503, { error: 'DB 를 쓸 수 없다', detail: dbError });
     return true;
   }
 
@@ -164,7 +213,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     }
     const now = Date.now();
     try {
-      await client.execute({
+      await client().execute({
         sql: `INSERT INTO accounts (id, display_name, password_hash, password_salt, created_at, last_login_at)
               VALUES (?, ?, ?, ?, ?, ?)`,
         args: [
@@ -184,7 +233,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
       }
       throw err;
     }
-    const r = await client.execute({ sql: 'SELECT * FROM accounts WHERE id = ?', args: [id] });
+    const r = await client().execute({ sql: 'SELECT * FROM accounts WHERE id = ?', args: [id] });
     send(res, 201, toAccount(r.rows[0]));
     return true;
   }
@@ -195,7 +244,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     const isProgress = Boolean(accountMatch[2]);
 
     if (!isProgress && method === 'GET') {
-      const r = await client.execute({ sql: 'SELECT * FROM accounts WHERE id = ?', args: [id] });
+      const r = await client().execute({ sql: 'SELECT * FROM accounts WHERE id = ?', args: [id] });
       if (r.rows.length === 0) {
         send(res, 404, { error: 'not found' });
         return true;
@@ -219,14 +268,14 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
       }
       if (sets.length > 0) {
         args.push(id);
-        await client.execute({ sql: `UPDATE accounts SET ${sets.join(', ')} WHERE id = ?`, args });
+        await client().execute({ sql: `UPDATE accounts SET ${sets.join(', ')} WHERE id = ?`, args });
       }
       send(res, 204);
       return true;
     }
 
     if (isProgress && method === 'GET') {
-      const r = await client.execute({
+      const r = await client().execute({
         sql: 'SELECT level_id, stars FROM progress WHERE account_id = ?',
         args: [id],
       });
@@ -253,7 +302,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
                   updated_at = excluded.updated_at`,
           args: [id, levelId, Number(v), now] as (string | number)[],
         }));
-      if (stmts.length > 0) await client.batch(stmts, 'write');
+      if (stmts.length > 0) await client().batch(stmts, 'write');
       send(res, 204);
       return true;
     }
@@ -266,7 +315,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     const b = await readJson(req);
     const id = String(b.id ?? '').toLowerCase();
     const hash = String(b.passwordHash ?? '');
-    const r = await client.execute({
+    const r = await client().execute({
       sql: 'SELECT password_hash FROM accounts WHERE id = ?',
       args: [id],
     });
@@ -279,7 +328,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
   if (path === '/records' && method === 'POST') {
     const b = await readJson(req);
     const id = newId('rec');
-    await client.execute({
+    await client().execute({
       sql: `INSERT INTO records (id, account_id, level_id, level_title, won, stars, waves_cleared,
               total_waves, kills, leaks, castle_hp, castle_max_hp, castle_level, gold_earned, elapsed, played_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -302,7 +351,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
         Number(b.playedAt ?? Date.now()),
       ],
     });
-    const r = await client.execute({ sql: 'SELECT * FROM records WHERE id = ?', args: [id] });
+    const r = await client().execute({ sql: 'SELECT * FROM records WHERE id = ?', args: [id] });
     send(res, 201, toRecord(r.rows[0]));
     return true;
   }
@@ -311,11 +360,11 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     const accountId = url.searchParams.get('accountId');
     const limit = Math.min(200, Number(url.searchParams.get('limit') ?? 50));
     const r = accountId
-      ? await client.execute({
+      ? await client().execute({
           sql: 'SELECT * FROM records WHERE account_id = ? ORDER BY played_at DESC LIMIT ?',
           args: [accountId.toLowerCase(), limit],
         })
-      : await client.execute({
+      : await client().execute({
           sql: 'SELECT * FROM records ORDER BY played_at DESC LIMIT ?',
           args: [limit],
         });
@@ -332,7 +381,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
       return true;
     }
     const id = newId('gb');
-    await client.execute({
+    await client().execute({
       sql: `INSERT INTO guestbook (id, account_id, display_name, message, created_at)
             VALUES (?, ?, ?, ?, ?)`,
       args: [
@@ -343,14 +392,14 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
         Number(b.createdAt ?? Date.now()),
       ],
     });
-    const r = await client.execute({ sql: 'SELECT * FROM guestbook WHERE id = ?', args: [id] });
+    const r = await client().execute({ sql: 'SELECT * FROM guestbook WHERE id = ?', args: [id] });
     send(res, 201, toGuestbook(r.rows[0]));
     return true;
   }
 
   if (path === '/guestbook' && method === 'GET') {
     const limit = Math.min(200, Number(url.searchParams.get('limit') ?? 50));
-    const r = await client.execute({
+    const r = await client().execute({
       sql: 'SELECT * FROM guestbook ORDER BY created_at DESC LIMIT ?',
       args: [limit],
     });
@@ -363,12 +412,12 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     const levelId = url.searchParams.get('levelId');
     const limit = Math.min(100, Number(url.searchParams.get('limit') ?? 20));
     const r = levelId
-      ? await client.execute({
+      ? await client().execute({
           sql: `SELECT * FROM v_level_best WHERE level_id = ?
                 ORDER BY best_stars DESC, best_elapsed ASC LIMIT ?`,
           args: [levelId, limit],
         })
-      : await client.execute({
+      : await client().execute({
           sql: `SELECT * FROM v_account_summary ORDER BY total_stars DESC, wins DESC LIMIT ?`,
           args: [limit],
         });
@@ -379,9 +428,9 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
   // ── 참조 데이터 ──
   if (path === '/catalog' && method === 'GET') {
     const [levels, units, towers] = await Promise.all([
-      client.execute('SELECT * FROM levels ORDER BY ordinal'),
-      client.execute('SELECT * FROM units ORDER BY faction, hp'),
-      client.execute('SELECT * FROM towers ORDER BY build_cost'),
+      client().execute('SELECT * FROM levels ORDER BY ordinal'),
+      client().execute('SELECT * FROM units ORDER BY faction, hp'),
+      client().execute('SELECT * FROM towers ORDER BY build_cost'),
     ]);
     send(res, 200, { levels: levels.rows, units: units.rows, towers: towers.rows });
     return true;
