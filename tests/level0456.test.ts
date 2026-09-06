@@ -202,6 +202,13 @@ describe('레벨 6 — 앞의 다섯을 한꺼번에 묻는다', () => {
  * 세 장 공통: 전부 궁노로 도배하면 진다.
  */
 describe('레벨 4~6 밸런스 (헤드리스 15웨이브)', () => {
+  it('레벨 4~6은 전달받은 YouTube 배경음을 사용한다', () => {
+    expect(LEVEL_ORDER.slice(3).map((level) => level.environment.bgmYoutubeId)).toEqual([
+      'nzo4fB3uKi0',
+      'deyim16dRzE',
+      '6Keux8E6GVw',
+    ]);
+  });
   const run = (level: number, gate: 'after' | 'none', build = 'auto') =>
     runSim({
       level: `level0${level}`,

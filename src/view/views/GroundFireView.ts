@@ -6,12 +6,13 @@ import { Rng } from '../../core/Rng';
 export interface GroundFireAssets {
   quad: THREE.PlaneGeometry;
   rock: THREE.DodecahedronGeometry;
+  ring: THREE.RingGeometry;
   maps: Record<'flame' | 'smoke' | 'scorch' | 'coals' | 'spark', THREE.DataTexture>;
   dispose: () => void;
 }
 const STYLE = {
   arrow: { strength: .64, flames: 10, embers: 8, smoke: 3, debris: 0 },
-  flame: { strength: .86, flames: 18, embers: 14, smoke: 5, debris: 0 },
+  flame: { strength: 1.06, flames: 24, embers: 24, smoke: 6, debris: 8 },
   stone: { strength: 1.08, flames: 22, embers: 20, smoke: 6, debris: 8 },
   shell: { strength: 1.2, flames: 26, embers: 26, smoke: 7, debris: 12 },
 };
@@ -24,6 +25,8 @@ export class GroundFireView {
   private smoke: THREE.Mesh[] = [];
   private scorch: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private coals: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private shockwave: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | null = null;
+  private flash: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
   private debris: THREE.InstancedMesh | null = null;
   private patches: { x: number; z: number; width: number; height: number; phase: number }[] = [];
   private elapsed = 0;
@@ -57,6 +60,18 @@ export class GroundFireView {
     }
     this.scorch.position.y = .02;
     this.coals.position.y = .08;
+    if (source === 'flame') {
+      this.shockwave = new THREE.Mesh(assets.ring, new THREE.MeshBasicMaterial({
+        color: 0xffb34c, transparent: true, opacity: 0, depthWrite: false,
+        side: THREE.DoubleSide, blending: THREE.AdditiveBlending, toneMapped: false,
+      }));
+      this.shockwave.rotation.x = -Math.PI / 2;
+      this.shockwave.position.y = .4;
+      this.flash = new THREE.Mesh(assets.quad, material(assets.maps.spark, 1, true));
+      this.flash.material.color.setHex(0xffe4a1);
+      this.flash.position.y = radius * .2;
+      this.object3d.add(this.shockwave, this.flash);
+    }
     this.flames = new THREE.InstancedMesh(assets.quad, material(assets.maps.flame, .93, true), style.flames);
     this.sparks = new THREE.InstancedMesh(assets.quad, material(assets.maps.spark, .9, true), style.embers);
     this.flames.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -101,6 +116,20 @@ export class GroundFireView {
     const afterglow = this.cooling < 0 ? 1 : Math.max(0, 1 - this.cooling / .75);
     const residue = this.cooling < 0 ? 1 : Math.max(0, 1 - this.cooling / 2.4);
     const spread = .3 + .7 * (1 - Math.exp(-this.elapsed * 9));
+    if (this.shockwave && this.flash) {
+      const t = Math.min(1, this.elapsed / .65);
+      this.shockwave.visible = t < 1;
+      this.shockwave.scale.setScalar(this.radius * (.15 + 1.15 * (1 - (1 - t) ** 3)));
+      this.shockwave.material.opacity = .8 * (1 - t) ** 2;
+      this.flash.visible = this.elapsed < .28;
+      this.flash.scale.setScalar(this.radius * (1 + this.elapsed * 4));
+      this.flash.material.opacity = Math.max(0, 1 - this.elapsed / .28);
+      if (camera) this.flash.quaternion.copy(camera.quaternion);
+    }
+    // Char and embers spread from the impact before settling into a full burn.
+    const groundSpread = this.shockwave ? .2 + .8 * Math.min(1, this.elapsed / .55) : 1;
+    this.scorch.scale.set(this.radius * 2.16 * groundSpread, this.radius * 1.92 * groundSpread, 1);
+    this.coals.scale.copy(this.scorch.scale);
     this.scorch.material.opacity = .83 * residue;
     this.coals.material.opacity = (.65 + .15 * Math.sin(this.elapsed * 7 + this.phase)) * afterglow;
     if (this.debris) {
@@ -116,11 +145,13 @@ export class GroundFireView {
     for (let i = 0; i < this.patches.length; i++) {
       const p = this.patches[i], time = this.elapsed;
       const flicker = Math.sin(time * 11 + p.phase) * .15 + Math.sin(time * 19.7 + p.phase * 2) * .09;
-      const height = p.height * (1 + flicker) * spread * burn;
+      const ignition = this.shockwave
+        ? Math.min(1, Math.max(0, (time - Math.hypot(p.x, p.z) / this.radius * .38) / .2)) : 1;
+      const height = p.height * (1 + flicker) * spread * burn * ignition;
       const gust = Math.sin(time * 2.3 + p.phase) * .13;
       this.position.set(p.x * spread + gust * height * .2, height * .47 + .3, p.z * spread);
       this.rotation.setFromEuler(this.flameEuler.set(0, yaw, -gust - .07));
-      this.scale.set(p.width * (1 - flicker * .6) * spread * burn, height, 1);
+      this.scale.set(p.width * (1 - flicker * .6) * spread * burn * ignition, height, 1);
       this.matrix.compose(this.position, this.rotation, this.scale); this.flames.setMatrixAt(i, this.matrix);
     }
     this.flames.instanceMatrix.needsUpdate = true;
@@ -163,7 +194,8 @@ export class GroundFireView {
 export function createGroundFireAssets(): GroundFireAssets {
   const quad = new THREE.PlaneGeometry(1, 1);
   const rock = new THREE.DodecahedronGeometry(1, 0);
+  const ring = new THREE.RingGeometry(.87, 1, 48);
   const maps = { flame: fireTexture('flame'), smoke: fireTexture('smoke'), scorch: fireTexture('scorch'), coals: fireTexture('coals'), spark: fireTexture('spark') };
-  return { quad, rock, maps, dispose: () => { quad.dispose(); rock.dispose(); Object.values(maps).forEach(t => t.dispose()); } };
+  return { quad, rock, ring, maps, dispose: () => { quad.dispose(); rock.dispose(); ring.dispose(); Object.values(maps).forEach(t => t.dispose()); } };
 }
 const UP = new THREE.Vector3(0, 1, 0);

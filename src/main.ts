@@ -298,6 +298,16 @@ class Game {
           this.audio.stopBgm();
           this.levelSelect.open();
         },
+        onRequestExitToMenu: () => {
+          this.setPaused(true, false);
+          this.hud.showExitConfirm();
+        },
+        onExitToMenu: () => {
+          this.hud.closeOverlay();
+          this.setPaused(true, false);
+          this.audio.stopBgm();
+          this.levelSelect.open();
+        },
         onOpenSettings: () => {
           this.setPaused(true, false);
           this.hud.showSettings();

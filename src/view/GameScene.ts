@@ -117,7 +117,9 @@ export class GameScene {
     this.stage.root.add(this.ribbon.group);
 
     const cpos = world.castlePosition();
-    this.castleView = new CastleView(cpos.x, cpos.z, this.terrain, assets, world.level.castle.id);
+    const approach = { x: 1, z: 0 };
+    world.path.directionAt(world.path.totalLength, approach);
+    this.castleView = new CastleView(cpos.x, cpos.z, this.terrain, assets, world.level.castle.id, approach);
     this.castleView.mount(this.stage.root);
 
     this.particles = new ParticleSystem(preset);
@@ -277,14 +279,14 @@ export class GameScene {
       bus.on('castle:fired', ({ kind }) => {
         this.castleView.flashMuzzle();
         if (kind === 'arrow') return;
-        const c = this.world.castlePosition();
-        const spread = BALANCE.castleCombat.muzzleSpread;
-        for (const side of [-1, 1]) {
+        const count = this.world.castle.level === 5 ? 4 : 2;
+        for (let i = 0; i < count; i++) {
+          const muzzle = this.castleView.muzzle(i, this.muzzleBuf);
           this.particles.emit(
             kind === 'flame' ? 'fire_burst' : 'weapon_spark',
-            c.x,
-            BALANCE.castleCombat.muzzleHeight,
-            c.z + side * spread,
+            muzzle.x,
+            muzzle.y,
+            muzzle.z,
             kind === 'flame' ? 1.1 : 0.8,
           );
         }
@@ -295,7 +297,8 @@ export class GameScene {
     // 성문 강화 — 그 자리에서 한 번 크게 터뜨린다. 되돌릴 수 없는 지출이라
     // "무언가 확실히 달라졌다"가 보여야 한다.
     this.subs.add(
-      bus.on('castle:upgraded', ({ worldPos, weaponKind }) => {
+      bus.on('castle:upgraded', ({ level, worldPos, weaponKind }) => {
+        this.castleView.setLevel(level);
         this.castleView.flashMuzzle();
         this.particles.emit('splash_burst', worldPos.x, 70, worldPos.z, 1.6);
         if (weaponKind !== 'arrow') {
@@ -323,13 +326,14 @@ export class GameScene {
     );
 
     this.subs.add(
-      bus.on('projectile:fired', ({ projectileId, towerSlotId, kind, from }) => {
+      bus.on('projectile:fired', ({ projectileId, towerSlotId, kind }) => {
         const view = this.projectilePool.acquire();
         // 무엇으로 보일지는 시뮬이 정해 실어 보낸다 — 성문의 포탄·불줄기는
         // 여기서 타워를 되찾아 봐도 알 수 없기 때문이다.
         const tower = this.world.towers.get(towerSlotId);
         // 레벨을 같이 넘긴다 — 업그레이드한 벽력거는 달군 바위를 던진다
-        view.setKind(kind, tower?.level ?? this.world.castle.level);
+        const incendiary = tower?.def.id === 'fire_tower';
+        view.setKind(incendiary ? 'shell' : kind, tower?.level ?? this.world.castle.level, incendiary);
 
         // 몇 번째 화살인지 = 어느 활에서 나가는지. 그 활을 조준시키고
         // 화살이 그 시위에서 떠나게 한다 (활 망루는 쇠뇌가 다섯 군데에 있다).
@@ -337,9 +341,13 @@ export class GameScene {
         const bowIndex = proj?.salvoIndex ?? 0;
         const towerView = this.towerViews.get(towerSlotId);
         if (tower && towerView) towerView.fire(tower.lastFireAngle, bowIndex);
+        if (towerSlotId === '__castle__') {
+          this.castleView.setLevel(this.world.castle.level);
+          if (proj) this.castleView.fire(bowIndex, { x: proj.toX, z: proj.toZ });
+        }
         const launch =
           towerSlotId === '__castle__'
-            ? this.muzzleBuf.set(from.x, from.y, from.z)
+            ? this.castleView.muzzle(bowIndex, this.muzzleBuf)
             : towerView?.muzzle(bowIndex, this.muzzleBuf) ?? null;
         view.setLaunch(launch);
 
@@ -394,6 +402,19 @@ export class GameScene {
         view.object3d.position.set(worldPos.x, this.terrain.heightAt(worldPos.x, worldPos.z) + 2.2, worldPos.z);
         this.stage.root.add(view.object3d);
         this.groundFireViews.set(zoneId, view);
+        if (source === 'flame') {
+          const groundY = view.object3d.position.y;
+          // Seeded lobes vary each impact without allocating timers or extra persistent effects.
+          const lobes = 3 + zoneId % 3;
+          for (let i = 0; i < lobes; i++) {
+            const angle = zoneId * 2.399 + i * Math.PI * 2 / lobes;
+            const reach = radius * (.18 + (i % 3) * .09);
+            this.particles.emit('fire_burst', worldPos.x + Math.cos(angle) * reach,
+              groundY + 3, worldPos.z + Math.sin(angle) * reach, .65 + (i % 2) * .25);
+          }
+          this.particles.emit('weapon_spark', worldPos.x, groundY + 3, worldPos.z, 1.2);
+          this.particles.emit('splash_burst', worldPos.x, groundY + 1, worldPos.z, .85);
+        }
         // 착탄 섬광과 불티. 투석은 화면을 채울 만큼 크게 터진다.
         this.particles.emit('fire_burst', worldPos.x, 8, worldPos.z, source === 'stone' ? 2.1 : 0.95);
         this.particles.emit('weapon_spark', worldPos.x, 7, worldPos.z, source === 'stone' ? 1.7 : 0.75);
@@ -609,7 +630,7 @@ export class GameScene {
       if (!p) continue;
       view.sync(p, alpha, dt);
       // 달군 투척체는 지나간 자리에 불티를 흘린다 (적 상태 파티클과 같은 간격으로)
-      if (emitFx && heatOf(p.towerLevel) !== 'cold') {
+      if (emitFx && (heatOf(p.towerLevel) !== 'cold' || p.fireSource === 'flame')) {
         const q = view.object3d.position;
         this.particles.emit('fire_burst', q.x, q.y, q.z, 0.35);
       }

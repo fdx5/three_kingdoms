@@ -46,6 +46,7 @@ describe('사운드 매핑', () => {
     if (typeof fired === 'string' || typeof castle === 'string') throw new Error('맵이어야 한다');
 
     expect(fired.cannon_tower).toBe('sfx_cannon');
+    expect(fired.fire_tower).toBe('sfx_cannon');
     expect(castle.cannon).toBe('sfx_cannon');
     expect(manifest.audio.sfx_cannon).toBe('audio/cannon.mp3');
   });
@@ -78,5 +79,10 @@ describe('사운드 매핑', () => {
       expect(manifest.audio[id], `${id}: 매니페스트`).toBeDefined();
       expect(used.has(id), `${id}: 매핑`).toBe(true);
     }
+  });
+
+  it('승리 이벤트는 victory.mp3를 재생한다', () => {
+    expect(SOUND_MAP['level:won']).toBe('sfx_victory');
+    expect(manifest.audio.sfx_victory).toBe('audio/victory.mp3');
   });
 });

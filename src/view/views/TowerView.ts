@@ -64,6 +64,12 @@ export class TowerView implements EntityView<Tower> {
   private lastSalvoSize = 1;
   private mixer: THREE.AnimationMixer | null = null;
   private shootActions: THREE.AnimationAction[] = [];
+  /**
+   * 지면 함정(철질려)의 클립. 쏘는 망루와 규약이 다르다 —
+   * idle 은 계속 돌고, trigger 는 적이 걸린 순간 한 번 튄다.
+   */
+  private idleAction: THREE.AnimationAction | null = null;
+  private triggerAction: THREE.AnimationAction | null = null;
   private stringMaterial: THREE.LineBasicMaterial | null = null;
 
   readonly ring: RangeRing;
@@ -112,8 +118,13 @@ export class TowerView implements EntityView<Tower> {
   private setupBows(): void {
     this.bows = [];
     this.shootActions = [];
+    this.idleAction = null;
+    this.triggerAction = null;
     this.mixer = null;
-    if (!this.model.getObjectByName('bow1')) return;
+    if (!this.model.getObjectByName('bow1')) {
+      this.setupTrapClips();
+      return;
+    }
 
     this.model.updateMatrixWorld(true);
     const towerNode = this.model.getObjectByName('tower') ?? this.model;
@@ -169,6 +180,40 @@ export class TowerView implements EntityView<Tower> {
     }
   }
 
+  /**
+   * 지면 함정의 클립을 건다.
+   *
+   * 철질려는 투사체가 없어 shootN 을 쓸 수 없다. 대신 rig-trap 이 구운
+   * idle(마름쇠가 천천히 돈다)을 계속 틀고, tower:aura 가 올 때 trigger
+   * (가시가 솟는다)를 한 번 얹는다. 둘 다 없으면 아무 일도 하지 않는다 —
+   * 프리미티브 타워와 클립 없는 모델이 여기로 온다.
+   */
+  private setupTrapClips(): void {
+    const clips = (this.model as THREE.Object3D & { animations?: THREE.AnimationClip[] }).animations;
+    if (!clips || clips.length === 0) return;
+    const idle = THREE.AnimationClip.findByName(clips, 'idle');
+    const trigger = THREE.AnimationClip.findByName(clips, 'trigger');
+    if (!idle && !trigger) return;
+
+    this.mixer = new THREE.AnimationMixer(this.model);
+    if (idle) {
+      this.idleAction = this.mixer.clipAction(idle);
+      this.idleAction.setLoop(THREE.LoopRepeat, Infinity);
+      /*
+       * 진지마다 시작 위상을 어긋나게 한다. 여러 기를 나란히 지으면 전부 같은
+       * 박자로 돌아 기계 부품처럼 보이는데, 조금씩 밀어 두면 각자 도는 것처럼
+       * 보인다. 클립 길이를 모르므로 비율로 민다.
+       */
+      this.idleAction.time = Math.random() * idle.duration;
+      this.idleAction.play();
+    }
+    if (trigger) {
+      this.triggerAction = this.mixer.clipAction(trigger);
+      this.triggerAction.setLoop(THREE.LoopOnce, 1);
+      this.triggerAction.clampWhenFinished = false;
+    }
+  }
+
   /** 레벨 수만큼만 쇠뇌를 보여준다. 새로 생긴 것은 팝 인 한다. */
   private applyBowCount(level: number, animate: boolean): void {
     for (let i = 0; i < this.bows.length; i++) {
@@ -203,10 +248,12 @@ export class TowerView implements EntityView<Tower> {
       // 모델은 하나뿐이다 — 다시 만들 필요 없이 쇠뇌 수만 늘린다
       this.applyBowCount(level, true);
     } else {
+      this.mixer?.stopAllAction();
       this.object3d.remove(this.model);
       this.disposeModel(this.model);
       this.model = this.buildLevelModel(level);
       this.object3d.add(this.model);
+      this.setupBows();
 
       // 새로 생긴 표식만 스케일 0에서 시작해 팝 인 (화살대 + 촉 둘 다)
       this.newMarks = [];
@@ -281,11 +328,26 @@ export class TowerView implements EntityView<Tower> {
    */
   pulseAura(): void {
     this.auraPulse = 1;
+    // 모델 함정이면 가시가 솟는다. 처음부터 다시 트는 이유는 연달아 밟힐 때
+    // 앞 재생이 끝나기를 기다리면 두 번째 적이 걸린 것이 안 보이기 때문이다.
+    if (this.triggerAction) {
+      this.triggerAction.reset();
+      this.triggerAction.play();
+    }
   }
 
   sync(_tower: Tower, _alpha: number, dt: number): void {
     if (this.hasBows) {
       this.syncBows(dt);
+    } else if (this.mixer) {
+      /*
+       * 지면 함정 — 클립이 돌아간다.
+       *
+       * 조준 회전은 하지 않는다. 바닥에 깐 원반이 적을 따라 도는 것은 이상하고,
+       * 팔괘 무늬가 돌아가면 그 자체가 눈에 걸린다. 이 진지는 방향이 없다.
+       */
+      this.mixer.update(dt);
+      this.model.updateMatrixWorld(true);
     } else {
       // 조준 방향으로 부드럽게 회전 (프리미티브는 몸통이 통째로 돈다)
       let diff = this.aimAngle - this.displayAngle;
@@ -422,6 +484,8 @@ export class TowerView implements EntityView<Tower> {
     this.object3d.removeFromParent();
     this.mixer?.stopAllAction();
     this.mixer = null;
+    this.idleAction = null;
+    this.triggerAction = null;
     for (const b of this.bows) {
       b.string?.removeFromParent();
       b.string?.geometry.dispose();

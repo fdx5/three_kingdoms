@@ -10,11 +10,12 @@
 import { optimize } from './optimize-model';
 import { rig, type BodyKind, type AttackStyle } from './rig-model';
 import { rigTower, type TowerKind } from './rig-tower';
+import { rigTrap } from './rig-trap';
 import { isolateFigure } from './isolate-figure';
 import { unlinkSync } from 'node:fs';
 
 /** 사람 형상은 rig-model, 건물은 rig-tower 로 간다 */
-type RigKind = 'humanoid' | 'tower';
+type RigKind = 'humanoid' | 'tower' | 'trap';
 
 interface Recipe {
   kind: RigKind;
@@ -53,6 +54,10 @@ interface Recipe {
   legCloseFactor?: number;
   /** tower 전용 */
   towerKind?: TowerKind;
+  /** trap 전용 — 완성된 원반의 지름(u). targetHeight 는 쓰지 않는다 */
+  diameter?: number;
+  /** trap 전용 — 이 높이(두께 비율) 위로 솟은 것을 가시로 본다 */
+  spikeTop?: number;
   /** 이 높이 비율 위를 쇠뇌/팔/대포로 본다 */
   bowY?: number;
   bows?: number;
@@ -451,7 +456,11 @@ const RECIPES: Record<string, Recipe> = {
   },
 
   /**
-   * 화공 망루 — 둥근 데크에 대포가 둘러선 포대.
+   * 화포 진지 — 둥근 데크에 대포가 둘러선 포대.
+   *
+   * 원본(img/cannon.glb)이 대포 진지라 화포 쪽에 붙인다. 한동안 화공 망루가
+   * 이 모델을 쓰고 있었는데, 화공은 불을 다루는 망루라 대포와 실루엣이 겹쳤다.
+   * 화공 망루는 따로 디자인한다 — 그때까지 프리미티브로 돈다.
    *
    * 원본에는 대포가 세 문뿐이라 두 문을 복제해 다섯 문 링을 만든다(레벨 = 문수).
    * 활 망루의 복제와 달리 **돌려서** 놓는다 — 데크 한가운데는 정자가 차지하고 있다.
@@ -470,11 +479,11 @@ const RECIPES: Record<string, Recipe> = {
    * 삼각형이 활 망루(30,000)와 같은 이유는 같은 이유다 — 성벽 톱니와 기와가
    * 감면에 약하다. 실제로 16,000 에서는 처마가 톱니처럼 부서졌다.
    */
-  fire_tower: {
+  cannon_tower: {
     kind: 'tower',
     towerKind: 'cannons',
     input: 'img/cannon.glb',
-    output: 'public/assets/models/fire_tower.glb',
+    output: 'public/assets/models/cannon_tower.glb',
     tris: 30000,
     tex: 1024,
     error: 0.005,
@@ -488,6 +497,32 @@ const RECIPES: Record<string, Recipe> = {
     sectorPadDeg: 20,
     barrelLift: 0.05,
     bows: 5,
+  },
+
+  /**
+   * 철질려 진지 — 바닥에 까는 팔괘 석반에 마름쇠 여덟 개가 박혀 있다.
+   *
+   * 유일한 trap 이다. 쏘지 않고 밟은 적을 늦추는 진지라 쇠뇌 뼈가 필요 없고,
+   * 대신 마름쇠마다 뼈를 심어 idle(천천히 돈다)과 trigger(솟구친다)를 굽는다.
+   * 자세한 이유는 scripts/rig-trap.ts 머리말에 적어 두었다.
+   *
+   * 원본이 참고 그림의 원근을 그대로 구워서 원반이 40.5도 기울어 있다 —
+   * rig-trap 이 주성분으로 법선을 찾아 세운다.
+   *
+   * 지름 52u 는 궁노 망루(62u 높이)와 나란히 놓았을 때 슬롯 하나를 채우는 크기다.
+   * targetHeight 대신 diameter 를 쓰는 이유는 이것이 납작한 원반이기 때문이다 —
+   * 높이(17u)로 맞추면 지름이 155u 가 되어 경로를 통째로 덮는다.
+   */
+  caltrop_camp: {
+    kind: 'trap',
+    input: 'img/칠질러.glb',
+    output: 'public/assets/models/caltrop_camp.glb',
+    tris: 9000,
+    tex: 1024,
+    forwardDeg: 0,
+    targetHeight: 0,
+    diameter: 52,
+    spikeTop: 0.57,
   },
 
   /**
@@ -516,7 +551,12 @@ async function bake(name: string): Promise<void> {
   await optimize({ input: r.input, output: tmp, tris: r.tris, tex: r.tex, error: r.error });
   // 원본에 인물이 둘이면 여기서 하나만 남긴다 (감면 뒤에 잘라야 빠르다)
   if (r.isolate) await isolateFigure(tmp, tmp, r.isolate);
-  if (r.kind === 'tower') {
+  if (r.kind === 'trap') {
+    await rigTrap(tmp, r.output, {
+      diameter: r.diameter ?? 52,
+      spikeTop: r.spikeTop ?? 0.57,
+    });
+  } else if (r.kind === 'tower') {
     await rigTower(tmp, r.output, {
       kind: r.towerKind ?? 'bows',
       bowY: r.bowY ?? 0.76,

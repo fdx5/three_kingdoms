@@ -178,6 +178,6 @@ export const LEVEL_04: LevelDef = {
     terrainTexture: 'ground_forest',
     terrainRelief: 3.0,
     biome: 'woodland',
-    // 배경음: 아직 곡을 고르지 않았다. bgmYoutubeId 한 줄이면 그때부터 재생된다.
+    bgmYoutubeId: 'nzo4fB3uKi0',
   },
 };

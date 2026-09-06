@@ -5,9 +5,13 @@ import tsparser from '@typescript-eslint/parser';
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'public/**', '*.config.js'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'artifacts/**', '_tmp-*.mjs', '*.config.js'],
   },
   js.configs.recommended,
+  {
+    files: ['scripts/ensure-deps.mjs', 'scripts/postbuild-serve.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+  },
   {
     files: ['**/*.ts'],
     languageOptions: {

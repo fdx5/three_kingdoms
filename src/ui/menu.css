@@ -109,3 +109,40 @@
   .menu-panel__heading h2 { font-size: 21px; }
 }
 @media (prefers-reduced-motion: reduce) { .main-menu button { transition: none; } }
+
+/* Keep every menu control reachable on phones and notched landscape screens. */
+.main-menu {
+  --menu-pad: clamp(16px, 3.7vw, 58px);
+  padding: calc(var(--safe-t) + var(--menu-pad)) calc(var(--safe-r) + var(--menu-pad))
+    calc(var(--safe-b) + var(--menu-pad)) calc(var(--safe-l) + var(--menu-pad));
+  overscroll-behavior: contain;
+}
+.menu-layout { flex-shrink: 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
+.menu-brand { min-width: 0; }
+.main-menu .login__row input { width: 100%; min-width: 0; font-size: 16px; user-select: text; }
+.menu-panel__heading { flex-wrap: wrap; }
+.main-menu .accountbar { flex-wrap: wrap; }
+.main-menu .levelcard--suggested::after { position: static; display: block; margin-top: 8px; font-size: 11px; }
+@media (max-width: 700px) {
+  .menu-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .menu-brand { padding: 0; }
+  .menu-title__ko { font-size: clamp(40px, 10vw, 58px); }
+  .menu-title__en { font-size: clamp(28px, 8vw, 39px); }
+  .menu-rule { margin-block: 14px; }
+  .menu-panel { padding: 16px; }
+  .main-menu .menu-description, .menu-panel__description, .main-menu .hint,
+  .main-menu .login__row, .main-menu .accountbar { font-size: 13px; }
+  .main-menu .levelcard__meta, .main-menu .levelcard__lock, .main-menu .levelcard__index { font-size: 12px; }
+  .main-menu .levelcard__title { font-size: 15px; }
+  .menu-signature { letter-spacing: .15em; gap: 10px; }
+}
+@media (max-width: 380px) {
+  .main-menu .levelgrid { grid-template-columns: minmax(0, 1fr); }
+  .main-menu .levelcard { min-height: 120px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .menu-layout { margin-block: 20px; gap: 24px; }
+  .menu-title__ko { font-size: 42px; }
+  .menu-title__en { font-size: 30px; }
+  .menu-brand { padding: 0; }
+}

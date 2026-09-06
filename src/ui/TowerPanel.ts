@@ -293,6 +293,7 @@ export class TowerPanel {
     );
 
     this.root.style.display = 'block';
+    this.addCloseButton();
     this.clampIntoView();
   }
 
@@ -301,6 +302,11 @@ export class TowerPanel {
     if (def.kind === 'aura') return `한 번에 ${next.arrows}기까지 묶습니다.`;
     if (def.damageKind === 'siege') return `한 발에 ${next.damagePerArrow} — 범위로 함께 터집니다.`;
     return `화살이 ${next.arrows}발로 늘어 서로 다른 적을 노립니다.`;
+  }
+
+  private addCloseButton(): void {
+    const close = this.button('닫기', 'btn-ghost panel__close', false, () => this.cb.onClose());
+    this.root.querySelector('.panel__title')?.append(close);
   }
 
   /** 아이콘을 발사체 수만큼 — 몇 발인지 시각적으로 즉시 보인다 */

@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import { createGroundFireAssets, GroundFireView } from '../src/view/views/GroundFireView';
 
 describe('Ground fire lifecycle', () => {
-  it('keeps residues after flames stop, then finishes without resetting on repeated removal', () => {
+  it.each(['stone', 'flame'] as const)('keeps %s residues after flames stop, then finishes without resetting on repeated removal', (source) => {
     const assets = createGroundFireAssets();
-    const view = new GroundFireView(assets, 30, 'stone', 1);
+    const view = new GroundFireView(assets, 30, source, 1);
     view.update(1);
     view.extinguish();
     view.update(.4);

@@ -1100,6 +1100,10 @@ body.debug .leveltitle {
   font-family: 'Storm Brush'; src: url('/assets/fonts/storm-brush.woff2') format('woff2');
   font-display: swap;
 }
+
+.hud-exit-menu {
+  color: #d7a89b;
+}
 /* Cinematic calligraphy remains click-through so the battlefield stays playable. */
 .storm-title {
   position: fixed; left: 50%; top: 40%; z-index: 120;
@@ -1158,3 +1162,107 @@ body.debug .leveltitle {
 .accountbar__who { color: var(--ink); letter-spacing: 0.04em; }
 .accountbar__who b { color: var(--gold); font-weight: 600; }
 .accountbar button { min-height: 36px; padding: 6px 12px; font-size: 0.9em; }
+
+/* Responsive HUD: reserve the measured bars instead of guessing their height. */
+#hud-root {
+  --topbar-height: 44px;
+  --bottombar-height: 54px;
+}
+#hud-root > .topbar,
+#hud-root > .bottombar { pointer-events: none; }
+.topbar > *, .bottombar button, .bottombar .seg, .stratagems { pointer-events: auto; }
+#hud-root > .banner, #hud-root > .bossbar, #hud-root > .leveltitle { pointer-events: none; }
+.leveltitle { top: calc(var(--safe-t) + var(--topbar-height) + 14px); }
+.banner {
+  top: calc(var(--safe-t) + var(--topbar-height) + 32px);
+  max-width: calc(100% - var(--safe-l) - var(--safe-r) - 24px);
+  white-space: normal; overflow-wrap: anywhere; text-align: center;
+  padding: 8px 14px;
+}
+.bossbar { top: calc(var(--safe-t) + var(--topbar-height) + 82px); }
+.panel {
+  max-height: calc(100dvh - var(--safe-t) - var(--safe-b) - 24px);
+  overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+}
+.panel__title { align-items: center; }
+.panel__close { margin-left: auto; padding: 0 10px; box-shadow: none; }
+.panel__actions { flex-wrap: wrap; }
+.panel__actions button { flex: 1 1 110px; padding: 8px; }
+.towerpick { flex-wrap: wrap; }
+.towerpick button { flex: 1 1 64px; }
+.overlay {
+  padding-left: calc(var(--safe-l) + 12px);
+  padding-right: calc(var(--safe-r) + 12px);
+}
+.overlay__card { min-height: 0; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.overlay__actions { flex-wrap: wrap; }
+.overlay__actions button { flex: 1 1 100px; padding-block: 8px; }
+.setting-row { flex-wrap: wrap; }
+.setting-row input[type='range'] { min-width: 100px; }
+.setting-row .seg { flex-wrap: wrap; }
+.seg button, .targeting button, .accountbar button { min-height: 44px; min-width: 44px; }
+.accountbar__who { min-width: 0; overflow-wrap: anywhere; }
+.accountbar button { flex-shrink: 0; }
+.stratagems { touch-action: pan-x; max-width: 100%; scrollbar-width: thin; }
+.stratagems::-webkit-scrollbar { display: block; height: 4px; }
+.stratagems::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 4px; }
+.stratcard { min-height: 54px; }
+.stratcard__name { display: block; }
+.call-wave { justify-content: center; padding: 6px 10px; }
+
+@media (max-width: 1100px), (pointer: coarse) {
+  .bottombar {
+    display: grid; grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px; align-items: end;
+  }
+  .bottombar__left { grid-column: 1; grid-row: 2; gap: 4px; }
+  .bottombar__left > button { padding: 0; }
+  .bottombar__right { grid-column: 2; grid-row: 2; justify-content: flex-end; gap: 6px; }
+  .bottombar__center { grid-column: 1 / -1; grid-row: 1; }
+  .bottombar__center:has(.stratagems[style*='display: none']) { display: none; }
+  .seg { padding: 2px; gap: 2px; }
+  .panel--popover {
+    left: calc(var(--safe-l) + 8px) !important; right: calc(var(--safe-r) + 8px);
+    top: auto !important; bottom: calc(var(--safe-b) + var(--bottombar-height) + 18px);
+    transform: none; width: auto; max-width: 460px; margin-inline: auto;
+    max-height: calc(100dvh - var(--safe-t) - var(--safe-b) - var(--topbar-height) - var(--bottombar-height) - 36px);
+    padding: 10px;
+  }
+}
+@media (max-width: 600px) {
+  .topbar { gap: 4px; }
+  .chip { padding: 0 6px; gap: 4px; min-height: 36px; }
+  .castle-bar { width: 44px; }
+  .countdown-ring { width: 22px; height: 22px; }
+  .topbar__spacer { display: none; }
+  .bottombar { grid-template-columns: minmax(0, 1fr); }
+  .bottombar__left { grid-column: 1; grid-row: 3; justify-content: space-between; }
+  .bottombar__right { grid-column: 1; grid-row: 2; }
+  .bottombar__right button { flex: 1; min-width: 0; }
+  .bottombar__center { grid-column: 1; justify-content: flex-start; }
+  .stratagems { width: 100%; }
+  .stratcard { flex: 1 0 62px; }
+  .overlay__card { padding: 16px; }
+  .storm-title strong { font-size: clamp(60px, 17vw, 100px); }
+}
+@media (max-height: 450px) and (orientation: landscape) {
+  .topbar .chip { min-height: 32px; }
+  .chip { padding-inline: 8px; }
+  .panel--popover { max-width: 500px; }
+  .panel__desc, .panel__note { margin-block: 6px; }
+  .bossbar { top: calc(var(--safe-t) + var(--topbar-height) + 30px); width: 260px; }
+  .banner { z-index: 21; }
+  #loading { gap: 8px; }
+  .loading__art { width: min(240px, 40vw); }
+}
+@media (max-width: 600px) {
+  .bottombar__left { flex-wrap: wrap; justify-content: flex-end; }
+  .bottombar__left .seg { margin-right: auto; }
+}
+.bottombar__right { min-width: 0; }
+.bottombar__right button { min-width: 44px; overflow-wrap: anywhere; }
+@media (max-width: 350px) {
+  .bottombar__left .seg { flex-basis: 100%; }
+  .bottombar__left .seg button { flex: 1; }
+  .bottombar__left > button { flex: 1; }
+}

@@ -72,6 +72,7 @@ export class ProjectileView implements EntityView<Projectile> {
   private flame: THREE.Mesh;
   private kind: ProjectileKind = 'arrow';
   private heat: ProjectileHeat = 'cold';
+  private incendiary = false;
   /**
    * 실제로 화살이 떠난 자리 (활 시위). 지정되면 레인 분산 대신 이 자리에서 출발한다 —
    * 활 망루는 쇠뇌가 다섯 군데에 있으므로 "어느 활에서 나갔는지"가 눈에 보여야 한다.
@@ -127,8 +128,10 @@ export class ProjectileView implements EntityView<Projectile> {
     this.launch = origin ? origin.clone() : null;
   }
 
-  setKind(kind: ProjectileKind, level = 1): void {
+  setKind(kind: ProjectileKind, level = 1, incendiary = false): void {
     this.kind = kind;
+    this.incendiary = incendiary;
+    this.flame.quaternion.identity();
     // 포탄과 불줄기는 늘 뜨겁다 — 레벨과 무관하게 최고 단계로 그린다.
     this.heat = kind === 'flame' ? 'blazing' : kind === 'shell' ? 'hot' : heatOf(level);
 
@@ -140,9 +143,11 @@ export class ProjectileView implements EntityView<Projectile> {
     this.arrowHead.material = fireArrow ? this.assets.fireArrowMaterial : this.assets.material;
 
     if (kind === 'shell') {
+      this.stone.geometry = this.assets.shell;
       this.stone.material = this.assets.shellMaterial;
-      this.stone.scale.setScalar(0.72);
+      this.stone.scale.setScalar(incendiary ? 1 : 0.72);
     } else if (kind === 'stone') {
+      this.stone.geometry = this.assets.stone;
       this.stone.scale.setScalar(1);
     }
 
@@ -233,6 +238,10 @@ export class ProjectileView implements EntityView<Projectile> {
       // 포탄은 구르지 않는다 — 축을 중심으로 천천히 돈다
       this.object3d.rotation.set(0, travelled * 0.02, 0);
       if (this.flame.visible) this.flame.quaternion.copy(this.object3d.quaternion).invert();
+      if (this.incendiary) {
+        const flick = 1 + Math.sin(travelled * .43 + p.id) * .16;
+        this.flame.scale.set(.95 * flick, 1.25 * flick, .95);
+      }
     } else if (this.kind === 'stone') {
       // 바위는 방향이 없다 - 굴러가는 것처럼 돌린다
       this.object3d.rotation.set(travelled * 0.05, travelled * 0.037, 0);
@@ -265,6 +274,13 @@ export class ProjectileView implements EntityView<Projectile> {
       const bz = p.fromZ + (p.toZ - p.fromZ) * tb + perpZ * sb;
       const by = 38 * (1 - tb) + arc * Math.sin(Math.PI * tb);
       this.trail[i].position.set(bx, by, bz);
+      if (this.launch) {
+        const tailDecay = Math.pow(1 - tb, .6);
+        this.trail[i].position.x += (this.launch.x - p.fromX) * tailDecay - perpX * sb;
+        this.trail[i].position.y += (this.launch.y - 38) * tailDecay;
+        this.trail[i].position.z += (this.launch.z - p.fromZ) * tailDecay - perpZ * sb;
+      }
+      this.trail[i].scale.setScalar(this.incendiary ? (3.8 - i * .85) : 1);
       this.trail[i].visible = tb > 0.02;
     }
   }
@@ -294,6 +310,7 @@ export interface ProjectileAssets {
   material: THREE.Material;
   fireArrowMaterial: THREE.Material;
   stone: THREE.BufferGeometry;
+  shell: THREE.BufferGeometry;
   /** 연출 단계별 바위 표면 */
   stoneMaterials: Record<ProjectileHeat, THREE.Material>;
   /** 쇠 포탄 — 바위와 같은 메시에 다른 표면 */
@@ -322,6 +339,7 @@ export function createProjectileAssets(): ProjectileAssets {
 
   // 투석 — 면이 적은 구라 각이 살아 있어서 굴리면 회전이 읽힌다
   const stone = new THREE.IcosahedronGeometry(6.5, 0);
+  const shell = new THREE.SphereGeometry(6.5, 12, 8);
   const stoneMaterials: Record<ProjectileHeat, THREE.Material> = {
     cold: new THREE.MeshStandardMaterial({ color: 0x6e6a62, roughness: 1, flatShading: true }),
     // 달군 바위는 자체발광을 준다 — 그림자 속에서도 뜨거워 보인다
@@ -401,6 +419,7 @@ export function createProjectileAssets(): ProjectileAssets {
     material,
     fireArrowMaterial,
     stone,
+    shell,
     stoneMaterials,
     shellMaterial,
     flame,
@@ -414,6 +433,7 @@ export function createProjectileAssets(): ProjectileAssets {
       material.dispose();
       fireArrowMaterial.dispose();
       stone.dispose();
+      shell.dispose();
       for (const m of Object.values(stoneMaterials)) m.dispose();
       shellMaterial.dispose();
       flame.dispose();

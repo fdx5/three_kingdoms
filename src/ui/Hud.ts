@@ -13,6 +13,8 @@ export interface HudCallbacks {
   onRestart: () => void;
   onNextLevel: () => void;
   onLevelSelect: () => void;
+  onRequestExitToMenu: () => void;
+  onExitToMenu: () => void;
   onOpenSettings: () => void;
   onCloseSettings: () => void;
   onVolume: (bus: 'bgm' | 'sfx', value: number) => void;
@@ -83,6 +85,7 @@ export class Hud {
   private bannerTimer = 0;
   private callEnabled: boolean | null = null;
   private reduced = prefersReducedMotion();
+  private layoutObserver: ResizeObserver;
 
   constructor(
     parent: HTMLElement,
@@ -152,6 +155,11 @@ export class Hud {
 
     const settingsButton = el('button', { type: 'button', class: 'btn-ghost', text: '⚙', 'aria-label': '설정' });
     onTap(settingsButton, () => this.cb.onOpenSettings());
+    const exitMenuButton = el('button', {
+      type: 'button', class: 'btn-ghost hud-exit-menu', text: '↩',
+      'aria-label': '메뉴로 나가기', title: '메뉴로 나가기',
+    });
+    onTap(exitMenuButton, () => this.cb.onRequestExitToMenu());
     const resetViewButton = el('button', { type: 'button', class: 'btn-ghost', text: '⌂', 'aria-label': '시점 초기화', title: '시점 초기화 (R)' });
     onTap(resetViewButton, () => this.cb.onResetView());
 
@@ -196,7 +204,7 @@ export class Hud {
     this.stratagemBar.style.display = 'none';
 
     const bottombar = el('div', { class: 'bottombar' }, [
-      el('div', { class: 'bottombar__left' }, [seg, this.pauseButton, resetViewButton, this.bgmButton, settingsButton]),
+      el('div', { class: 'bottombar__left' }, [seg, this.pauseButton, resetViewButton, this.bgmButton, settingsButton, exitMenuButton]),
       el('div', { class: 'bottombar__center' }, [this.stratagemBar]),
       el('div', { class: 'bottombar__right' }, [this.gateButton, this.repairButton, this.callButton]),
     ]);
@@ -214,15 +222,25 @@ export class Hud {
     this.live = el('div', { class: 'sr-only', 'aria-live': 'polite', 'aria-atomic': 'true' });
 
     // 세로 모드 안내
+    const continuePortrait = el('button', { type: 'button', class: 'btn-primary', text: '세로 화면으로 계속' });
     const rotate = el('div', { class: 'overlay', id: 'rotate-notice' }, [
       el('div', { class: 'overlay__card', style: 'text-align:center' }, [
         el('div', { class: 'rotate-icon', text: '📱' }),
         el('h2', { class: 'overlay__title', text: '가로로 돌려주세요' }),
-        el('p', { class: 'overlay__sub', text: '전장을 한눈에 보려면 가로 화면이 필요합니다.' }),
+        el('p', { class: 'overlay__sub', text: '가로 화면을 권장합니다. 세로 화면에서는 전장을 드래그하고 두 손가락으로 확대할 수 있습니다.' }),
+        continuePortrait,
       ]),
     ]);
+    onTap(continuePortrait, () => { rotate.style.display = 'none'; });
 
     parent.append(topbar, this.levelTitle, bottombar, this.banner, this.bossBar, rotate, this.live);
+    // Measure actual wrapping, including controls unlocked by later chapters.
+    this.layoutObserver = new ResizeObserver(() => {
+      parent.style.setProperty('--topbar-height', `${topbar.getBoundingClientRect().height}px`);
+      parent.style.setProperty('--bottombar-height', `${bottombar.getBoundingClientRect().height}px`);
+    });
+    this.layoutObserver.observe(topbar);
+    this.layoutObserver.observe(bottombar);
   }
 
   // ── 골드 ────────────────────────────────────────────────────────────
@@ -595,6 +613,20 @@ export class Hud {
     );
   }
 
+  showExitConfirm(): void {
+    const cancel = el('button', { type: 'button', class: 'btn-ghost', text: '계속 플레이' });
+    onTap(cancel, () => this.cb.onPause(false));
+    const confirm = el('button', { type: 'button', class: 'btn-primary', text: '메뉴로 나가기' });
+    onTap(confirm, () => this.cb.onExitToMenu());
+    this.openOverlay(
+      el('div', { class: 'overlay__card' }, [
+        el('h2', { class: 'overlay__title', text: '메뉴로 나갈까요?' }),
+        el('p', { class: 'overlay__sub', text: '현재 전투의 진행은 저장되지 않습니다. 메뉴로 돌아가면 전투가 종료됩니다.' }),
+        el('div', { class: 'overlay__actions' }, [cancel, confirm]),
+      ]),
+    );
+  }
+
   showSettings(): void {
     const mkRange = (label: string, value: number, onInput: (v: number) => void) => {
       const input = el('input', {
@@ -672,6 +704,7 @@ export class Hud {
   }
 
   dispose(): void {
+    this.layoutObserver.disconnect();
     this.closeOverlay();
     this.root.replaceChildren();
   }

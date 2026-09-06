@@ -217,7 +217,7 @@ describe('투척체 연출 단계', () => {
 
   it('공유 에셋은 한 번만 만들고 dispose로 전부 반납한다', () => {
     const a = createProjectileAssets();
-    const geos = [a.shaft, a.head, a.stone, a.flame, a.trailGeo];
+    const geos = [a.shaft, a.head, a.stone, a.shell, a.flame, a.trailGeo];
     const mats = [
       a.material,
       a.fireArrowMaterial,

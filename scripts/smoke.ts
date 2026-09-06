@@ -13,6 +13,7 @@
  *   3장 — ?level=3 직행 -> 경제(조기 소집 계수)와 화공·얼음폭풍 해금 확인
  * 장마다 새로 생긴 렌더 경로가 있어서, 앞 장만 돌면 그 경로는 한 번도 실행되지 않는다.
  */
+import { BALANCE } from '../src/data/balance';
 import { chromium, type ConsoleMessage, type Page, type Browser } from 'playwright-core';
 
 const argv = process.argv.slice(2);
@@ -105,6 +106,7 @@ async function level1Pass(page: Page): Promise<void> {
   await page.waitForTimeout(600);
   console.log('[ok] 레벨 선택 -> 제 1장 시작');
 
+  await page.evaluate('window.game.setPaused(true, false)');
   const initial = await snap(page);
   console.log('\n[초기 상태]');
   console.table(initial);
@@ -240,6 +242,7 @@ async function level1Pass(page: Page): Promise<void> {
 
   // 조기 소집으로 웨이브를 시작시키고 전투가 실제로 도는지 본다
   await page.keyboard.press('Escape');
+  await page.evaluate('window.game.setPaused(false, false)');
   await page.locator('button', { hasText: '지금 소집' }).click();
   await page.keyboard.press('+');
   await page.keyboard.press('+');
@@ -373,39 +376,38 @@ async function level1Pass(page: Page): Promise<void> {
   );
   const spark = await page.evaluate(`new Promise(function (res, rej) {
     var g = window.game, t0 = performance.now(), moved = false;
-    function alive() {
-      var L = g.scene.particles.life, n = 0;
-      for (var i = 0; i < L.length; i++) if (L[i] > 0) n++;
-      return n;
-    }
-    var before = 0;
+    var original = g.scene.particles.emit;
+    g.scene.particles.emit = function (kind, x, y, z, scale) {
+      original.call(this, kind, x, y, z, scale);
+      var enemy = g.world.enemies.find(function (e) { return e.defId === 'zhangjiao' && e.atCastle; });
+      var view = enemy && g.scene.enemyViews.get(enemy.id);
+      if (view && kind === 'weapon_spark' && Math.abs(y - view.weaponHeight) < 0.001) {
+        g.scene.particles.emit = original;
+        res({ t: (view.attackTime % view.attackInterval) / 0.75 });
+      }
+    };
     function c() {
+      if (g.scene.particles.emit === original) return;
       if (!moved) {
         g.world.enemies.forEach(function (e) {
           if (e.defId === 'zhangjiao') { e.distance = g.world.path.totalLength - 60; moved = true; }
         });
       }
-      var e0 = g.world.enemies.find(function (x) { return x.defId === 'zhangjiao'; });
-      var a = e0 && e0.atCastle ? { view: g.scene.enemyViews.get(e0.id) } : null;
-      if (a && a.view) {
-        var t = a.view.attackTime / 0.75;
-        if (before === 0) before = alive();
-        if (t >= 0.6) { res({ t: t, before: before, after: alive() }); return; }
+      if (performance.now() - t0 > 45000) {
+        g.scene.particles.emit = original;
+        rej(new Error('Castle impact spark did not fire'));
+        return;
       }
-      if (performance.now() - t0 > 45000) { rej(new Error('보스가 성에 닿지 않았다')); return; }
       requestAnimationFrame(c);
     }
     c();
-  })`) as { t: number; before: number; after: number };
+  })`) as { t: number };
 
-  if (!(spark.after > spark.before)) {
-    fail(`성벽 타격 불꽃이 터지지 않았다 (파티클 ${spark.before} -> ${spark.after})`);
+  if (spark.t < BALANCE.fx.castleAttackImpactAt || spark.t > 1) {
+    fail(`Castle impact spark timing incorrect: ${spark.t}`);
   }
-  console.log(
-    `[ok] 성벽 타격 불꽃 — 클립 ${(spark.t * 100).toFixed(0)}% 지점, 파티클 ${spark.before} -> ${spark.after}`,
-  );
+  console.log(`[ok] Castle impact spark emitted at ${(spark.t * 100).toFixed(0)}% of attack clip`);
 
-  // 시위가 실제로 당겨졌다 놓이는지 + 화살이 쇠뇌마다 다른 자리에서 떠나는지
   const bowShot = await page.evaluate(`new Promise(function (res, rej) {
     var g = window.game, t0 = performance.now(), started = 0;
     var slot = g.world.level.buildSlots[0].id;
@@ -433,7 +435,7 @@ async function level1Pass(page: Page): Promise<void> {
       g.scene.projectileViews.forEach(function (pv, id) {
         var p = null;
         g.world.projectiles.forEach(function (q) { if (q.id === id) p = q; });
-        if (p && pv.launch) origins[p.salvoIndex] = [Math.round(pv.launch.x), Math.round(pv.launch.z)];
+        if (p && p.towerSlotId === slot && pv.launch) origins[p.salvoIndex] = [Math.round(pv.launch.x), Math.round(pv.launch.z)];
       });
       if (performance.now() - started > 2500) {
         res({ drawMin: Math.min.apply(null, lo), drawMax: Math.max.apply(null, hi), origins: origins });
@@ -521,6 +523,7 @@ async function level2Pass(page: Page): Promise<void> {
     fail('?level=2 인데 레벨 선택 화면이 떴다 — 직행 경로가 끊겼다');
   }
 
+  await page.evaluate('window.game.setPaused(true, false)');
   const initial = await snap(page);
   console.log('\n[초기 상태]');
   console.table(initial);
@@ -565,6 +568,21 @@ async function level2Pass(page: Page): Promise<void> {
   if (s.gold !== '220') fail(`철질려 건설 후 골드가 220이 아니다: ${s.gold}`);
   console.log('[ok] 철질려 건설 -> 골드 340 -> 220');
 
+  const trap = await page.evaluate(`(function () {
+    var g = window.game;
+    var v = g.scene.towerViews.get(g.world.level.buildSlots[0].id);
+    if (!v || !v.model.getObjectByName('spike1') || !v.idleAction || !v.triggerAction) return null;
+    var spike = v.model.getObjectByName('spike1');
+    var before = spike.position.y;
+    v.pulseAura();
+    v.sync(null, 0, 0.1);
+    return { idle: v.idleAction.isRunning(), lift: spike.position.y - before, bounds: v.measureBounds() };
+  })()`) as { idle: boolean; lift: number; bounds: { radius: number } } | null;
+  if (!trap || !trap.idle || trap.lift < 1 || trap.bounds.radius < 20 || trap.bounds.radius > 35) {
+    fail('철질려 모델의 크기 또는 가시 애니메이션이 잘못됐다: ' + JSON.stringify(trap));
+  }
+  console.log('[ok] 철질려 3D 모델 — 대기 회전과 감속 반응, 슬롯 크기 확인');
+
   // 벽력거 (220G) — 새 프리미티브가 실제로 씬에 올라가는지
   await page.keyboard.press('2');
   await page.waitForTimeout(250);
@@ -601,6 +619,12 @@ async function level2Pass(page: Page): Promise<void> {
   if (cat.clips < 1) fail('shoot1 클립이 없다');
   console.log(`[ok] 벽력거 — 팔 1개, 시위 없음, 클립 ${cat.clips}개`);
 
+  await page.evaluate(`(function () {
+    var g = window.game;
+    var total = g.world.economy.add(200);
+    g.world.bus.emit('gold:changed', { total: total, delta: 200, reason: 'smoke' });
+  })()`);
+
   // 세 슬롯을 더 채워 전투가 실제로 벌어지게 한다 (질려는 혼자서 아무도 못 죽인다)
   await page.keyboard.press('Escape');
   for (const key of ['3', '4']) {
@@ -615,6 +639,7 @@ async function level2Pass(page: Page): Promise<void> {
 
   // 전투. 감속은 적이 진지를 지나는 짧은 구간에서만 참이므로
   // 배속을 올리기 전에 1배속으로 한 번 확인한다.
+  await page.evaluate('window.game.setPaused(false, false)');
   await page.locator('button', { hasText: '지금 소집' }).click();
   await page.waitForTimeout(1500);
 
@@ -763,6 +788,9 @@ async function level2Pass(page: Page): Promise<void> {
    */
   await page.evaluate(`(function () {
     var g = window.game;
+    // Isolate gait sampling from the ice-storm freeze exercised above.
+    g.restart();
+    g.setPaused(true, false);
     ['xl_infantry', 'xl_cavalry', 'huaxiong', 'lubu'].forEach(function (id) {
       g.world.spawnEnemy({ unitId: id, at: 0, hpMul: 1, speedMul: 1 });
     });
@@ -865,6 +893,7 @@ async function level3Pass(page: Page): Promise<void> {
   await boot(page, `${BASE}/?debug=1&level=3`);
   await page.waitForTimeout(600);
 
+  await page.evaluate('window.game.setPaused(true, false)');
   const initial = await snap(page);
   console.log('\n[초기 상태]');
   console.table(initial);
@@ -900,6 +929,7 @@ async function level3Pass(page: Page): Promise<void> {
   // 조기 소집으로 골드를 앞당겨 벌고 그 돈으로 짓는다 — 레벨 3의 기본 루프
   await page.keyboard.press('Escape');
   const before = Number((await snap(page)).gold);
+  await page.evaluate('window.game.setPaused(false, false)');
   await page.locator('button', { hasText: '지금 소집' }).click();
   await page.waitForTimeout(400);
   const after = Number((await snap(page)).gold);
@@ -926,9 +956,9 @@ async function level3Pass(page: Page): Promise<void> {
 async function main(): Promise<void> {
   const browser: Browser = await chromium.launch({
     channel: 'chrome',
-    args: ['--enable-unsafe-swiftshader', '--use-gl=swiftshader', '--disable-gpu-sandbox'],
+    args: ['--enable-unsafe-swiftshader'],
   });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
 
   /*
    * 발사음 계측.

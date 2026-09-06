@@ -161,15 +161,21 @@ function caltropPrimitive(level: number): PrimitiveSpec {
 }
 
 /**
+ * 철질려도 레벨마다 모델을 바꾸지 않는다 — 마름쇠를 더 뿌린다고 다른 진지가 되지는 않는다.
+ * 프리미티브는 가시 수로 레벨을 보였지만, 모델 쪽은 넓어지는 사거리 고리가 그 일을 한다.
+ */
+const CALTROP_MODEL = 'caltrop_camp';
+
+/**
  * arrows = 한 번에 감속을 거는 대상 수. 후반 웨이브는 40기가 한꺼번에 지나가므로
  * 레벨이 오르면 사실상 전원을 잡아야 값을 한다.
  */
 const CALTROP_LEVELS: TowerLevelDef[] = [
-  { arrows: 5, damagePerArrow: 0, fireInterval: 0.5, range: 115, upgradeCost: null, view: { primitive: caltropPrimitive(1) } },
-  { arrows: 9, damagePerArrow: 0, fireInterval: 0.5, range: 120, upgradeCost: 90, view: { primitive: caltropPrimitive(2) } },
-  { arrows: 15, damagePerArrow: 0, fireInterval: 0.5, range: 130, upgradeCost: 130, view: { primitive: caltropPrimitive(3) } },
-  { arrows: 24, damagePerArrow: 0, fireInterval: 0.5, range: 140, upgradeCost: 180, view: { primitive: caltropPrimitive(4) } },
-  { arrows: 999, damagePerArrow: 0, fireInterval: 0.5, range: 150, upgradeCost: 240, view: { primitive: caltropPrimitive(5) } },
+  { arrows: 5, damagePerArrow: 0, fireInterval: 0.5, range: 115, upgradeCost: null, view: { primitive: caltropPrimitive(1), modelId: CALTROP_MODEL } },
+  { arrows: 9, damagePerArrow: 0, fireInterval: 0.5, range: 120, upgradeCost: 90, view: { primitive: caltropPrimitive(2), modelId: CALTROP_MODEL } },
+  { arrows: 15, damagePerArrow: 0, fireInterval: 0.5, range: 130, upgradeCost: 130, view: { primitive: caltropPrimitive(3), modelId: CALTROP_MODEL } },
+  { arrows: 24, damagePerArrow: 0, fireInterval: 0.5, range: 140, upgradeCost: 180, view: { primitive: caltropPrimitive(4), modelId: CALTROP_MODEL } },
+  { arrows: 999, damagePerArrow: 0, fireInterval: 0.5, range: 150, upgradeCost: 240, view: { primitive: caltropPrimitive(5), modelId: CALTROP_MODEL } },
 ];
 
 /**
@@ -240,14 +246,19 @@ function fireTowerPrimitive(level: number): PrimitiveSpec {
  * 레벨이 오르면 던지는 발수가 아니라 **불이 커진다** — 화공 망루는 늘 두세 발을 쏘고,
  * 대신 그 불이 레벨마다 1.5배씩 뜨거워진다(ignite.dpsPerLevel).
  */
-const FIRE_TOWER_MODEL = 'fire_tower';
-
+/*
+ * 화공 망루는 지금 모델이 없다 — 프리미티브로 돈다.
+ *
+ * 한동안 img/cannon.glb 로 구운 포대를 빌려 썼는데, 그 모델은 대포 진지라
+ * 5장 화포와 실루엣이 겹쳤다(같은 데크, 같은 포문 링). 포대는 화포 진지로 넘기고
+ * 화공 망루는 불을 다루는 망루로 새로 디자인한다.
+ */
 const FIRE_TOWER_LEVELS: TowerLevelDef[] = [
-  { arrows: 2, damagePerArrow: 9, fireInterval: 1.5, range: 105, upgradeCost: null, view: { primitive: fireTowerPrimitive(1), modelId: FIRE_TOWER_MODEL } },
-  { arrows: 2, damagePerArrow: 12, fireInterval: 1.45, range: 110, upgradeCost: 130, view: { primitive: fireTowerPrimitive(2), modelId: FIRE_TOWER_MODEL } },
-  { arrows: 2, damagePerArrow: 16, fireInterval: 1.4, range: 115, upgradeCost: 190, view: { primitive: fireTowerPrimitive(3), modelId: FIRE_TOWER_MODEL } },
-  { arrows: 3, damagePerArrow: 20, fireInterval: 1.35, range: 120, upgradeCost: 260, view: { primitive: fireTowerPrimitive(4), modelId: FIRE_TOWER_MODEL } },
-  { arrows: 3, damagePerArrow: 26, fireInterval: 1.3, range: 125, upgradeCost: 330, view: { primitive: fireTowerPrimitive(5), modelId: FIRE_TOWER_MODEL } },
+  { arrows: 2, damagePerArrow: 9, fireInterval: 1.5, range: 105, upgradeCost: null, view: { primitive: fireTowerPrimitive(1) } },
+  { arrows: 2, damagePerArrow: 12, fireInterval: 1.45, range: 110, upgradeCost: 130, view: { primitive: fireTowerPrimitive(2) } },
+  { arrows: 2, damagePerArrow: 16, fireInterval: 1.4, range: 115, upgradeCost: 190, view: { primitive: fireTowerPrimitive(3) } },
+  { arrows: 3, damagePerArrow: 20, fireInterval: 1.35, range: 120, upgradeCost: 260, view: { primitive: fireTowerPrimitive(4) } },
+  { arrows: 3, damagePerArrow: 26, fireInterval: 1.3, range: 125, upgradeCost: 330, view: { primitive: fireTowerPrimitive(5) } },
 ];
 
 /**
@@ -311,15 +322,23 @@ function cannonPrimitive(level: number): PrimitiveSpec {
 }
 
 /**
+ * 화포 진지도 레벨마다 모델을 바꾸지 않는다 — 데크의 포문이 레벨 수만큼 보인다.
+ * 프리미티브 쪽은 포신 수가 발사 수(1·1·2·2·3)였지만, 모델은 포문 수가 레벨(1~5)이다.
+ * 둘을 맞추려면 밸런스 표를 흔들어야 해서 그대로 둔다 — 어느 쪽이든 "레벨이 오르면
+ * 포가 는다"로 읽힌다.
+ */
+const CANNON_MODEL = 'cannon_tower';
+
+/**
  * 화포는 레벨이 오르면 발수가 는다 — 궁노와 달리 한 발 한 발이 폭발이라
  * 2발이 되는 3레벨에서 체감이 크게 꺾인다. 그 지점이 이 타워의 값이다.
  */
 const CANNON_LEVELS: TowerLevelDef[] = [
-  { arrows: 1, damagePerArrow: 58, fireInterval: 2.6, range: 175, upgradeCost: null, view: { primitive: cannonPrimitive(1) } },
-  { arrows: 1, damagePerArrow: 88, fireInterval: 2.5, range: 180, upgradeCost: 200, view: { primitive: cannonPrimitive(2) } },
-  { arrows: 2, damagePerArrow: 78, fireInterval: 2.4, range: 190, upgradeCost: 280, view: { primitive: cannonPrimitive(3) } },
-  { arrows: 2, damagePerArrow: 112, fireInterval: 2.3, range: 200, upgradeCost: 360, view: { primitive: cannonPrimitive(4) } },
-  { arrows: 3, damagePerArrow: 138, fireInterval: 2.2, range: 210, upgradeCost: 450, view: { primitive: cannonPrimitive(5) } },
+  { arrows: 1, damagePerArrow: 58, fireInterval: 2.6, range: 175, upgradeCost: null, view: { primitive: cannonPrimitive(1), modelId: CANNON_MODEL } },
+  { arrows: 1, damagePerArrow: 88, fireInterval: 2.5, range: 180, upgradeCost: 200, view: { primitive: cannonPrimitive(2), modelId: CANNON_MODEL } },
+  { arrows: 2, damagePerArrow: 78, fireInterval: 2.4, range: 190, upgradeCost: 280, view: { primitive: cannonPrimitive(3), modelId: CANNON_MODEL } },
+  { arrows: 2, damagePerArrow: 112, fireInterval: 2.3, range: 200, upgradeCost: 360, view: { primitive: cannonPrimitive(4), modelId: CANNON_MODEL } },
+  { arrows: 3, damagePerArrow: 138, fireInterval: 2.2, range: 210, upgradeCost: 450, view: { primitive: cannonPrimitive(5), modelId: CANNON_MODEL } },
 ];
 
 export const TOWERS: Record<string, TowerDef> = {

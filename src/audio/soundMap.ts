@@ -21,6 +21,7 @@ export const SOUND_MAP: Record<string, SoundMapping> = {
     archer_tower: 'sfx_bow',
     catapult: 'sfx_catapult',
     cannon_tower: 'sfx_cannon',
+    fire_tower: 'sfx_cannon',
   },
   /**
    * 성문의 사격음. 무기 종류(arrow/cannon/flame)로 갈린다 —

@@ -138,8 +138,8 @@ export const YUAN_UNITS: Record<string, UnitDef> = {
     castleDamage: 90,
     scale: 1.9,
     kind: 'elite',
-    // 중간보스는 1장 두목과 같은 모델을 쓴다
-    view: { primitive: generalPrimitive('#7a1f1f', '#c23a3a'), modelId: 'yt_captain' },
+    // Blender 제작 전용 중갑 보행 장수. idle/walk/attack/die 클립을 포함한다.
+    view: { primitive: generalPrimitive('#7a1f1f', '#c23a3a'), modelId: 'yanliang' },
     audio: { spawn: 'sfx_boss_spawn', die: 'sfx_die_boss', hit: 'sfx_hit' },
     traits: { rangedResist: 0.35 },
   },

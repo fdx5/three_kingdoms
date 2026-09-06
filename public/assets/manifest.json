@@ -9,9 +9,11 @@
     "zhangjiao": { "url": "models/zhangjiao.glb" },
     "yuanshao": { "url": "models/yuanshao.glb" },
     "ys_spear": { "url": "models/ys_spear.glb" },
+    "yanliang": { "url": "models/yanliang.glb", "scale": 15 },
     "archer_tower": { "url": "models/archer_tower.glb" },
     "catapult": { "url": "models/catapult.glb" },
-    "fire_tower": { "url": "models/fire_tower.glb" },
+    "cannon_tower": { "url": "models/cannon_tower.glb" },
+    "caltrop_camp": { "url": "models/caltrop_camp.glb" },
     "wu_marine": { "url": "models/wu_marine.glb" },
     "wu_rattan": { "url": "models/wu_rattan.glb" },
     "wu_raider": { "url": "models/wu_raider.glb" },
@@ -20,7 +22,10 @@
     "cavalry": { "url": "models/cavalry.glb" },
     "lubu": { "url": "models/lubu.glb" },
     "hulao_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
-    "guandu_camp": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 }
+    "guandu_camp": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
+    "hefei_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
+    "fancheng_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
+    "wuzhangyuan_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 }
   },
 
   "textures": {
@@ -46,6 +51,7 @@
     "sfx_castle_strike_soldier": "audio/soldier.mp3",
     "sfx_castle_strike_boss": "audio/middle_boss.mp3",
     "sfx_cannon": "audio/cannon.mp3",
-    "sfx_fire_burn": "audio/fire_burn.mp3"
+    "sfx_fire_burn": "audio/fire_burn.mp3",
+    "sfx_victory": "audio/victory.mp3"
   }
 }
