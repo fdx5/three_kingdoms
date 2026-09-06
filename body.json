@@ -1,0 +1,1 @@
+{"ok":false,"db":"unavailable","error":"TURSO_DATABASE_URL 이 없다. .env 를 만들거나(.env.example 참고) 배포 환경변수에 넣을 것.","now":1788682193278}

@@ -8,6 +8,7 @@
     "dev": "vite",
     "prebuild": "node scripts/ensure-deps.mjs vite",
     "build": "vite build",
+    "postbuild": "node scripts/postbuild-serve.mjs",
     "preview": "vite preview",
     "server": "tsx server/index.ts",
     "prestart": "node scripts/ensure-deps.mjs tsx",

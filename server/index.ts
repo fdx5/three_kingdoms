@@ -232,10 +232,19 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     return true;
   }
 
-  // 여기부터는 전부 DB 가 있어야 한다.
+  /*
+   * 여기부터는 전부 DB 가 있어야 한다.
+   *
+   * 실패했더라도 **한 번 더 해 본다.** 기동 시점에 환경변수가 없었거나 토르소가
+   * 잠깐 안 됐을 뿐일 수 있는데, 예전에는 그 결과를 영원히 들고 있어서 서버를
+   * 재시작하기 전까지 API 가 계속 죽어 있었다. 붙게 되면 그 순간부터 산다.
+   */
   if (dbError) {
-    send(res, 503, { error: 'DB 를 쓸 수 없다', detail: dbError });
-    return true;
+    checkDb();
+    if (dbError) {
+      send(res, 503, { error: 'DB 를 쓸 수 없다', detail: dbError });
+      return true;
+    }
   }
 
   // ── 계정 ──
@@ -532,6 +541,38 @@ server.on('error', (err) => {
   console.error(`[server] ${HOST}:${PORT} 에 붙지 못했다 —`, err);
   process.exit(1);
 });
+
+/*
+ * 요청 하나가 프로세스를 죽이지 못하게 한다.
+ *
+ * node 의 기본값은 잡히지 않은 예외가 나면 프로세스를 끝내는 것이다. 웹 서비스
+ * 에서는 그게 곧 배포 중단이다 — 방명록 한 줄 때문에 게임 전체가 내려간다.
+ * 여기서 로그만 남기고 계속 산다. 라우팅 단계의 오류는 이미 각자 500 으로
+ * 처리되므로, 여기까지 오는 것은 그 바깥의 예상 못 한 것들이다.
+ *
+ * 상태가 깨진 채로 도는 것 아니냐 — 이 서버는 요청마다 독립적이고 공유 상태가
+ * DB 연결 하나뿐이라(그것도 위에서 다시 붙는다) 그 위험이 거의 없다. 살아서
+ * 정적 파일이라도 계속 주는 쪽이 낫다.
+ */
+process.on('uncaughtException', (err) => {
+  console.error('[server] 잡히지 않은 예외 — 계속 산다:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] 처리되지 않은 거부 — 계속 산다:', reason);
+});
+
+/*
+ * 종료 신호는 제대로 받는다. render.com 은 배포를 교체할 때 SIGTERM 을 보낸다.
+ * 받는 중인 요청을 끝내고 닫으면 교체 순간에 끊기는 연결이 없다.
+ */
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(sig, () => {
+    console.log(`[server] ${sig} — 받는 중인 요청을 끝내고 닫는다.`);
+    server.close(() => process.exit(0));
+    // 안 닫히는 연결이 있어도 10초 뒤에는 나간다. 배포가 이것 때문에 멈추면 안 된다.
+    setTimeout(() => process.exit(0), 10_000).unref();
+  });
+}
 
 server.listen(PORT, HOST, () => {
   const addr = server.address();
