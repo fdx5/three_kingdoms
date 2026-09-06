@@ -1,0 +1,67 @@
+{
+  "name": "sam-td",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "삼국지 TD — Three Kingdoms Tower Defense (6장 · three.js · 토르소 DB)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "server": "tsx server/index.ts",
+    "start": "tsx server/index.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:seed": "tsx scripts/db-seed.ts",
+    "db:check": "tsx scripts/db-check.ts",
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim": "tsx scripts/sim.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/smoke.ts",
+    "asset:optimize": "tsx scripts/optimize-model.ts",
+    "asset:rig": "tsx scripts/rig-model.ts",
+    "asset:soldier": "tsx scripts/bake-assets.ts soldier",
+    "asset:captain": "tsx scripts/bake-assets.ts captain",
+    "asset:zhangjiao": "tsx scripts/bake-assets.ts zhangjiao",
+    "asset:tower": "tsx scripts/bake-assets.ts archer_tower",
+    "asset:catapult": "tsx scripts/bake-assets.ts catapult",
+    "asset:firetower": "tsx scripts/bake-assets.ts fire_tower",
+    "asset:wu": "tsx scripts/bake-assets.ts wu_marine wu_rattan wu_raider ganning sunquan",
+    "asset:cavalry": "tsx scripts/bake-assets.ts cavalry",
+    "asset:healer": "tsx scripts/bake-assets.ts healer",
+    "asset:lubu": "tsx scripts/bake-assets.ts lubu",
+    "asset:yuanshao": "tsx scripts/bake-assets.ts yuanshao",
+    "asset:all": "tsx scripts/bake-assets.ts"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "three": "^0.180.0",
+    "tsx": "^4.20.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@gltf-transform/core": "^4.5.0",
+    "@gltf-transform/extensions": "^4.5.0",
+    "@gltf-transform/functions": "^4.5.0",
+    "@types/node": "^26.4.1",
+    "@types/three": "^0.180.0",
+    "@typescript-eslint/eslint-plugin": "^8.44.0",
+    "@typescript-eslint/parser": "^8.44.0",
+    "draco3dgltf": "^1.5.7",
+    "eslint": "^9.35.0",
+    "meshoptimizer": "^1.2.0",
+    "playwright-core": "^1.62.1",
+    "sharp": "^0.35.4",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

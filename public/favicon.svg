@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#1f1a14"/>
+  <!-- 성벽 -->
+  <path d="M12 44h40v10H12z" fill="#8a8578"/>
+  <path d="M12 38h6v6h-6zm10 0h6v6h-6zm10 0h6v6h-6zm10 0h6v6h-6z" fill="#8a8578"/>
+  <!-- 지붕 -->
+  <path d="M32 8 52 28H12z" fill="#7a2e2e"/>
+  <!-- 황색 두건 색 포인트 -->
+  <circle cx="32" cy="34" r="4" fill="#d4a017"/>
+</svg>

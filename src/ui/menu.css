@@ -1,0 +1,111 @@
+.main-menu {
+  --menu-gold: #d8bd82;
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
+  padding: clamp(22px, 3.7vw, 58px); overflow-y: auto; overflow-x: hidden;
+  color: #ede9dd; background: #111914; backdrop-filter: none;
+  isolation: isolate; touch-action: pan-y;
+}
+.main-menu::before {
+  content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background: linear-gradient(90deg, #090f10ed 0%, #111a18a6 48%, #0a1110db 100%),
+    linear-gradient(0deg, #0a100ffa, #0a100f00 52%, #0a100f6b),
+    url('/assets/backgrounds/custom-china-panorama-v3.png') center 66% / cover;
+}
+.main-menu::after {
+  content: ''; position: fixed; inset: 14px; border: 1px solid #d4b87524;
+  pointer-events: none; z-index: -1;
+}
+.menu-atmosphere { position: fixed; inset: 0; pointer-events: none; z-index: -1; opacity: .4;
+  background: radial-gradient(ellipse at 17% 76%, #be7b3028, transparent 40%); }
+.menu-header, .menu-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-shrink: 0; }
+.menu-header { width: 100%; max-width: 1440px; margin: 0 auto; }
+.menu-signature { display: flex; align-items: center; gap: 15px; font: 12px Georgia, serif; letter-spacing: .28em; color: #d3c4a5; }
+.menu-seal { display: grid; place-items: center; width: 36px; height: 44px; background: #852e22;
+  color: #efcbb4; font: 17px 'KaiTi', 'Gungsuh', serif; letter-spacing: 0; border: 1px solid #c475554d; }
+.menu-edition { font-size: 9px; letter-spacing: .23em; color: #a8aaa0; }
+.menu-layout { flex: 1; display: grid; grid-template-columns: 1fr 1.05fr; align-items: center;
+  gap: clamp(30px, 7vw, 120px); width: 100%; max-width: 1320px; margin: 40px auto; }
+.menu-brand { padding: 20px 0; }
+.main-menu .menu-eyebrow { color: var(--menu-gold); font-size: 10px; font-weight: 500; letter-spacing: .24em; margin: 0 0 19px; }
+.menu-title { margin: 0; font-weight: 400; text-shadow: 0 4px 35px #0006; }
+.menu-title__ko { display: block; font: 600 clamp(58px, 6vw, 90px)/1.2 'Noto Serif KR', 'Batang', '바탕', serif; letter-spacing: .18em; }
+.menu-title__en { display: block; margin-top: 6px; font: 400 clamp(35px, 4.15vw, 62px)/1.15 Georgia, 'Times New Roman', serif;
+  letter-spacing: .04em; color: #e2c995; }
+.menu-rule { display: flex; align-items: center; width: 210px; gap: 15px; color: #bb9a60; margin: 30px 0 24px; font-size: 8px; }
+.menu-rule::before, .menu-rule::after { content: ''; height: 1px; background: #ad915952; flex: 1; }
+.menu-motto { font: 400 clamp(19px, 1.9vw, 26px)/1.75 'Batang', '바탕', serif; letter-spacing: .04em; margin: 0 0 14px; }
+.menu-description { color: #a5ada5; font-size: 12px; line-height: 1.9; white-space: pre-line; margin: 0; }
+.menu-deploy { max-width: 300px; margin-top: 30px; }
+.main-menu .menu-start { display: flex; align-items: center; justify-content: space-between;
+  width: 100%; min-height: 56px; padding: 15px 23px; border-radius: 2px;
+  border: 1px solid #e6ca89; background: linear-gradient(115deg, #dfc58b, #bba06a); color: #1d2118;
+  box-shadow: inset 0 0 0 3px #18211917, 0 8px 28px #0003; font-size: 15px; font-weight: 700; letter-spacing: .09em;
+  transition: filter .18s, transform .18s; }
+.main-menu .menu-start:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-2px); }
+.menu-deploy p { color: #b2ad9f; font-size: 11px; margin: 12px 0 0; }
+.menu-panel { position: relative; min-width: 0; padding: clamp(23px, 2.5vw, 37px);
+  background: linear-gradient(135deg, #17211fea, #101817ed); border: 1px solid #c6ad7438;
+  box-shadow: 0 25px 80px #0005, inset 0 0 0 6px #141d1a; }
+.menu-panel::before, .menu-panel::after { content: ''; position: absolute; width: 32px; height: 32px; pointer-events: none; border-color: #d0b278; }
+.menu-panel::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; color: #bda26b; }
+.menu-panel::after { right: -1px; bottom: -1px; border-right: 2px solid; border-bottom: 2px solid; color: #bda26b; }
+.menu-panel__heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.menu-panel__heading h2 { font: 400 clamp(21px, 2vw, 28px)/1.4 'Batang', '바탕', serif; margin: 0; letter-spacing: .04em; }
+.menu-panel__heading .menu-eyebrow { margin-bottom: 8px; font-size: 9px; }
+.menu-progress { font-size: 10px; white-space: nowrap; color: #c6b38d; border-left: 1px solid #b3975b55; padding-left: 14px; }
+.menu-panel__description { color: #9ea89e; font-size: 11px; line-height: 1.7; margin: 12px 0 24px; }
+.main-menu .accountbar { background: none; border: 0; border-top: 1px solid #c2a87524; border-bottom: 1px solid #c2a87524;
+  padding: 8px 0; margin: 0 0 18px; border-radius: 0; font-size: 11px; }
+.main-menu .accountbar button { border: 0; background: none; color: #bcb6a7; box-shadow: none; }
+.main-menu .levelgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.main-menu .levelcard { position: relative; min-height: 140px; padding: 16px; border-radius: 2px;
+  border: 1px solid #a69a7736; background: linear-gradient(125deg, #25352e9c, #141d1d);
+  box-shadow: none; overflow: hidden; transition: border-color .18s, background .18s, transform .18s; }
+.main-menu .levelcard::before { content: ''; position: absolute; right: -16px; bottom: -36px; width: 100px; height: 100px;
+  border: 1px solid #a6b1a110; transform: rotate(45deg); pointer-events: none; }
+.main-menu .levelcard:not(:disabled):hover { transform: translateY(-2px); border-color: #d2b57a; background: #354235; }
+.main-menu .levelcard--suggested { border-color: #cfb3778f; background: linear-gradient(120deg, #6456375c, #203027); }
+.main-menu .levelcard--suggested::after { content: '출정 가능'; position: absolute; right: 11px; top: 13px; color: #e1c58c; font-size: 8px; letter-spacing: .04em; }
+.main-menu .levelcard--locked { opacity: 1; background: #101918a6; border-color: #a69a771c; }
+.main-menu .levelcard--locked .levelcard__title { color: #8f9990; }
+.main-menu .levelcard__index { font-size: 9px; letter-spacing: .13em; color: #baa577; margin-bottom: 9px; }
+.main-menu .levelcard__title { font: 600 15px/1.5 'Batang', '바탕', serif; color: #ede5d3; margin: 0 0 7px; }
+.main-menu .levelcard__meta { font-size: 9px; color: #8f9b91; }
+.main-menu .levelcard__stars { font-size: 12px; letter-spacing: .18em; color: #c6ab70; margin-top: 10px; }
+.main-menu .levelcard__lock { font-size: 9px; line-height: 1.5; color: #8a968b; margin-top: 7px; }
+.menu-footer { max-width: 1440px; width: 100%; margin: 0 auto; padding-top: 18px; border-top: 1px solid #d7bd8521;
+  color: #7f8a80; font-size: 9px; letter-spacing: .08em; }
+.main-menu .login__form { margin-top: 27px; }
+.main-menu .login__row { font-size: 11px; letter-spacing: .08em; margin-bottom: 18px; gap: 9px; }
+.main-menu .login__row input { min-height: 50px; background: #090f108c; border-color: #bfa36b40; border-radius: 2px; font-size: 13px; letter-spacing: 0; }
+.main-menu .login__row input:focus-visible { outline-color: #ddc18a; border-color: #ddc18a; }
+.main-menu .login__error { font-size: 12px; line-height: 1.6; }
+.main-menu .overlay__actions { margin-top: 22px; }
+.main-menu .hint { padding: 0; margin: 20px 0 0; border: 0; background: none; color: #919c91; font-size: 11px; line-height: 1.8; }
+.main-menu button:focus-visible { outline: 2px solid #f5d99f; outline-offset: 4px; }
+@media (min-width: 1500px) { .menu-layout { gap: 150px; } }
+@media (max-width: 1000px) {
+  .main-menu { padding: 28px; }
+  .menu-layout { gap: 28px; grid-template-columns: .8fr 1.2fr; }
+  .menu-panel { padding: 23px; }
+  .main-menu .levelcard { padding: 12px; }
+  .main-menu .levelcard__title { font-size: 13px; }
+}
+@media (max-width: 700px) {
+  .main-menu { padding: 24px; }
+  .menu-edition { display: none; }
+  .menu-layout { grid-template-columns: 1fr; margin: 20px auto 28px; gap: 24px; }
+  .menu-brand { text-align: center; padding: 10px 0; }
+  .menu-title__ko { font-size: 58px; }
+  .menu-title__en { font-size: 39px; }
+  .menu-rule { margin: 20px auto 16px; }
+  .menu-motto { font-size: 18px; }
+  .menu-description { font-size: 11px; }
+  .menu-deploy { margin: 23px auto 0; }
+  .menu-footer span:last-child { display: none; }
+  .main-menu .levelcard { min-height: 135px; }
+  .menu-panel { padding: 20px; }
+  .menu-panel__heading h2 { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) { .main-menu button { transition: none; } }

@@ -1,0 +1,628 @@
+import * as THREE from 'three';
+import { BALANCE, type PerformancePreset } from '../data/balance';
+import type { LevelEnvironment } from '../types/level';
+import type { Path } from '../sim/Path';
+import { Rng } from '../core/Rng';
+import type { AssetRegistry } from './AssetRegistry';
+import { settlementMeshes, type SettlementSite } from './BattlefieldProps';
+import { foliageGeometry, grassGeometry, rockGeometry, treeTrunkGeometry } from './NaturalGeometry';
+import { ChapterLandscape, chapterHeight, chapterSites } from './ChapterLandscape';
+
+/**
+ * "평면이지만 3D처럼" 보이는 지형.
+ * 1200x700 평면을 48x28로 세분화하고 정점 y에 낮은 진폭(0~12u)의 값 노이즈를 준다.
+ * 경로 주변은 평탄하게 마스킹한다 — 길이 울퉁불퉁하면 리본이 뜬다.
+ */
+export class Terrain {
+  readonly group = new THREE.Group();
+  private mesh: THREE.Mesh;
+  private geometry: THREE.PlaneGeometry;
+  private material: THREE.MeshStandardMaterial;
+  private decor: THREE.InstancedMesh[] = [];
+  private skirt: THREE.Mesh | null = null;
+  private ridges: THREE.Mesh[] = [];
+  private ownedTextures: THREE.Texture[] = [];
+  private chapter: ChapterLandscape | null = null;
+  get landscape(): LevelEnvironment['landscape'] { return this.env.landscape; }
+  private readonly reserved: readonly { x: number; z: number }[];
+
+  /** 높이 조회용 격자 (x, z -> y) */
+  private heights: Float32Array;
+  private readonly segX = 160;
+  private readonly segZ = 96;
+
+  constructor(
+    private readonly path: Path,
+    private readonly env: LevelEnvironment,
+    assets?: AssetRegistry,
+    seed = 1337,
+    reserved: readonly { x: number; z: number }[] = [],
+  ) {
+    this.reserved = reserved;
+    const w = BALANCE.mapWidth;
+    const d = BALANCE.mapDepth;
+    this.geometry = new THREE.PlaneGeometry(w, d, this.segX, this.segZ);
+    this.geometry.rotateX(-Math.PI / 2);
+
+    const rng = new Rng(seed);
+    // 값 노이즈용 저해상도 격자
+    const nW = 10;
+    const nH = 7;
+    const noise = new Float32Array(nW * nH);
+    for (let i = 0; i < noise.length; i++) noise[i] = rng.next();
+
+    const sample = (u: number, v: number): number => {
+      const fx = u * (nW - 1);
+      const fz = v * (nH - 1);
+      const x0 = Math.floor(fx);
+      const z0 = Math.floor(fz);
+      const x1 = Math.min(nW - 1, x0 + 1);
+      const z1 = Math.min(nH - 1, z0 + 1);
+      const tx = fx - x0;
+      const tz = fz - z0;
+      // smoothstep 보간 — 선형이면 격자무늬가 보인다
+      const sx = tx * tx * (3 - 2 * tx);
+      const sz = tz * tz * (3 - 2 * tz);
+      const a = noise[z0 * nW + x0] * (1 - sx) + noise[z0 * nW + x1] * sx;
+      const b = noise[z1 * nW + x0] * (1 - sx) + noise[z1 * nW + x1] * sx;
+      return a * (1 - sz) + b * sz;
+    };
+
+    const pos = this.geometry.attributes.position as THREE.BufferAttribute;
+    const colors = new Float32Array(pos.count * 3);
+    this.heights = new Float32Array(pos.count);
+
+    const low = new THREE.Color(env.lowColor).lerp(new THREE.Color(0xffffff), 0.72);
+    const high = new THREE.Color(env.highColor).lerp(new THREE.Color(0xffffff), 0.68);
+    const tmp = new THREE.Color();
+
+    const maxAmp = assets ? 12 * (env.terrainRelief ?? 1) : 5;
+    // 경로에서 이 거리 안쪽은 완전히 평탄, 바깥으로 부드럽게 올라간다
+    const flatRadius = 52;
+    const blendRadius = 130;
+
+    for (let i = 0; i < pos.count; i++) {
+      // 지오메트리는 맵 중앙 기준. 월드 좌표로 옮긴다.
+      const wx = pos.getX(i) + BALANCE.mapWidth / 2;
+      const wz = pos.getZ(i) + BALANCE.mapDepth / 2;
+
+      const u = wx / BALANCE.mapWidth;
+      const v = wz / BALANCE.mapDepth;
+      const broad = sample(u, v);
+      const detail = sample((u * 2.31 + 0.17) % 1, (v * 2.17 + 0.31) % 1);
+      const micro = Math.sin(wx * 0.047 + Math.cos(wz * 0.031)) * 0.5 + 0.5;
+      const ridge = Math.pow(1 - Math.abs(detail * 2 - 1), 2.4);
+      let h = (broad * 0.5 + detail * 0.13 + micro * 0.04 + ridge * 0.33) * maxAmp;
+      // Raise the outer landscape into a natural basin while the combat route remains readable.
+      const edge = Math.max(Math.abs(u - 0.5) * 2, Math.abs(v - 0.5) * 2);
+      h += Math.pow(Math.max(0, edge - 0.48) / 0.52, 2.2) * maxAmp * 1.35;
+
+      // 경로 근처 마스킹
+      const dist = distanceToPath(this.path, wx, wz);
+      if (dist < flatRadius) h = 0;
+      else if (dist < blendRadius) {
+        const t = (dist - flatRadius) / (blendRadius - flatRadius);
+        h *= t * t * (3 - 2 * t);
+      }
+
+      if (env.landscape) {
+        const clearance = Math.min(dist, ...reserved.map(p => Math.hypot(wx - p.x, wz - p.z)));
+        h = chapterHeight(env.landscape, wx, wz, h, clearance);
+      }
+
+      pos.setY(i, h);
+      this.heights[i] = h;
+
+      const altitude = THREE.MathUtils.clamp(h / maxAmp, 0, 1);
+      tmp.copy(low).lerp(high, altitude);
+      // Fine colour breakup gives the ground a natural, non-plastic surface from gameplay distance.
+      const mottling = (detail - 0.5) * 0.21 + (micro - 0.5) * 0.045;
+      const soil = 1 - THREE.MathUtils.smoothstep(dist, 44, 86);
+      tmp.lerp(new THREE.Color(0xb6a482), soil * 0.32);
+      tmp.offsetHSL(mottling * 0.12, mottling * 0.18, mottling);
+      if (env.landscape === 'loess') tmp.lerp(new THREE.Color(0xb29a70), .45 + .1 * Math.sin(h * .45));
+      else if (env.landscape && h < 2) tmp.lerp(new THREE.Color(env.landscape === 'lakeside' ? 0x64765b : 0x666c64), .48);
+      colors[i * 3] = tmp.r;
+      colors[i * 3 + 1] = tmp.g;
+      colors[i * 3 + 2] = tmp.b;
+    }
+
+    this.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    this.geometry.computeVertexNormals();
+
+    const texId = env.terrainTexture;
+    const albedo = assets?.getTexture(texId)?.clone() ?? null;
+    const normal = assets?.getTexture(texId ? `${texId}_normal` : undefined)?.clone() ?? null;
+    const roughness = assets?.getTexture(texId ? `${texId}_roughness` : undefined)?.clone() ?? null;
+    for (const tex of [albedo, normal, roughness]) {
+      if (!tex) continue;
+      this.ownedTextures.push(tex);
+      tex.repeat.set(w / 72, d / 72);
+      tex.anisotropy = 8;
+      tex.needsUpdate = true;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    }
+    this.material = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      map: albedo,
+      normalMap: normal,
+      normalScale: new THREE.Vector2(0.85, 0.85),
+      roughnessMap: roughness,
+      roughness: 0.92,
+      metalness: 0,
+    });
+
+    this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh.position.set(BALANCE.mapWidth / 2, 0, BALANCE.mapDepth / 2);
+    this.mesh.receiveShadow = true;
+    this.group.add(this.mesh);
+
+    this.buildSkirt();
+    this.buildApron();
+    // Distant relief now comes from the photographic 360 panorama. The old
+    // triangle-strip ridges visibly read as low-poly pyramids and are omitted.
+    void this.buildRidges;
+  }
+
+  /**
+   * 플레이 평면 바깥으로 뻗는 큰 바닥판.
+   * 이게 없으면 1200x700 평면의 가장자리가 그대로 보여서
+   * "허공에 뜬 판때기" 처럼 읽힌다. 산맥 실루엣까지 땅이 이어져야 한다.
+   */
+  private buildSkirt(): void {
+    const outerW = BALANCE.mapWidth * 3.4;
+    const outerD = BALANCE.mapDepth * 3.8;
+    const geo = new THREE.PlaneGeometry(outerW, outerD, 192, 128);
+    geo.rotateX(-Math.PI / 2);
+    const positions = geo.getAttribute('position') as THREE.BufferAttribute;
+    const colors = new Float32Array(positions.count * 3);
+    // World-aligned UVs make the surrounding terrain meet the map without a scale seam.
+    const uv = geo.getAttribute('uv');
+    for (let i = 0; i < positions.count; i++) {
+      uv.setXY(i, positions.getX(i) / BALANCE.mapWidth + 0.5, 0.5 - positions.getZ(i) / BALANCE.mapDepth);
+    }
+    const low = new THREE.Color(this.env.lowColor).lerp(new THREE.Color(0xffffff), 0.72);
+    const high = new THREE.Color(this.env.highColor).lerp(new THREE.Color(0xffffff), 0.68);
+    const color = new THREE.Color();
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const z = positions.getZ(i);
+      const nx = Math.max(0, (Math.abs(x) - BALANCE.mapWidth * 0.48) / (outerW * 0.32));
+      const nz = Math.max(0, (Math.abs(z) - BALANCE.mapDepth * 0.48) / (outerD * 0.32));
+      const edge = THREE.MathUtils.clamp(Math.max(nx, nz), 0, 1);
+      const relief = landformNoise(x, z);
+      const height = surroundingHeight(x, z);
+      positions.setY(i, height);
+      color.copy(low).lerp(high, THREE.MathUtils.clamp(height / 250, 0, 1));
+      color.multiplyScalar(0.78 + relief * 0.3 + edge * 0.05);
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      map: this.material.map,
+      normalMap: this.material.normalMap,
+      normalScale: new THREE.Vector2(0.7, 0.7),
+      roughnessMap: this.material.roughnessMap,
+      roughness: 0.96,
+      metalness: 0,
+    });
+    this.skirt = new THREE.Mesh(geo, mat);
+    // 본 평면보다 살짝 아래에 둬서 z-fighting 없이 이어 붙인다.
+    this.skirt.position.set(BALANCE.mapWidth / 2, 0, BALANCE.mapDepth / 2);
+    this.skirt.receiveShadow = true;
+    this.group.add(this.skirt);
+  }
+
+  /** 맵 경계 밖 저폴리 산맥 실루엣 — 배경 깊이감용 */
+  private buildApron(): void {
+    const border: number[] = [];
+    const stride = this.segX + 1;
+    for (let x = 0; x < this.segX; x++) border.push(x);
+    for (let z = 0; z < this.segZ; z++) border.push(z * stride + this.segX);
+    for (let x = this.segX; x > 0; x--) border.push(this.segZ * stride + x);
+    for (let z = this.segZ; z > 0; z--) border.push(z * stride);
+    const source = this.geometry.getAttribute('position');
+    const sourceColor = this.geometry.getAttribute('color');
+    const positions: number[] = [], uv: number[] = [], colors: number[] = [], indices: number[] = [];
+    const rings = this.env.landscape ? 12 : 1;
+    border.forEach((vertex, i) => {
+      const x = source.getX(vertex), z = source.getZ(vertex);
+      const reach = this.env.landscape ? 330 + 70 * Math.sin(x * .008 + z * .006) : 100;
+      for (let ring = 0; ring <= rings; ring++) {
+        const t = ring / rings;
+        const px = x * (1 + reach * t / BALANCE.mapWidth), pz = z * (1 + reach * t / BALANCE.mapDepth);
+        const outer = this.env.landscape ? surroundingHeight(px, pz) + .08 : -4;
+        const y = THREE.MathUtils.lerp(source.getY(vertex) - .02, outer, t * t * (3 - 2 * t));
+        positions.push(px, y, pz);
+        uv.push(px / BALANCE.mapWidth + 0.5, 0.5 - pz / BALANCE.mapDepth);
+        colors.push(sourceColor.getX(vertex), sourceColor.getY(vertex), sourceColor.getZ(vertex));
+      }
+      for (let ring = 0; ring < rings; ring++) {
+        const a = i * (rings + 1) + ring, b = ((i + 1) % border.length) * (rings + 1) + ring;
+        indices.push(a, b, a + 1, b, b + 1, a + 1);
+      }
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setIndex(indices); geo.computeVertexNormals();
+    const material = this.material.clone();
+    material.side = THREE.DoubleSide;
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.position.copy(this.mesh.position);
+    mesh.receiveShadow = true;
+    this.ridges.push(mesh);
+    this.group.add(mesh);
+  }
+
+  private buildRidges(rng: Rng): void {
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(this.env.groundColor).multiplyScalar(0.62),
+      roughness: 1,
+      metalness: 0,
+      flatShading: true,
+      fog: true,
+    });
+
+    const makeRidge = (cx: number, cz: number, len: number, alongX: boolean, heightScale = 1) => {
+      const count = 28;
+      const geo = new THREE.BufferGeometry();
+      const verts: number[] = [];
+      for (let i = 0; i < count; i++) {
+        const t0 = (i / count - 0.5) * len;
+        const t1 = ((i + 1) / count - 0.5) * len;
+        const wave = Math.sin(i * 0.71) * 35 + Math.sin(i * 1.93) * 18;
+        const h = (105 + rng.next() * 175 + wave) * heightScale;
+        const mid = (t0 + t1) / 2;
+        if (alongX) {
+          verts.push(cx + t0, 0, cz, cx + t1, 0, cz, cx + mid, h, cz);
+        } else {
+          verts.push(cx, 0, cz + t0, cx, 0, cz + t1, cx, h, cz + mid);
+        }
+      }
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, mat);
+      m.frustumCulled = false;
+      this.ridges.push(m);
+      this.group.add(m);
+    };
+
+    const w = BALANCE.mapWidth;
+    const d = BALANCE.mapDepth;
+    makeRidge(w / 2, -230, w * 1.8, true, 1.0);
+    makeRidge(w / 2, -470, w * 2.35, true, 1.55);
+    makeRidge(w / 2, d + 270, w * 1.8, true, 1.05);
+    makeRidge(w / 2, d + 540, w * 2.4, true, 1.6);
+    makeRidge(-300, d / 2, d * 2.1, false, 1.1);
+    makeRidge(w + 320, d / 2, d * 2.1, false, 1.1);
+  }
+
+  /**
+   * 장식 InstancedMesh — 나무/바위. 경로에서 일정 거리 밖에만 배치한다.
+   * 개수는 성능 프리셋에 따라 조절한다.
+   */
+  buildDecor(preset: PerformancePreset, seed = 20240): void {
+    this.clearDecor();
+    const rng = new Rng(seed);
+
+    const sites: SettlementSite[] = [];
+    const landmarks = chapterSites(this.env.landscape);
+    for (let attempt = 0; attempt < 180 && sites.length < Math.round((this.env.landscape ? 0 : 8) * preset.decorScale); attempt++) {
+      const x = rng.range(65, BALANCE.mapWidth - 65), z = rng.range(50, BALANCE.mapDepth - 50);
+      if (this.heightAt(x, z) < 0 || distanceToPath(this.path, x, z) < 120 || this.reserved.some(p => Math.hypot(x - p.x, z - p.z) < 100)
+        || sites.some(p => Math.hypot(x - p.x, z - p.z) < 100)) continue;
+      sites.push({ x, y: this.heightAt(x, z), z, angle: rng.range(-0.5, 0.5) });
+    }
+    const architecture = settlementMeshes(sites);
+    const trees = Math.round((this.env.landscape === 'loess' ? 34 : this.env.landscape === 'floodplain' ? 52 : this.env.landscape === 'lakeside' ? 100 : 190) * preset.decorScale);
+    const rocks = Math.round(120 * preset.decorScale);
+    const flags = Math.round(22 * preset.decorScale);
+    const grasses = Math.round((this.env.landscape ? 900 : 1700) * preset.decorScale);
+
+    const trunkGeo = treeTrunkGeometry();
+    const crownGeo = foliageGeometry(13, 19);
+    const crownSmallGeo = foliageGeometry(9, 31);
+    const rockGeo = rockGeometry();
+    const poleGeo = new THREE.CylinderGeometry(1, 1, 52, 4);
+    const bannerGeo = new THREE.PlaneGeometry(16, 26, 12, 8);
+    const grassGeo = grassGeometry();
+    const cloth = bannerGeo.getAttribute('position');
+    for (let i = 0; i < cloth.count; i++) {
+      const t = (cloth.getX(i) + 8) / 16;
+      cloth.setZ(i, Math.sin(t * 7 + cloth.getY(i) * 0.13) * 2.4 * t);
+    }
+    bannerGeo.computeVertexNormals();
+
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: 1 });
+    const treeColor = this.env.biome === 'drylands' ? 0x5e6334 : this.env.biome === 'highlands' ? 0x3d5140 : 0x42683f;
+    const crownMat = new THREE.MeshStandardMaterial({ color: treeColor, roughness: 0.9, vertexColors: true, side: THREE.DoubleSide });
+    const crownSmallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(treeColor).multiplyScalar(1.14), roughness: 0.9, vertexColors: true, side: THREE.DoubleSide });
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x8a887b, map: this.material.map, normalMap: this.material.normalMap, normalScale: new THREE.Vector2(0.7, 0.7), roughness: 0.94 });
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a2c1e, roughness: 1 });
+    // 한(漢)군 깃발 — 방어측 진영색
+    const bannerMat = new THREE.MeshStandardMaterial({
+      color: this.env.landscape === 'loess' ? 0x874a35 : this.env.landscape === 'lakeside' ? 0x345c53 : 0x2f4f7a,
+      roughness: 0.95,
+      side: THREE.DoubleSide,
+    });
+    const grassMat = new THREE.MeshStandardMaterial({ color: 0x9b9f65, roughness: 1, vertexColors: true, side: THREE.DoubleSide });
+
+    const trunkIM = new THREE.InstancedMesh(trunkGeo, trunkMat, trees);
+    const crownIM = new THREE.InstancedMesh(crownGeo, crownMat, trees);
+    const crownSmallIM = new THREE.InstancedMesh(crownSmallGeo, crownSmallMat, trees * 2);
+    const rockIM = new THREE.InstancedMesh(rockGeo, rockMat, rocks);
+    const poleIM = new THREE.InstancedMesh(poleGeo, poleMat, flags);
+    const bannerIM = new THREE.InstancedMesh(bannerGeo, bannerMat, flags);
+    const grassIM = new THREE.InstancedMesh(grassGeo, grassMat, grasses);
+    trunkIM.castShadow = crownIM.castShadow = crownSmallIM.castShadow = rockIM.castShadow = true;
+    poleIM.castShadow = bannerIM.castShadow = true;
+
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const pos = new THREE.Vector3();
+    const scl = new THREE.Vector3();
+
+    let placed = 0;
+    let guard = 0;
+    while (placed < trees && guard++ < trees * 40) {
+      const x = rng.range(8, BALANCE.mapWidth - 8);
+      const z = rng.range(8, BALANCE.mapDepth - 8);
+      // 경로/슬롯 위에는 두지 않는다
+      if (landmarks.some(([lx, lz]) => Math.hypot(x - lx, z - lz) < 70)) continue;
+      if (this.env.landscape && this.heightAt(x, z) < 1) continue;
+      if (distanceToPath(this.path, x, z) < 70) continue;
+      if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 49) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
+      const y = this.heightAt(x, z);
+      const s = rng.range(0.7, 1.5);
+      q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
+      scl.set(s, s, s);
+      pos.set(x, y + 8 * s, z);
+      m.compose(pos, q, scl);
+      trunkIM.setMatrixAt(placed, m);
+      pos.set(x, y + 26 * s, z);
+      m.compose(pos, q, scl);
+      crownIM.setMatrixAt(placed, m);
+      crownIM.setColorAt(placed, new THREE.Color().setHSL(rng.range(0.20, 0.29), 0.17, rng.range(0.65, 0.9)));
+      const lean = rng.range(-5, 5);
+      pos.set(x + lean, y + 34 * s, z + rng.range(-4, 4));
+      scl.set(s * 0.78, s * 0.72, s * 0.78);
+      m.compose(pos, q, scl);
+      crownSmallIM.setMatrixAt(placed * 2, m);
+      pos.set(x - lean * 0.8, y + 25 * s, z + rng.range(-5, 5));
+      scl.set(s * 0.7, s * 0.62, s * 0.7);
+      m.compose(pos, q, scl);
+      crownSmallIM.setMatrixAt(placed * 2 + 1, m);
+      placed++;
+    }
+    trunkIM.count = placed;
+    crownIM.count = placed;
+    crownSmallIM.count = placed * 2;
+
+    let rplaced = 0;
+    guard = 0;
+    while (rplaced < rocks && guard++ < rocks * 40) {
+      const x = rng.range(8, BALANCE.mapWidth - 8);
+      const z = rng.range(8, BALANCE.mapDepth - 8);
+      if (landmarks.some(([lx, lz]) => Math.hypot(x - lx, z - lz) < 65)) continue;
+      if (this.env.landscape && this.heightAt(x, z) < 0) continue;
+      if (distanceToPath(this.path, x, z) < 46) continue;
+      if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 49) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
+      const y = this.heightAt(x, z);
+      const s = rng.range(0.5, 1.4);
+      q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
+      scl.set(s, s * 0.65, s);
+      pos.set(x, y + 2, z);
+      m.compose(pos, q, scl);
+      rockIM.setMatrixAt(rplaced, m);
+      rplaced++;
+    }
+    rockIM.count = rplaced;
+
+    // 깃발은 경로에서 조금 더 가까이(진영 느낌) 두되 리본 위는 피한다.
+    let fplaced = 0;
+    guard = 0;
+    while (fplaced < flags && guard++ < flags * 60) {
+      const x = rng.range(40, BALANCE.mapWidth - 40);
+      const z = rng.range(40, BALANCE.mapDepth - 40);
+      if (landmarks.some(([lx, lz]) => Math.hypot(x - lx, z - lz) < 65)) continue;
+      if (this.env.landscape && this.heightAt(x, z) < 0) continue;
+      const d = distanceToPath(this.path, x, z);
+      if (d < 62 || d > 150) continue;
+      if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 49) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
+      const y = this.heightAt(x, z);
+      const rot = rng.range(0, Math.PI * 2);
+      q.setFromAxisAngle(_up, rot);
+      scl.set(1, 1, 1);
+      pos.set(x, y + 26, z);
+      m.compose(pos, q, scl);
+      poleIM.setMatrixAt(fplaced, m);
+      // 깃발 천은 장대 옆에 붙는다
+      pos.set(x + Math.cos(rot) * 8, y + 38, z + Math.sin(rot) * 8);
+      m.compose(pos, q, scl);
+      bannerIM.setMatrixAt(fplaced, m);
+      fplaced++;
+    }
+    poleIM.count = fplaced;
+    bannerIM.count = fplaced;
+
+    let gplaced = 0;
+    guard = 0;
+    while (gplaced < grasses && guard++ < grasses * 25) {
+      const x = rng.range(8, BALANCE.mapWidth - 8);
+      const z = rng.range(8, BALANCE.mapDepth - 8);
+      if (this.env.landscape && this.heightAt(x, z) < 0) continue;
+      const roadDist = distanceToPath(this.path, x, z);
+      if (roadDist < 62 || roadDist > 260) continue;
+      if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 49) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
+      const y = this.heightAt(x, z);
+      const s = rng.range(0.45, 1.15);
+      q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
+      scl.set(s, s, s);
+      pos.set(x, y + 5.5 * s, z);
+      m.compose(pos, q, scl);
+      grassIM.setMatrixAt(gplaced++, m);
+    }
+    grassIM.count = gplaced;
+
+    // Low-cost silhouette forest on the outer terrain keeps every orbit angle populated.
+    const outerTrees = Math.round((this.env.landscape === 'loess' ? 140 : this.env.landscape === 'floodplain' ? 240 : 680) * preset.decorScale);
+    const outerTrunks = new THREE.InstancedMesh(trunkGeo.clone(), trunkMat.clone(), outerTrees);
+    const outerCrowns = new THREE.InstancedMesh(crownGeo.clone(), crownMat.clone(), outerTrees);
+    let oplaced = 0;
+    guard = 0;
+    while (oplaced < outerTrees && guard++ < outerTrees * 30) {
+      const x = rng.range(-900, BALANCE.mapWidth + 900);
+      const z = rng.range(-650, BALANCE.mapDepth + 650);
+      if (x > -80 && x < BALANCE.mapWidth + 80 && z > -80 && z < BALANCE.mapDepth + 80) continue;
+      const lx = x - BALANCE.mapWidth / 2;
+      const lz = z - BALANCE.mapDepth / 2;
+      // Shared relief function prevents trees floating above the surrounding hills.
+      const y = surroundingHeight(lx, lz) - 1.8;
+      if (landformNoise(lx * 1.7, lz * 1.7) < 0.38) continue;
+      const s = rng.range(1.2, 3.1);
+      q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
+      scl.set(s, s, s);
+      pos.set(x, y + 8 * s, z); m.compose(pos, q, scl); outerTrunks.setMatrixAt(oplaced, m);
+      pos.set(x, y + 27 * s, z); m.compose(pos, q, scl); outerCrowns.setMatrixAt(oplaced, m);
+      outerCrowns.setColorAt(oplaced, new THREE.Color().setHSL(rng.range(0.21, 0.29), 0.16, rng.range(0.52, 0.86)));
+      oplaced++;
+    }
+    outerTrunks.count = outerCrowns.count = oplaced;
+    outerTrunks.instanceMatrix.needsUpdate = outerCrowns.instanceMatrix.needsUpdate = true;
+    outerTrunks.castShadow = outerCrowns.castShadow = preset.shadows;
+
+    const outcrops = new THREE.InstancedMesh(rockGeo.clone(), rockMat.clone(), Math.round(160 * preset.decorScale));
+    for (let i = 0; i < outcrops.count; i++) {
+      const angle = rng.range(0, Math.PI * 2);
+      const x = BALANCE.mapWidth / 2 + Math.cos(angle) * rng.range(820, 1450);
+      const z = BALANCE.mapDepth / 2 + Math.sin(angle) * rng.range(610, 1020);
+      const y = surroundingHeight(x - BALANCE.mapWidth / 2, z - BALANCE.mapDepth / 2);
+      const size = rng.range(2.5, 8);
+      pos.set(x, y - 3, z);
+      q.setFromAxisAngle(_up, angle);
+      scl.set(size * 1.7, size, size);
+      m.compose(pos, q, scl);
+      outcrops.setMatrixAt(i, m);
+      outcrops.setColorAt(i, new THREE.Color().setScalar(rng.range(0.65, 1)));
+    }
+    outcrops.castShadow = preset.shadows;
+    outcrops.receiveShadow = true;
+    this.decor.push(outcrops);
+
+    trunkIM.instanceMatrix.needsUpdate = true;
+    crownIM.instanceMatrix.needsUpdate = true;
+    crownSmallIM.instanceMatrix.needsUpdate = true;
+    rockIM.instanceMatrix.needsUpdate = true;
+    poleIM.instanceMatrix.needsUpdate = true;
+    bannerIM.instanceMatrix.needsUpdate = true;
+    grassIM.instanceMatrix.needsUpdate = true;
+
+    this.decor.push(...architecture, trunkIM, crownIM, crownSmallIM, rockIM, poleIM, bannerIM, grassIM, outerTrunks, outerCrowns);
+    for (const d of this.decor) this.group.add(d);
+    if (this.env.landscape) {
+      this.chapter = new ChapterLandscape(this.env.landscape, this,
+        (x, z) => Math.min(distanceToPath(this.path, x, z), ...this.reserved.map(p => Math.hypot(x - p.x, z - p.z))), preset.decorScale);
+      this.group.add(this.chapter.group);
+    }
+  }
+
+  update(dt: number): void { this.chapter?.update(dt); }
+
+  private clearDecor(): void {
+    this.chapter?.dispose(); this.chapter = null;
+    for (const d of this.decor) {
+      this.group.remove(d);
+      d.geometry.dispose();
+      (d.material as THREE.Material).dispose();
+      d.dispose();
+    }
+    this.decor.length = 0;
+  }
+
+  /** 지형 높이 조회 (쌍선형 보간). 경로 주변은 0이다. */
+  heightAt(x: number, z: number): number {
+    const u = THREE.MathUtils.clamp(x / BALANCE.mapWidth, 0, 1) * this.segX;
+    const v = THREE.MathUtils.clamp(z / BALANCE.mapDepth, 0, 1) * this.segZ;
+    const x0 = Math.floor(u);
+    const z0 = Math.floor(v);
+    const x1 = Math.min(this.segX, x0 + 1);
+    const z1 = Math.min(this.segZ, z0 + 1);
+    const tx = u - x0;
+    const tz = v - z0;
+    const w = this.segX + 1;
+    const h00 = this.heights[z0 * w + x0];
+    const h10 = this.heights[z0 * w + x1];
+    const h01 = this.heights[z1 * w + x0];
+    const h11 = this.heights[z1 * w + x1];
+    return (h00 * (1 - tx) + h10 * tx) * (1 - tz) + (h01 * (1 - tx) + h11 * tx) * tz;
+  }
+
+  dispose(): void {
+    this.clearDecor();
+    if (this.skirt) {
+      this.skirt.geometry.dispose();
+      (this.skirt.material as THREE.Material).dispose();
+      this.group.remove(this.skirt);
+      this.skirt = null;
+    }
+    for (const r of this.ridges) {
+      r.geometry.dispose();
+      this.group.remove(r);
+    }
+    (this.ridges[0]?.material as THREE.Material)?.dispose();
+    this.ridges.length = 0;
+    this.geometry.dispose();
+    this.material.dispose();
+    this.ownedTextures.forEach(texture => texture.dispose());
+    this.group.clear();
+  }
+}
+
+const _up = new THREE.Vector3(0, 1, 0);
+
+/** Broad, non-periodic-looking relief assembled from incommensurate wavelengths. */
+function landformNoise(x: number, z: number): number {
+  const a = Math.sin(x * 0.0047 + Math.cos(z * 0.0031) * 1.73);
+  const b = Math.sin(x * 0.0083 - z * 0.0059 + 1.17);
+  const c = Math.cos(x * 0.0021 + z * 0.0097 - 0.63);
+  const d = Math.sin(Math.hypot(x + 430, z - 270) * 0.0061);
+  return THREE.MathUtils.clamp(0.5 + a * 0.21 + b * 0.14 + c * 0.1 + d * 0.07, 0, 1);
+}
+
+/** 점에서 폴리라인까지의 최단 거리 */
+export function distanceToPath(path: Path, x: number, z: number): number {
+  let best = Infinity;
+  const pts = path.points;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, z0] = pts[i];
+    const [x1, z1] = pts[i + 1];
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const len2 = dx * dx + dz * dz;
+    let t = ((x - x0) * dx + (z - z0) * dz) / len2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const px = x0 + dx * t;
+    const pz = z0 + dz * t;
+    const d = Math.hypot(x - px, z - pz);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/** Continuous foothills with eroded ridges; x/z are relative to the map centre. */
+function surroundingHeight(x: number, z: number): number {
+  const nx = Math.max(0, (Math.abs(x) - BALANCE.mapWidth * 0.48) / (BALANCE.mapWidth * 3.4 * 0.32));
+  const nz = Math.max(0, (Math.abs(z) - BALANCE.mapDepth * 0.48) / (BALANCE.mapDepth * 3.8 * 0.32));
+  const edge = THREE.MathUtils.clamp(Math.max(nx, nz), 0, 1);
+  const broad = landformNoise(x, z);
+  const erosion = landformNoise(x * 2.37 + 311, z * 2.11 - 179);
+  const ridge = Math.pow(1 - Math.abs(broad * 2 - 1), 3);
+  return -4 + Math.pow(edge, 1.65) * (65 + broad * 135 + ridge * 145)
+    + (erosion - 0.5) * edge * 32;
+}

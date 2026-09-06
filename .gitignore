@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+.vite/
+
+# 접속 정보 — 절대 커밋하지 않는다
+.env
+.env.*
+!.env.example
+
+# 원본 아트(모델 하나가 60~90MB). 게임에 들어가는 것은 굽고 난 결과물
+# public/assets/models/*.glb 이고, 그건 커밋한다. 원본은 저장소 밖에 둔다.
+img/
+
+# 개발 중 남는 것들
+.vite-dev.*.log
+artifacts/
+scripts/_tmp-*.ts

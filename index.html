@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="description" content="삼국지 Last Stand — 망루와 계략으로 지켜내는 최후의 방어선. 삼국지 전략 타워 디펜스." />
+    <meta name="theme-color" content="#101511" />
+    <title>삼국지 Last Stand</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/src/ui/hud.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- three가 그리는 캔버스가 여기에 들어간다 -->
+      <div id="canvas-container"></div>
+
+      <!-- HUD는 three 안이 아니라 canvas 위 DOM 오버레이다 -->
+      <div id="hud-root" aria-live="polite"></div>
+
+      <!-- 코인 비행 등 화면 좌표 연출용 레이어 (포인터 통과) -->
+      <div id="fx-layer" aria-hidden="true"></div>
+
+      <!-- 디버그 패널 (?debug=1 일 때만 표시) -->
+      <div id="debug-panel" hidden></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

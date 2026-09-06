@@ -1,0 +1,49 @@
+{
+  "_readme": "모델/텍스처/음원을 넣고 여기에 한 줄 추가하면 즉시 교체된다. 지우면 프리미티브·무음으로 돌아온다. 규약은 docs/ASSETS.md 참고.",
+
+  "models": {
+    "yt_infantry": { "url": "models/soldier.glb" },
+    "yt_captain": { "url": "models/captain.glb" },
+    "xl_shield": { "url": "models/shield_soldier.glb" },
+    "xl_healer": { "url": "models/healer.glb" },
+    "zhangjiao": { "url": "models/zhangjiao.glb" },
+    "yuanshao": { "url": "models/yuanshao.glb" },
+    "archer_tower": { "url": "models/archer_tower.glb" },
+    "catapult": { "url": "models/catapult.glb" },
+    "fire_tower": { "url": "models/fire_tower.glb" },
+    "wu_marine": { "url": "models/wu_marine.glb" },
+    "wu_rattan": { "url": "models/wu_rattan.glb" },
+    "wu_raider": { "url": "models/wu_raider.glb" },
+    "ganning": { "url": "models/ganning.glb" },
+    "sunquan": { "url": "models/sunquan.glb" },
+    "cavalry": { "url": "models/cavalry.glb" },
+    "lubu": { "url": "models/lubu.glb" },
+    "hulao_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
+    "guandu_camp": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 }
+  },
+
+  "textures": {
+    "ground_dry": "textures/forest_ground_04_diff_1k.jpg",
+    "ground_dry_normal": "textures/forest_ground_04_nor_gl_1k.jpg",
+    "ground_dry_roughness": "textures/forest_ground_04_rough_1k.jpg",
+    "ground_rocky": "textures/forrest_ground_01_diff_1k.jpg",
+    "ground_rocky_normal": "textures/forrest_ground_01_nor_gl_1k.jpg",
+    "ground_rocky_roughness": "textures/forrest_ground_01_rough_1k.jpg",
+    "ground_forest": "textures/sparse_grass_diff_1k.jpg",
+    "ground_forest_normal": "textures/sparse_grass_nor_gl_1k.jpg",
+    "ground_forest_roughness": "textures/sparse_grass_rough_1k.jpg",
+    "path_dirt": "textures/forest_ground_04_diff_1k.jpg",
+    "path_dirt_normal": "textures/forest_ground_04_nor_gl_1k.jpg",
+    "path_dirt_roughness": "textures/forest_ground_04_rough_1k.jpg"
+  },
+
+  "audio": {
+    "sfx_fire_attack": "audio/fire.mp3",
+    "sfx_ice_storm": "audio/cold.mp3",
+    "sfx_bow": "audio/arrow.mp3",
+    "sfx_catapult": "audio/rock.mp3",
+    "sfx_castle_strike_soldier": "audio/soldier.mp3",
+    "sfx_castle_strike_boss": "audio/middle_boss.mp3",
+    "sfx_cannon": "audio/cannon.mp3"
+  }
+}

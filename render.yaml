@@ -1,0 +1,22 @@
+# render.com 블루프린트 — 서비스 하나로 게임과 API를 같이 올린다.
+#
+# 대시보드에서 New > Blueprint 를 고르고 이 저장소를 연결하면 아래대로 만들어진다.
+# 토르소 접속 정보만 대시보드에서 직접 채운다(sync: false = 저장소에 값이 없다).
+services:
+  - type: web
+    name: three-kingdoms-td
+    runtime: node
+    plan: free
+    region: singapore
+    # 빌드에서 VITE_API_BASE=/api 를 박는다 — 배포된 게임은 같은 오리진의 API를 쓴다.
+    # 로컬 .env 에서는 비워 두므로 개발할 때는 서버 없이 localStorage 로 돈다.
+    buildCommand: npm ci && VITE_API_BASE=/api npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

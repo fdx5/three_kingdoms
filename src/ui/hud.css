@@ -1,0 +1,1160 @@
+/* ─────────────────────────────────────────────────────────────────────
+   삼국지 TD — HUD
+   three 안이 아니라 canvas 위 DOM 오버레이. 한글 렌더링·터치 타깃·
+   safe-area·접근성이 전부 여기서 해결된다.
+   ───────────────────────────────────────────────────────────────────── */
+
+:root {
+  --ink: #f4ecdc;
+  --ink-dim: #b9ae98;
+  --panel: rgba(26, 22, 17, 0.92);
+  --panel-solid: #1f1a14;
+  --edge: rgba(212, 160, 23, 0.38);
+  --gold: #f0c04a;
+  --jade: #3fd0c9;
+  --blood: #d9483f;
+  --han: #4a7fbd;
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+
+  /* 태블릿에서 과하게 커지지 않도록 상한을 둔다 */
+  --ui: clamp(13px, 1.15vw + 8px, 17px);
+  --tap: 44px;
+
+  --radius: 10px;
+  --shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #100d0a;
+  color: var(--ink);
+  font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+  font-size: var(--ui);
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  height: 100dvh; /* 100vh는 모바일 주소창 때문에 잘린다 */
+}
+
+#canvas-container {
+  position: absolute;
+  inset: 0;
+  touch-action: none; /* 캔버스에서 브라우저 제스처 차단 */
+}
+
+#hud-root,
+#fx-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#hud-root > * {
+  pointer-events: auto;
+}
+
+/* ── 상단 바 ───────────────────────────────────────────────────────── */
+
+.topbar {
+  position: absolute;
+  top: calc(var(--safe-t) + 8px);
+  left: calc(var(--safe-l) + 8px);
+  right: calc(var(--safe-r) + 8px);
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 0 14px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+
+.chip__icon {
+  font-size: 1.15em;
+  line-height: 1;
+}
+
+.chip__label {
+  font-size: 0.78em;
+  color: var(--ink-dim);
+  letter-spacing: 0.04em;
+}
+
+.chip__value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1.05em;
+}
+
+#gold-chip .chip__value {
+  color: var(--gold);
+  transition: transform 0.12s ease;
+}
+
+#gold-chip.pop .chip__value {
+  transform: scale(1.22);
+}
+
+/* 성 체력바: 실제 값은 즉시, 흰색 지연 게이지가 0.5초 뒤따른다 */
+.castle-bar {
+  position: relative;
+  width: clamp(110px, 20vw, 220px);
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.castle-bar__lag,
+.castle-bar__fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+}
+
+.castle-bar__lag {
+  background: rgba(255, 255, 255, 0.62);
+  transition: transform 0.5s cubic-bezier(0.22, 0.8, 0.3, 1) 0.15s;
+}
+
+.castle-bar__fill {
+  background: linear-gradient(90deg, #4a7fbd, #6fa8dc);
+}
+
+#castle-chip.warn .castle-bar__fill {
+  background: linear-gradient(90deg, #b8322a, #e05a4f);
+  animation: warnPulse 1s ease-in-out infinite;
+}
+
+#castle-chip.warn .chip__value {
+  color: #ff8b80;
+}
+
+@keyframes warnPulse {
+  50% {
+    filter: brightness(1.5);
+  }
+}
+
+.topbar__spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 다음 웨이브 카운트다운 링 */
+.countdown-ring {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+
+.countdown-ring circle {
+  fill: none;
+  stroke-width: 3.5;
+}
+
+.countdown-ring .track {
+  stroke: rgba(255, 255, 255, 0.16);
+}
+
+.countdown-ring .bar {
+  stroke: var(--jade);
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset 0.12s linear;
+}
+
+/* ── 버튼 ──────────────────────────────────────────────────────────── */
+
+button {
+  font: inherit;
+  color: inherit;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 14px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.08s ease, opacity 0.12s ease;
+  touch-action: manipulation; /* 더블탭 줌 방지 */
+}
+
+button:hover:not(:disabled) {
+  background: rgba(48, 40, 30, 0.94);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--jade);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, #d4a017, #a87b0d);
+  border-color: #f0c04a;
+  color: #201a0c;
+  font-weight: 700;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #e6b02a, #b98a13);
+}
+
+.btn-danger {
+  border-color: rgba(217, 72, 63, 0.65);
+  color: #ff9a91;
+}
+
+.btn-ghost {
+  background: rgba(20, 17, 13, 0.72);
+}
+
+.seg {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.seg button {
+  min-height: 36px;
+  min-width: 40px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.9em;
+}
+
+.seg button[aria-pressed='true'] {
+  background: rgba(240, 192, 74, 0.2);
+  border-color: var(--edge);
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ── 하단 조작 영역 (엄지 도달 범위) ──────────────────────────────── */
+
+.bottombar {
+  position: absolute;
+  left: calc(var(--safe-l) + 8px);
+  right: calc(var(--safe-r) + 8px);
+  bottom: calc(var(--safe-b) + 10px);
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.bottombar__left,
+.bottombar__right {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.bottombar__center {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  /* 좌우 버튼이 먼저 자리를 잡고 남는 폭을 계략이 쓴다 */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ── 계략 카드 ─────────────────────────────────────────────────────── */
+
+.stratagems {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  /* 카드가 늘면 가로로 밀리게 둔다 — 줄바꿈은 엄지 도달 범위를 벗어난다 */
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px;
+}
+
+.stratagems::-webkit-scrollbar {
+  display: none;
+}
+
+.stratcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  flex: 0 0 auto;
+  min-width: 68px;
+  min-height: var(--tap);
+  padding: 6px 10px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.1;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.stratcard:disabled {
+  cursor: default;
+}
+
+/* 쓸 수 있을 때만 금테가 살아난다 — 훑어보고 바로 알 수 있어야 한다 */
+.stratcard--ready {
+  opacity: 1;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(240, 192, 74, 0.18) inset;
+}
+
+.stratcard--ready:active {
+  transform: translateY(1px);
+}
+
+.stratcard__glyph {
+  font-size: 1.15em;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.stratcard__name {
+  font-size: 0.78em;
+}
+
+.stratcard__note {
+  font-size: 0.72em;
+  color: var(--ink-dim);
+}
+
+.stratcard--ready .stratcard__note {
+  color: var(--gold);
+}
+
+/* 발동 순간의 반응 */
+.stratcard--cast {
+  animation: stratcast 0.42s ease-out;
+}
+
+@keyframes stratcast {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(240, 192, 74, 0.7);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 18px rgba(240, 192, 74, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stratcard--cast {
+    animation: none;
+  }
+}
+
+/* 좁은 화면에서는 이름을 빼고 글자와 비용만 남긴다 */
+@media (max-width: 720px) {
+  .stratcard {
+    min-width: 52px;
+    padding: 6px;
+  }
+  .stratcard__name {
+    display: none;
+  }
+}
+
+.call-wave {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.15;
+}
+
+.call-wave__bonus {
+  font-size: 0.76em;
+  color: var(--gold);
+}
+
+/* ── 타워/건설 패널 ────────────────────────────────────────────────── */
+
+.panel {
+  position: absolute;
+  z-index: 20;
+  width: min(340px, calc(100vw - 24px));
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+/* 데스크톱: 슬롯 옆 팝오버 */
+.panel--popover {
+  transform: translate(-50%, -100%);
+}
+
+/* 모바일: 하단 시트 */
+@media (max-width: 720px), (pointer: coarse) {
+  .panel--popover {
+    left: 50% !important;
+    top: auto !important;
+    bottom: calc(var(--safe-b) + 72px);
+    transform: translateX(-50%);
+    width: calc(100vw - 20px);
+    max-width: 460px;
+  }
+}
+
+.panel__title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 1.05em;
+  font-weight: 700;
+}
+
+.panel__level {
+  font-size: 0.82em;
+  color: var(--gold);
+}
+
+.bows {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 10px;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+.bows__on {
+  filter: none;
+}
+
+.bows__off {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+.statgrid {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 5px 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 0.92em;
+}
+
+.statgrid__label {
+  color: var(--ink-dim);
+}
+
+.statgrid__now {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.statgrid__arrow {
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+.statgrid__next {
+  font-variant-numeric: tabular-nums;
+  color: var(--jade);
+  font-weight: 700;
+}
+
+.panel__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.panel__actions button {
+  flex: 1;
+}
+
+.panel__note {
+  margin-top: 8px;
+  font-size: 0.84em;
+  color: var(--ink-dim);
+}
+
+.panel__note--warn {
+  color: #ffab9e;
+}
+
+.targeting {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.targeting button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 0.85em;
+  box-shadow: none;
+}
+
+.targeting button[aria-pressed='true'] {
+  background: rgba(63, 208, 201, 0.18);
+  border-color: var(--jade);
+  color: var(--jade);
+}
+
+/* ── 배너 ──────────────────────────────────────────────────────────── */
+
+.banner {
+  position: absolute;
+  top: calc(var(--safe-t) + 74px);
+  left: 50%;
+  transform: translate(-50%, -24px);
+  padding: 10px 26px;
+  background: linear-gradient(180deg, rgba(30, 24, 17, 0.95), rgba(20, 16, 11, 0.95));
+  border: 1px solid var(--edge);
+  border-left: 4px solid var(--gold);
+  border-radius: 8px;
+  font-size: 1.18em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  pointer-events: none;
+}
+
+.banner.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.banner--boss {
+  border-left-color: var(--blood);
+  color: #ffd9d4;
+  background: linear-gradient(180deg, rgba(58, 20, 17, 0.95), rgba(32, 12, 10, 0.95));
+}
+
+/* ── 보스 체력바 ───────────────────────────────────────────────────── */
+
+.bossbar {
+  position: absolute;
+  top: calc(var(--safe-t) + 118px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  padding: 6px 10px 8px;
+  background: rgba(24, 12, 10, 0.85);
+  border: 1px solid rgba(217, 72, 63, 0.5);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.bossbar__name {
+  font-size: 0.82em;
+  color: #ffb3aa;
+  margin-bottom: 4px;
+  letter-spacing: 0.08em;
+}
+
+.bossbar__track {
+  height: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.bossbar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8f1d1d, #e05a4f);
+  transform-origin: left center;
+  transition: transform 0.12s linear;
+}
+
+/* ── 화면 좌표 연출 레이어 ─────────────────────────────────────────── */
+
+.coin {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffe9a8, #d4a017 62%, #8a6708);
+  box-shadow: 0 0 10px rgba(240, 192, 74, 0.75);
+  will-change: transform, opacity;
+}
+
+.coin--boss {
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+}
+
+.dmgnum {
+  position: absolute;
+  font-size: 0.86em;
+  font-weight: 700;
+  color: #fff3d0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+  will-change: transform, opacity;
+  white-space: nowrap;
+}
+
+.dmgnum--crit {
+  color: #ffd166;
+  font-size: 1.05em;
+}
+
+.hpbar {
+  position: absolute;
+  width: 34px;
+  height: 4px;
+  margin-left: -17px;
+  background: rgba(0, 0, 0, 0.65);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hpbar__fill {
+  height: 100%;
+  background: #7ec850;
+  transform-origin: left center;
+}
+
+.hpbar--low .hpbar__fill {
+  background: #d9483f;
+}
+
+/* 은은한 상시 비네트.
+   후처리 패스 대신 CSS 한 겹으로 처리한다 — 모바일에서 렌더 타깃을 하나 더
+   돌리는 비용 대비 효과가 낮다. low 프리셋에서는 클래스로 끈다. */
+.ambient-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, transparent 62%, rgba(10, 7, 4, 0.24) 100%);
+}
+
+.ambient-vignette[hidden] {
+  display: none;
+}
+
+/* 성 피격 붉은 비네트 */
+.vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(180, 20, 12, 0.62) 100%);
+  transition: opacity 0.3s ease;
+}
+
+.vignette.show {
+  opacity: 1;
+  transition: opacity 0.06s ease;
+}
+
+/* ── 오버레이 (승패/설정/일시정지/세로모드) ───────────────────────── */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-t) + 16px) 16px calc(var(--safe-b) + 16px);
+  background: rgba(8, 6, 4, 0.82);
+  backdrop-filter: blur(4px);
+}
+
+.overlay__card {
+  width: min(460px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 22px;
+  background: var(--panel-solid);
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  touch-action: pan-y; /* HUD 스크롤 영역은 제스처 차단의 예외 */
+}
+
+.overlay__title {
+  margin: 0 0 4px;
+  font-size: 1.7em;
+  letter-spacing: 0.1em;
+}
+
+.overlay__sub {
+  margin: 0 0 16px;
+  color: var(--ink-dim);
+  font-size: 0.92em;
+}
+
+.stars {
+  font-size: 2em;
+  letter-spacing: 0.1em;
+  margin-bottom: 14px;
+}
+
+.stars__off {
+  opacity: 0.22;
+}
+
+.statlist {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 12px;
+  margin-bottom: 18px;
+  font-size: 0.95em;
+}
+
+.statlist dt {
+  color: var(--ink-dim);
+}
+
+.statlist dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.overlay__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.overlay__actions button {
+  flex: 1;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--tap);
+  padding: 4px 0;
+}
+
+.setting-row label {
+  flex: 1;
+}
+
+.setting-row input[type='range'] {
+  flex: 1;
+  max-width: 190px;
+  height: var(--tap);
+  accent-color: var(--gold);
+}
+
+.setting-row .seg {
+  box-shadow: none;
+}
+
+.hint {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  background: rgba(63, 208, 201, 0.1);
+  border-left: 3px solid var(--jade);
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: #cfeeec;
+}
+
+/* 세로 모드 안내 */
+#rotate-notice {
+  display: none;
+}
+
+@media (orientation: portrait) and (max-width: 860px) {
+  #rotate-notice {
+    display: flex;
+  }
+}
+
+.rotate-icon {
+  font-size: 3em;
+  margin-bottom: 12px;
+  animation: rotateHint 2.4s ease-in-out infinite;
+}
+
+@keyframes rotateHint {
+  0%,
+  40% {
+    transform: rotate(0deg);
+  }
+  60%,
+  100% {
+    transform: rotate(90deg);
+  }
+}
+
+/* ── 로딩 화면 ─────────────────────────────────────────────────────── */
+
+#loading {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: #14100b;
+  transition: opacity 0.4s ease;
+}
+
+#loading.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 삼국지 분위기의 정적 일러스트 자리 */
+.loading__art {
+  width: min(360px, 74vw);
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(212, 160, 23, 0.22), transparent 62%),
+    linear-gradient(180deg, #2a2118, #171209);
+  display: grid;
+  place-items: center;
+  font-size: 2.4em;
+  letter-spacing: 0.35em;
+  color: rgba(240, 192, 74, 0.55);
+}
+
+.loading__bar {
+  width: min(320px, 70vw);
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.loading__fill {
+  height: 100%;
+  width: 0%;
+  background: var(--gold);
+  transition: width 0.2s ease;
+}
+
+.loading__label {
+  font-size: 0.88em;
+  color: var(--ink-dim);
+}
+
+/* ── 디버그 패널 ───────────────────────────────────────────────────── */
+
+/* ?debug=1 일 때만 뜬다. 상단 바와 겹치지 않도록 body.debug가 상단 바를 밀어낸다. */
+#debug-panel {
+  position: absolute;
+  top: calc(var(--safe-t) + 8px);
+  left: calc(var(--safe-l) + 8px);
+  z-index: 70;
+  padding: 6px 9px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  font-family: ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  pointer-events: none;
+}
+
+body.debug .topbar {
+  padding-left: 186px;
+}
+
+#backend-label {
+  position: absolute;
+  right: calc(var(--safe-r) + 8px);
+  top: calc(var(--safe-t) + 62px);
+  z-index: 5;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  color: rgba(244, 236, 220, 0.4);
+  pointer-events: none;
+}
+
+/* ── 좁은 화면: 상단 바를 아이콘 위주로 압축 ─────────────────────── */
+
+@media (max-width: 560px) {
+  .chip {
+    padding: 0 10px;
+    gap: 6px;
+  }
+  .chip__label {
+    display: none;
+  }
+  .castle-bar {
+    width: 82px;
+  }
+}
+
+/* ── 접근성 ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .banner,
+  .castle-bar__lag,
+  .countdown-ring .bar,
+  #gold-chip .chip__value {
+    transition: none !important;
+  }
+  .rotate-icon,
+  #castle-chip.warn .castle-bar__fill {
+    animation: none !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── 레벨 제목 (상단 바 아래) ─────────────────────────────────────── */
+
+.leveltitle {
+  position: absolute;
+  top: calc(var(--safe-t) + 60px);
+  left: calc(var(--safe-l) + 10px);
+  font-size: 0.82em;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+body.debug .leveltitle {
+  left: calc(var(--safe-l) + 196px);
+}
+
+/* ── 건설 패널: 타워 종류 선택 ───────────────────────────────────── */
+
+.towerpick {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.towerpick button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--tap);
+  padding: 6px 4px;
+  box-shadow: none;
+  line-height: 1.2;
+}
+
+.towerpick button[aria-pressed='true'] {
+  background: rgba(240, 192, 74, 0.18);
+  border-color: var(--gold);
+}
+
+.towerpick__name {
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+.towerpick__cost {
+  font-size: 0.75em;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel__desc {
+  margin: -4px 0 10px;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+/* ── 레벨 선택 ────────────────────────────────────────────────────── */
+
+.levelgrid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.levelcard {
+  display: block;
+  width: 100%;
+  min-height: auto;
+  padding: 14px;
+  text-align: left;
+  border-radius: 12px;
+  line-height: 1.4;
+}
+
+.levelcard--locked {
+  opacity: 0.5;
+}
+
+.levelcard__index {
+  font-size: 0.75em;
+  letter-spacing: 0.12em;
+  color: var(--gold);
+}
+
+.levelcard__title {
+  font-size: 1.05em;
+  font-weight: 700;
+  margin: 2px 0;
+}
+
+.levelcard__meta {
+  font-size: 0.8em;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.levelcard__stars {
+  margin-top: 6px;
+  font-size: 1.1em;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+}
+
+.levelcard__lock {
+  margin-top: 6px;
+  font-size: 0.78em;
+  color: var(--ink-dim);
+}
+
+/* 승리 화면의 버튼이 3개가 되면서 좁아진다 */
+.overlay__actions button {
+  padding: 0 8px;
+  font-size: 0.92em;
+}
+@font-face {
+  font-family: 'Storm Brush'; src: url('/assets/fonts/storm-brush.woff2') format('woff2');
+  font-display: swap;
+}
+/* Cinematic calligraphy remains click-through so the battlefield stays playable. */
+.storm-title {
+  position: fixed; left: 50%; top: 40%; z-index: 120;
+  transform: translate(-50%, -50%) rotate(-5deg); opacity: 0;
+  pointer-events: none; text-align: center; color: #fff;
+  width: min(90vw, 760px); isolation: isolate;
+  text-shadow: 0 4px 8px #000, 0 0 38px #ff761f88;
+}
+.storm-title::before {
+  content: ''; position: absolute; inset: 5% -12%; z-index: -1;
+  background: radial-gradient(ellipse, #281309bf, #28130900 70%);
+  transform: skewX(-18deg);
+}
+.storm-title strong {
+  display: block; font-family: 'Storm Brush', 'KaiTi', '궁서', cursive;
+  font-size: clamp(100px, 15vw, 220px); font-weight: 400; line-height: 1.15;
+  letter-spacing: .08em; -webkit-text-stroke: 1px #fff;
+}
+.storm-title span { display: block; font-size: clamp(12px, 1.4vw, 18px); letter-spacing: .3em; margin-top: 12px; }
+.storm-title--ice { text-shadow: 0 4px 8px #00111c, 0 0 38px #54cfff; }
+.storm-title--ice::before { background: radial-gradient(ellipse, #071e39cc, #071e3900 70%); }
+@media (prefers-reduced-motion: reduce) { .storm-title { transform: translate(-50%, -50%); } }
+
+/* ── 로그인 화면 ────────────────────────────────────────────────────────
+   오버레이 카드 안에 들어가는 폼. 터치 타깃 44px 규칙을 그대로 지킨다. */
+.login__form { margin-top: 14px; }
+
+.login__row {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;
+  font-size: 0.92em; color: var(--ink-dim);
+}
+.login__row input {
+  min-height: 44px; padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--edge); border-radius: 8px;
+  color: var(--ink); font: inherit; font-size: 1.05em; letter-spacing: 0.04em;
+}
+.login__row input:focus-visible {
+  outline: 2px solid var(--jade); outline-offset: 1px; border-color: var(--jade);
+}
+.login__row input::placeholder { color: #7d7468; }
+
+/* 비어 있을 때는 자리를 차지하지 않는다 — 폼이 위아래로 흔들리지 않게 */
+.login__error { margin: 0; color: #ff9c8a; font-size: 0.9em; min-height: 1.2em; }
+.login__error:empty { min-height: 0; }
+
+.login__store { background: none; border-left-color: var(--edge); color: var(--ink-dim); }
+
+/* 레벨 선택 위쪽의 "누구로 접속했는가" 줄 */
+.accountbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px; padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--edge); border-radius: 8px;
+  font-size: 0.9em;
+}
+.accountbar__who { color: var(--ink); letter-spacing: 0.04em; }
+.accountbar__who b { color: var(--gold); font-weight: 600; }
+.accountbar button { min-height: 36px; padding: 6px 12px; font-size: 0.9em; }
