@@ -1,4 +1,11 @@
-import { defineConfig } from 'vitest/config';
+/*
+ * 이 파일은 **vite 하나만** import 한다.
+ *
+ * 예전에는 vitest/config 에서 defineConfig 를 가져왔다. 그러면 게임을 빌드하는 데
+ * 테스트 러너까지 필요해진다 — 배포에서 devDependencies 가 빠지면 설정 파일을 읽는
+ * 순간 죽는다. 테스트 설정은 vitest.config.ts 로 옮겼다.
+ */
+import { defineConfig } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
@@ -41,9 +48,5 @@ export default defineConfig({
      * CI 나 배포에서는 NODE_ENV=production 이 잡히므로 그때는 끈다.
      */
     sourcemap: process.env.NODE_ENV !== 'production',
-  },
-  test: {
-    environment: 'node',
-    include: ['tests/**/*.test.ts'],
   },
 });

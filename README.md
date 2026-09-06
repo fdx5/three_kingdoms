@@ -224,16 +224,24 @@ Web Service 를 손으로 만들었다면 Settings 에 같은 값을 넣는다.
 | 설정 | 값 |
 | ---- | -- |
 | Runtime | Node |
-| Build Command | `npm ci --include=dev && VITE_API_BASE=/api npm run build` |
+| Build Command | `npm ci && VITE_API_BASE=/api npm run build` |
 | Start Command | `npm start` |
 | Health Check Path | `/api/health` |
 | Environment | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `NODE_VERSION=22` |
 
-**devDependencies 가 설치되어야 빌드가 된다.** Render 는 Node 서비스에
+**빌드에 필요한 것은 `dependencies` 에 있다.** Render 는 Node 서비스에
 `NODE_ENV=production` 을 기본으로 넣고, 그러면 npm 이 devDependencies 를 건너뛴다.
-그런데 빌드 도구(vite, 그리고 `vite.config.ts` 가 import 하는 vitest)는 전부 거기 있다.
-실측: 그대로 두면 **12개**만 설치되고 vite 가 없다. 저장소의 `.npmrc` 에
-`include=dev` 를 박아 두어 어떤 빌드 명령을 쓰든 **147개**가 설치되게 했다.
+그래서 빌드·기동에 실제로 필요한 넷(`vite` · `tsx` · `three` · `@libsql/client`)만
+`dependencies` 에 두었다. 나머지(typescript · vitest · eslint · 에셋 파이프라인)는
+전부 `devDependencies` 다 — 배포 서버에서 돌 일이 없다.
+
+실측: `NODE_ENV=production npm ci` 로 **22개**가 깔리고 빌드가 끝난다.
+`npm 설정(.npmrc)에 기대지 않는다` — 플랫폼이 `NPM_CONFIG_PRODUCTION` 같은 환경변수를
+넣으면 프로젝트 `.npmrc` 보다 우선해서, 그 방법은 실제로 통하지 않았다.
+
+**`vite.config.ts` 는 vite 만 import 한다.** 예전에는 `vitest/config` 에서
+`defineConfig` 를 가져왔는데, 그러면 게임을 빌드하는 데 테스트 러너까지 필요해진다.
+테스트 설정은 `vitest.config.ts` 로 나눠 두었다.
 
 **`npm run build` 는 `vite build` 하나다.** 타입 검사를 여기 묶어 두면 배포가 그것 때문에
 멈춘다 — 게다가 devDependencies 가 없는 채로 `tsc` 를 부르면 전역의 다른 버전이 잡혀
