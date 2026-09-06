@@ -30,6 +30,7 @@ export const SOUND_MAP: Record<string, SoundMapping> = {
   'castle:fired': {
     arrow: 'sfx_bow',
     cannon: 'sfx_cannon',
+    flame: 'sfx_fire_burn',
   },
   'projectile:hit': 'sfx_hit',
   'enemy:leaked': 'sfx_castle_hit',

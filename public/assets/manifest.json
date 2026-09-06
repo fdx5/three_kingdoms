@@ -44,6 +44,7 @@
     "sfx_catapult": "audio/rock.mp3",
     "sfx_castle_strike_soldier": "audio/soldier.mp3",
     "sfx_castle_strike_boss": "audio/middle_boss.mp3",
-    "sfx_cannon": "audio/cannon.mp3"
+    "sfx_cannon": "audio/cannon.mp3",
+    "sfx_fire_burn": "audio/fire_burn.mp3"
   }
 }
