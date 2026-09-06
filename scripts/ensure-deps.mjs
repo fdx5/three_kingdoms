@@ -22,8 +22,12 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(join(root, 'package.json'));
 
-/** 빌드에 반드시 필요한 것들. 하나라도 없으면 설치가 안 돈 것으로 본다. */
-const needed = ['vite'];
+/**
+ * 확인할 패키지를 인자로 받는다 — 빌드는 vite, 기동은 tsx 가 있어야 한다.
+ * 하나라도 해석되지 않으면 설치가 안 돈 것으로 본다.
+ */
+const needed = process.argv.slice(2);
+if (needed.length === 0) needed.push('vite');
 
 const missing = needed.filter((name) => {
   try {

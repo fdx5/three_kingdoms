@@ -26,7 +26,34 @@ import type { Row } from '@libsql/client';
 import { db, loadEnv } from './db';
 
 loadEnv();
-const PORT = Number(process.env.PORT ?? 8787);
+
+/*
+ * 포트는 **반드시** 배포 환경이 준 것을 그대로 써야 한다.
+ *
+ * 예전에는 `Number(process.env.PORT ?? 8787)` 이었다. PORT 가 빈 문자열이면
+ * Number('') 는 0 이고, listen(0) 은 "아무 빈 포트나" 라는 뜻이라 서버가 랜덤
+ * 포트에 붙는다. render.com 은 자기가 지정한 포트만 훑으므로 그걸 못 찾고
+ * `No open ports detected` 로 배포를 실패시킨다 — 로그에는 서버가 정상적으로
+ * 떴다고 찍혀 있어서 원인이 안 보인다. PORT 가 'abc' 같은 값이면 NaN 인데,
+ * 이것도 결국 0 으로 취급돼서 같은 일이 벌어진다.
+ *
+ * parseInt 로 읽고, 1..65535 를 벗어나면 기본값으로 물러선다.
+ */
+function readPort(): number {
+  const raw = (process.env.PORT ?? '').trim();
+  const n = Number.parseInt(raw, 10);
+  if (Number.isInteger(n) && n > 0 && n <= 65535) return n;
+  if (raw) console.warn(`[server] PORT 값이 이상하다(${JSON.stringify(raw)}). 8787 로 뜬다.`);
+  return 8787;
+}
+
+const PORT = readPort();
+
+/*
+ * 0.0.0.0 에 명시적으로 붙는다. 인자를 안 주면 node 가 환경에 따라 IPv6 쪽으로만
+ * 붙는 경우가 있는데, 컨테이너 밖(로드밸런서)에서는 그게 안 보인다.
+ */
+const HOST = process.env.HOST ?? '0.0.0.0';
 const DIST = resolve(process.cwd(), 'dist');
 
 /*
@@ -177,17 +204,25 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
   const path = url.pathname.replace(/^\/api/, '') || '/';
   const method = req.method ?? 'GET';
 
+  /*
+   * /health 는 **DB 상태와 무관하게 200 이다.**
+   *
+   * 이 경로는 render.com 헬스체크가 두드리는 곳이다. DB 가 없다고 503 을 주면
+   * 배포가 통째로 실패하고 롤백된다 — 정적 파일이라도 서빙하며 살아 있자는 이
+   * 파일의 설계와 정면으로 어긋난다. 그래서 "서버는 살아 있다"는 사실만 200 으로
+   * 알리고, DB 가 어떤 상태인지는 본문의 ok/db/error 로 정직하게 말한다.
+   */
   if (path === '/health') {
     if (dbError) {
-      send(res, 503, { ok: false, db: 'unavailable', error: dbError, now: Date.now() });
+      send(res, 200, { ok: false, db: 'unavailable', error: dbError, now: Date.now() });
       return true;
     }
     try {
       const r = await client().execute('SELECT COUNT(*) AS n FROM levels');
-      send(res, 200, { ok: true, levels: num(r.rows[0]?.n), now: Date.now() });
+      send(res, 200, { ok: true, db: 'ok', levels: num(r.rows[0]?.n), now: Date.now() });
     } catch (err) {
       // 접속 정보는 있는데 실제로 못 붙는 경우 — 토큰 만료·DB 삭제 같은 것들
-      send(res, 503, {
+      send(res, 200, {
         ok: false,
         db: 'unreachable',
         error: err instanceof Error ? err.message : String(err),
@@ -489,6 +524,22 @@ const server = createServer((req, res) => {
   serveStatic(res, url.pathname);
 });
 
-server.listen(PORT, () => {
-  console.log(`[server] http://localhost:${PORT}  (API: /api, 정적: ${DIST})`);
+/*
+ * 바인딩 실패를 조용히 넘기지 않는다. 포트가 이미 잡혀 있거나 권한이 없으면
+ * 여기서 이유를 찍고 죽는다 — 안 그러면 배포 로그에 아무것도 안 남는다.
+ */
+server.on('error', (err) => {
+  console.error(`[server] ${HOST}:${PORT} 에 붙지 못했다 —`, err);
+  process.exit(1);
+});
+
+server.listen(PORT, HOST, () => {
+  const addr = server.address();
+  const bound = typeof addr === 'object' && addr ? addr.port : PORT;
+  // 실제로 붙은 포트를 찍는다. 기대한 것과 다르면 여기서 바로 보인다.
+  console.log(`[server] listening on ${HOST}:${bound}  (API: /api, 정적: ${DIST})`);
+  console.log(
+    `[server] dist ${existsSync(DIST) ? '있음' : '없음 — npm run build 필요'}, ` +
+      `DB ${dbError ? `불가: ${dbError}` : '연결 준비됨'}`,
+  );
 });
