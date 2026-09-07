@@ -113,6 +113,10 @@ export class ParticleSystem {
   private positions: Float32Array;
   private colors: Float32Array;
   private sizes: Float32Array;
+  private alphas: Float32Array;
+  private smoke: Uint8Array;
+  private activeCount = 0;
+  private color = new THREE.Color();
 
   private velX: Float32Array;
   private velY: Float32Array;
@@ -133,6 +137,8 @@ export class ParticleSystem {
     this.positions = new Float32Array(this.capacity * 3);
     this.colors = new Float32Array(this.capacity * 3);
     this.sizes = new Float32Array(this.capacity);
+    this.alphas = new Float32Array(this.capacity);
+    this.smoke = new Uint8Array(this.capacity);
     this.velX = new Float32Array(this.capacity);
     this.velY = new Float32Array(this.capacity);
     this.velZ = new Float32Array(this.capacity);
@@ -144,14 +150,15 @@ export class ParticleSystem {
     // 죽은 입자는 화면 밖으로 치운다 (개별 draw 제어가 없는 Points의 관례적 처리)
     for (let i = 0; i < this.capacity; i++) this.positions[i * 3 + 1] = -9999;
 
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
-    this.geometry.setAttribute('size', new THREE.BufferAttribute(this.sizes, 1));
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute('particleSize', new THREE.BufferAttribute(this.sizes, 1).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute('particleAlpha', new THREE.BufferAttribute(this.alphas, 1).setUsage(THREE.DynamicDrawUsage));
     this.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(600, 0, 350), 3000);
 
     this.sprite = softSprite();
     this.material = new THREE.PointsMaterial({
-      size: 5,
+      size: 1,
       map: this.sprite,
       vertexColors: true,
       transparent: true,
@@ -160,10 +167,22 @@ export class ParticleSystem {
       sizeAttenuation: true,
       blending: THREE.NormalBlending,
     });
+    // PointsMaterial ignores custom size attributes unless its shader reads them.
+    // Retain Three's fog, tone mapping, DPR and perspective attenuation.
+    this.material.onBeforeCompile = shader => {
+      shader.vertexShader = shader.vertexShader.replace('#include <common>',
+        '#include <common>\nattribute float particleSize;\nattribute float particleAlpha;\nvarying float vParticleAlpha;')
+        .replace('gl_PointSize = size;', 'gl_PointSize = size * particleSize;\nvParticleAlpha = particleAlpha;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>',
+        '#include <common>\nvarying float vParticleAlpha;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vParticleAlpha;');
+    };
+    this.material.customProgramCacheKey = () => 'battle-particles-size-alpha-v1';
 
     this.points = new THREE.Points(this.geometry, this.material);
     this.points.frustumCulled = false;
     this.points.renderOrder = 8;
+    this.points.visible = false;
   }
 
   /** 결정론이 필요 없는 연출용 난수 (시뮬과 분리) */
@@ -175,11 +194,13 @@ export class ParticleSystem {
   emit(preset: ParticlePreset, x: number, y: number, z: number, intensity = 1): void {
     const spec = PRESETS[preset];
     const count = Math.max(1, Math.round(spec.count * this.scale * intensity));
-    const color = new THREE.Color(spec.color);
+    if (intensity <= 0 || this.scale <= 0) return;
+    const color = this.color.set(spec.color);
 
     for (let i = 0; i < count; i++) {
       const idx = this.cursor;
       this.cursor = (this.cursor + 1) % this.capacity;
+      if (this.life[idx] <= 0) this.activeCount++;
 
       const theta = this.rand() * Math.PI * 2;
       const upBias = spec.up;
@@ -205,13 +226,18 @@ export class ParticleSystem {
 
       this.baseSize[idx] = spec.size;
       this.sizes[idx] = spec.size;
+      this.alphas[idx] = 1;
+      this.smoke[idx] = Number(preset === 'muzzle_smoke' || preset === 'ground_smoke' || preset === 'blood_mist' || preset === 'death_dust');
     }
+    this.points.visible = true;
     this.geometry.attributes.position.needsUpdate = true;
     this.geometry.attributes.color.needsUpdate = true;
-    this.geometry.attributes.size.needsUpdate = true;
+    this.geometry.attributes.particleSize.needsUpdate = true;
+    this.geometry.attributes.particleAlpha.needsUpdate = true;
   }
 
   update(dt: number): void {
+    if (this.activeCount === 0 || dt <= 0) return;
     let anyAlive = false;
     for (let i = 0; i < this.capacity; i++) {
       if (this.life[i] <= 0) continue;
@@ -220,9 +246,16 @@ export class ParticleSystem {
       if (this.life[i] <= 0) {
         this.positions[i * 3 + 1] = -9999;
         this.sizes[i] = 0;
+        this.alphas[i] = 0;
+        this.activeCount--;
         continue;
       }
       this.velY[i] += this.gravity[i] * dt;
+      if (this.smoke[i]) {
+        const drag = Math.exp(-1.8 * dt);
+        this.velX[i] *= drag;
+        this.velZ[i] *= drag;
+      }
       this.positions[i * 3] += this.velX[i] * dt;
       this.positions[i * 3 + 1] += this.velY[i] * dt;
       this.positions[i * 3 + 2] += this.velZ[i] * dt;
@@ -230,16 +263,20 @@ export class ParticleSystem {
       if (this.positions[i * 3 + 1] < 0.5) {
         this.positions[i * 3 + 1] = 0.5;
         this.velY[i] = 0;
-        this.velX[i] *= 0.7;
-        this.velZ[i] *= 0.7;
+        const friction = Math.exp(-21.4 * dt);
+        this.velX[i] *= friction;
+        this.velZ[i] *= friction;
       }
       const t = this.life[i] / this.maxLife[i];
-      this.sizes[i] = this.baseSize[i] * (0.35 + t * 0.65);
+      this.sizes[i] = this.baseSize[i] * (this.smoke[i] ? 1 + (1 - t) * 1.4 : 0.35 + t * 0.65);
+      this.alphas[i] = t * t * (3 - 2 * t);
     }
     if (anyAlive) {
       this.geometry.attributes.position.needsUpdate = true;
-      this.geometry.attributes.size.needsUpdate = true;
+      this.geometry.attributes.particleSize.needsUpdate = true;
+      this.geometry.attributes.particleAlpha.needsUpdate = true;
     }
+    this.points.visible = this.activeCount > 0;
   }
 
   setPreset(preset: PerformancePreset): void {

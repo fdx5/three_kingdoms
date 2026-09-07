@@ -19,6 +19,7 @@ export class Terrain {
   private geometry: THREE.PlaneGeometry;
   private material: THREE.MeshStandardMaterial;
   private decor: THREE.InstancedMesh[] = [];
+  private decorKey = '';
   private skirt: THREE.Mesh | null = null;
   private ridges: THREE.Mesh[] = [];
   private ownedTextures: THREE.Texture[] = [];
@@ -308,7 +309,10 @@ export class Terrain {
    * 개수는 성능 프리셋에 따라 조절한다.
    */
   buildDecor(preset: PerformancePreset, seed = 20240): void {
+    const key = `${preset.decorScale}:${preset.shadows}:${seed}`;
+    if (key === this.decorKey) return;
     this.clearDecor();
+    this.decorKey = key;
     const rng = new Rng(seed);
 
     const sites: SettlementSite[] = [];
@@ -535,6 +539,7 @@ export class Terrain {
   update(dt: number): void { this.chapter?.update(dt); }
 
   private clearDecor(): void {
+    this.decorKey = '';
     this.chapter?.dispose(); this.chapter = null;
     for (const d of this.decor) {
       this.group.remove(d);

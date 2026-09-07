@@ -32,7 +32,8 @@ export class ObjectPool<T> {
   get pooled(): number {
     return this.free.length;
   }
-  clear(): void {
+  clear(dispose?: (item: T) => void): void {
+    if (dispose) for (const item of this.free) dispose(item);
     this.free.length = 0;
     this.liveCount = 0;
   }

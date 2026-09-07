@@ -205,18 +205,9 @@ export interface RigOptions {
    */
   rigidArms?: boolean;
   /**
-   * 장포 걸음 — **다리가 안 보이는 인물**의 걷기.
-   *
-   * 보통 걷기는 다리 뼈가 만든다. 바닥까지 끌리는 장포를 입은 인물은 그 다리에
-   * 정점이 하나도 없으므로(자락을 전부 골반으로 옮겼다) 다리를 아무리 흔들어도
-   * 화면에서는 아무 일도 일어나지 않는다 — 제갈량이 **공중에 떠서 미끄러졌다.**
-   *
-   * 그래서 골반이 대신 걷는다. 몸 전체를 좌우로 싣고(sway), 걸음마다 살짝
-   * 들어 올리고(bob), 디딘 쪽으로 기운다(roll). 옷자락은 골반에 매달려 있으므로
-   * 기우는 만큼 밑단이 크게 쓸린다 — 그것이 이 인물의 걸음으로 읽힌다.
-   *
-   * 위아래는 **위로만** 흔든다. 아래로 내리면 접지 계산이 그만큼 몸을 띄워서
-   * 서 있을 때 옷단이 바닥에서 떠 버린다.
+   * 장포 걸음. 옷 아랫단을 좌우 다리에 연속적으로 블렌딩하고 허리에서
+   * 영향을 없앤다. 골반과 상체는 반대로 균형을 잡으며, 실제 발 정점으로
+   * 접지 높이를 계산한다. 끌리는 뒷자락은 발 탐색에서 제외한다.
    */
   robeGait?: boolean;
   /**
@@ -2048,24 +2039,25 @@ function buildClips(
   };
 
   /*
-   * 장포 걸음. 다리가 아니라 골반이 걷는다 — 위 RigOptions.robeGait 참고.
-   *
-   * 9개 키가 한 주기(두 걸음)를 덮는다. 좌우 흔들림과 기울기는 주기당 한 번,
-   * 위아래는 걸음마다 한 번이라 두 번 오르내린다.
+   * 장포는 연속 가중치로 양다리를 따라 휘고, 상체는 반대 방향으로 균형을 잡는다.
+   * 촘촘한 주기 키로 발 교대 시 속도가 꺾이지 않게 한다. 높이는 접지에서 계산한다.
    */
   const robeWalk = (): ClipSpec => {
-    const wave = [0, .7, 1, .7, 0, -.7, -1, -.7, 0];
-    const left = [stride, stride * .72, 0, -stride * .72, -stride, -stride * .72, 0, stride * .72, stride];
+    const phases = Array.from({ length: 33 }, (_, i) => i / 32 * Math.PI * 2);
+    const times = phases.map((_, i) => k(i / 32));
+    const wave = phases.map(p => Math.sin(p));
+    const follow = phases.map(p => Math.sin(p - .25) - Math.sin(-.25));
+    const left = phases.map(p => stride * Math.cos(p));
     return {
       name: 'walk',
       tracks: [
-        legTrack('legL', T, left, 0),
-        legTrack('legR', T, left.map(a => -a), 0),
+        legTrack('legL', times, left, 0),
+        legTrack('legR', times, left.map(a => -a), 0),
         // Dense contact keys preserve a planted hem/foot between both steps.
-        track('hips', Array.from({length: 33}, (_, i) => k(i / 32)), new Array(99).fill(0), 'translation'),
-        rot2('hips', T, wave.map(v => v * .025), sideAxis, wave.map(v => v * .035), [0, 1, 0]),
-        rot2('chest', T, wave.map(v => -v * .015), sideAxis, wave.map(v => -v * .025), [0, 1, 0]),
-        rot('head', T, wave.map(v => -v * .01), sideAxis),
+        track('hips', Array.from({length: 65}, (_, i) => k(i / 64)), new Array(195).fill(0), 'translation'),
+        rot2('hips', times, wave.map(v => v * .03), sideAxis, wave.map(v => v * .04), [0, 1, 0]),
+        rot2('chest', times, follow.map(v => -v * .018), sideAxis, follow.map(v => -v * .028), [0, 1, 0]),
+        rot('head', times, follow.map(v => -v * .012), sideAxis),
       ],
     };
   };

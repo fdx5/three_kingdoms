@@ -490,6 +490,7 @@ export class TowerView implements EntityView<Tower> {
 
   private disposeModel(obj: THREE.Object3D): void {
     // 지오메트리/머티리얼은 AssetRegistry 캐시가 소유한다. 여기서 dispose하지 않는다.
+    obj.traverse(o => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) (o as THREE.SkinnedMesh).skeleton.dispose(); });
     obj.clear();
   }
 

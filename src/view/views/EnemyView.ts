@@ -38,6 +38,8 @@ export class EnemyView implements EntityView<Enemy> {
   private armVariation = 0;
   private torsoVariation = 0;
   private gaitBones = new Map<string, THREE.Bone>();
+  private variationPose = new Map<THREE.Bone, THREE.Quaternion>();
+  private facingInitialized = false;
 
   /** 흰색 플래시 */
   private flash = 0;
@@ -47,10 +49,14 @@ export class EnemyView implements EntityView<Enemy> {
   private charging = false;
   private flashMats: THREE.MeshStandardMaterial[] = [];
   private originalEmissive: THREE.Color[] = [];
+  private originalMaterials: { opacity: number; transparent: boolean; depthWrite: boolean; intensity: number }[] = [];
 
   /** 사망 연출 */
   private dying = false;
   private dieTime = 0;
+  private deathGroundY = 0;
+  private deathScale = 1;
+  private deathTilt = 0;
   /** 성 공격 연출 — 시뮬에는 없는 뷰만의 상태 */
   private attacking = false;
   private attackTime = 0;
@@ -100,13 +106,21 @@ export class EnemyView implements EntityView<Enemy> {
       if ((o as THREE.Bone).isBone) this.gaitBones.set(o.name, o as THREE.Bone);
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
-      const mat = m.material as THREE.MeshStandardMaterial;
-      if (Array.isArray(m.material) || !mat.isMeshStandardMaterial) return;
-      const cloned = mat.clone();
-      m.material = cloned;
-      this.flashMats.push(cloned);
-      this.originalEmissive.push(cloned.emissive.clone());
+      const cloneMaterial = (mat: THREE.Material): THREE.Material => {
+        if (!(mat as THREE.MeshStandardMaterial).isMeshStandardMaterial) return mat;
+        const cloned = (mat as THREE.MeshStandardMaterial).clone();
+        this.flashMats.push(cloned);
+        this.originalEmissive.push(cloned.emissive.clone());
+        this.originalMaterials.push({ opacity: cloned.opacity, transparent: cloned.transparent,
+          depthWrite: cloned.depthWrite, intensity: cloned.emissiveIntensity });
+        return cloned;
+      };
+      m.material = Array.isArray(m.material) ? m.material.map(cloneMaterial) : cloneMaterial(m.material);
     });
+    for (const name of ['chest', 'shoulderL', 'shoulderR', 'arms', 'armL', 'armR']) {
+      const bone = this.gaitBones.get(name);
+      if (bone) this.variationPose.set(bone, bone.quaternion.clone());
+    }
 
     this.playState('walk');
   }
@@ -139,6 +153,7 @@ export class EnemyView implements EntityView<Enemy> {
     if (this.state === state && this.hasClips) return;
     this.state = state;
     if (!this.hasClips) return;
+    this.restoreWalkPose();
     const next = this.actions.get(state);
     if (!next) return;
     for (const [s, a] of this.actions) {
@@ -168,9 +183,10 @@ export class EnemyView implements EntityView<Enemy> {
       const groundY = this.terrain.heightAt(enemy.worldX, enemy.worldZ) + RIBBON_LIFT;
       this.object3d.position.set(enemy.worldX, groundY, enemy.worldZ);
       this.object3d.rotation.set(0, Math.atan2(this.dir.x, this.dir.z), 0);
-      if (this.mixer) this.mixer.timeScale = this.gaitRate;
+      if (this.mixer) this.mixer.timeScale = 1;
       this.updateAttack(dt);
       this.mixer?.update(dt);
+      this.updateFlash(dt);
       return;
     }
 
@@ -199,14 +215,19 @@ export class EnemyView implements EntityView<Enemy> {
       if (this.mixer) {
         // Match foot cadence to actual world velocity to prevent skating.
         const speedRatio = enemy.effectiveSpeed / 50;
-        this.mixer.timeScale = this.gaitRate * THREE.MathUtils.clamp(speedRatio, 0.5, 1.65);
+        this.mixer.timeScale = this.gaitRate * THREE.MathUtils.clamp(speedRatio, 0, 2.5);
       }
     }
 
     this.object3d.position.set(this.pos.x, groundY + bob, this.pos.z);
     // +Z가 정면 규약. atan2(x, z)로 진행 방향을 바라보게 한다.
-    this.object3d.rotation.set(0, Math.atan2(this.dir.x, this.dir.z), sway);
+    const targetYaw = Math.atan2(this.dir.x, this.dir.z);
+    const turn = Math.atan2(Math.sin(targetYaw - this.object3d.rotation.y), Math.cos(targetYaw - this.object3d.rotation.y));
+    const yaw = this.facingInitialized ? this.object3d.rotation.y + turn * (1 - Math.exp(-14 * dt)) : targetYaw;
+    this.facingInitialized = true;
+    this.object3d.rotation.set(0, yaw, sway);
 
+    this.restoreWalkPose();
     this.mixer?.update(dt);
     this.applyWalkVariation();
     this.updateFlash(dt);
@@ -222,12 +243,25 @@ export class EnemyView implements EntityView<Enemy> {
     this.armVariation = 0.012 + hash * 0.026;
     this.torsoVariation = 0.004 + hash2 * 0.012;
     this.bouncePhase = hash2 * Math.PI * 2;
-    this.mixer?.setTime(hash * 0.9);
+    const walk = this.actions.get('walk');
+    if (walk) {
+      walk.time = hash * walk.getClip().duration;
+      walk.stopFading().setEffectiveWeight(1);
+      // A unit can spawn already frozen. Resolve the planted animation pose
+      // before the freeze branch returns, instead of exposing the bind pose.
+      this.mixer?.update(0);
+    }
+  }
+
+  private restoreWalkPose(): void {
+    for (const [bone, pose] of this.variationPose) bone.quaternion.copy(pose);
   }
 
   private applyWalkVariation(): void {
     if (!this.hasClips || this.state !== 'walk' || !this.mixer) return;
-    const phase = (this.mixer.time / 0.9) * Math.PI * 2 + this.upperPhase;
+    for (const [bone, pose] of this.variationPose) pose.copy(bone.quaternion);
+    const walk = this.actions.get('walk');
+    const phase = ((walk?.time ?? 0) / (walk?.getClip().duration || 0.9)) * Math.PI * 2 + this.upperPhase;
     const swing = Math.sin(phase);
     const chest = this.gaitBones.get('chest');
     const shoulderL = this.gaitBones.get('shoulderL');
@@ -284,7 +318,7 @@ export class EnemyView implements EntityView<Enemy> {
     for (let i = 0; i < this.flashMats.length; i++) {
       const from = base ?? this.originalEmissive[i];
       this.flashMats[i].emissive.copy(from).lerp(_white, k);
-      this.flashMats[i].emissiveIntensity = 1;
+      this.flashMats[i].emissiveIntensity = THREE.MathUtils.lerp(this.originalMaterials[i].intensity, 1, k);
     }
   }
 
@@ -359,9 +393,9 @@ export class EnemyView implements EntityView<Enemy> {
     // 클립이 없으면 몸을 통째로 앞으로 내밀었다가 되돌린다.
     // sin(pi*t)^2 은 찌르고 빠지는 한 번의 왕복이라 창 동작과 박자가 같다.
     if (!this.hasClips) {
-      const thrust = Math.sin(Math.PI * t) ** 2;
-      const yaw = this.object3d.rotation.y;
-      this.model.position.set(Math.sin(yaw) * thrust * 9, 0, Math.cos(yaw) * thrust * 9);
+      const thrust = t < 1 ? Math.sin(Math.PI * t) ** 2 : 0;
+      // The model is already inside the rotated root: thrust in local +Z.
+      this.model.position.set(0, 0, thrust * 9);
       this.model.rotation.x = -thrust * 0.22;
     }
 
@@ -372,7 +406,11 @@ export class EnemyView implements EntityView<Enemy> {
     this.attacking = false;
     this.dying = true;
     this.dieTime = 0;
+    this.deathGroundY = this.object3d.position.y;
+    this.deathScale = this.object3d.scale.x;
+    this.deathTilt = this.model.rotation.x;
     this.playState('die');
+    if (this.mixer) this.mixer.timeScale = this.actions.has('die') ? 1 : 0;
   }
 
   get isDeathFinished(): boolean {
@@ -382,14 +420,16 @@ export class EnemyView implements EntityView<Enemy> {
   private updateDeath(dt: number): void {
     this.dieTime += dt;
     const t = Math.min(1, this.dieTime / BALANCE.fx.deathAnimDuration);
-    const s = this.baseScale * (1 - t * 0.65);
-    this.object3d.scale.setScalar(s);
-    this.object3d.position.y -= dt * 26;
-    const op = 1 - t;
-    for (const m of this.flashMats) {
+    const settle = THREE.MathUtils.smoothstep(t, 0, .7);
+    const fade = 1 - THREE.MathUtils.smoothstep(t, .35, 1);
+    this.object3d.scale.setScalar(this.deathScale * (1 - .12 * settle));
+    this.object3d.position.y = this.deathGroundY - 4 * THREE.MathUtils.smoothstep(t, .6, 1);
+    if (!this.actions.has('die')) this.model.rotation.x = this.deathTilt + .95 * settle;
+    for (let i = 0; i < this.flashMats.length; i++) {
+      const m = this.flashMats[i];
       m.transparent = true;
-      m.opacity = op;
-      m.depthWrite = op > 0.5;
+      m.opacity = this.originalMaterials[i].opacity * fade;
+      m.depthWrite = this.originalMaterials[i].depthWrite && fade > .5;
     }
   }
 
@@ -403,6 +443,8 @@ export class EnemyView implements EntityView<Enemy> {
     this.attackCycle = 0;
     this.impactPending = false;
     this.boundEnemyId = 0;
+    this.facingInitialized = false;
+    this.restoreWalkPose();
     this.mixer?.stopAllAction();
     this.mixer?.setTime(0);
     if (this.mixer) this.mixer.timeScale = 1;
@@ -415,9 +457,11 @@ export class EnemyView implements EntityView<Enemy> {
     this.object3d.visible = true;
     for (let i = 0; i < this.flashMats.length; i++) {
       const m = this.flashMats[i];
-      m.opacity = 1;
-      m.transparent = false;
-      m.depthWrite = true;
+      const original = this.originalMaterials[i];
+      m.opacity = original.opacity;
+      m.transparent = original.transparent;
+      m.depthWrite = original.depthWrite;
+      m.emissiveIntensity = original.intensity;
       m.emissive.copy(this.originalEmissive[i]);
     }
     this.state = null;
@@ -428,7 +472,9 @@ export class EnemyView implements EntityView<Enemy> {
     this.burn?.dispose();
     this.object3d.removeFromParent();
     this.mixer?.stopAllAction();
+    this.mixer?.uncacheRoot(this.model);
     this.mixer = null;
+    this.model.traverse(o => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) (o as THREE.SkinnedMesh).skeleton.dispose(); });
     for (const m of this.flashMats) m.dispose();
     this.flashMats.length = 0;
     this.object3d.clear();

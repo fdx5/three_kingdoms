@@ -92,6 +92,9 @@ export class Stage {
     this.sun.target.position.copy(this.target);
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
+    // Fix the light to the battlefield. Following camera panning made shadows
+    // swim and also overwrote the chapter-specific sunset direction every frame.
+    this.sun.position.add(this.target);
 
     this.fill = new THREE.DirectionalLight(new THREE.Color(env.skyColor).lerp(new THREE.Color(0x9dc9ff), 0.35), 0.48);
     this.fill.position.set(700, 420, -600);
@@ -289,8 +292,6 @@ export class Stage {
       cz + Math.cos(this.yaw) * horizontal,
     );
     this.camera.lookAt(cx, 0, cz);
-    this.sun.target.position.set(cx, 0, cz);
-    this.sun.position.set(cx - 500, 900, cz + 400);
   }
 
   /** 월드 좌표를 화면 픽셀 좌표로 투영 (HUD 코인 연출용) */

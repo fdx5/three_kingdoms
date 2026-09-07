@@ -71,7 +71,10 @@ function snap(page: Page): Promise<Snapshot> {
 
 /** 로딩 화면이 사라질 때까지 */
 async function boot(page: Page, url: string): Promise<void> {
-  await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+  // Smoke accounts must stay local, including when checking a deployed build.
+  const localUrl = new URL(url);
+  localUrl.searchParams.set('api', 'local');
+  await page.goto(localUrl.href, { waitUntil: 'load', timeout: 30000 });
   await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 20000 });
 }
 
@@ -282,6 +285,7 @@ async function level1Pass(page: Page): Promise<void> {
   });
   if (afterUpgrade !== 2) fail(`업그레이드가 반영되지 않았다: Lv${afterUpgrade}`);
   console.log('[ok] 업그레이드 -> Lv2');
+  const goldBeforeCombat = Number((await snap(page)).gold);
 
   // 조기 소집으로 웨이브를 시작시키고 전투가 실제로 도는지 본다
   await page.keyboard.press('Escape');
@@ -525,7 +529,7 @@ async function level1Pass(page: Page): Promise<void> {
   const goldNow = await page.evaluate(
     () => document.querySelector('#gold-chip .chip__value')?.textContent ?? '',
   );
-  if (Number(goldNow) <= 300) fail(`처치 골드가 반영되지 않았다: ${goldNow}`);
+  if (Number(goldNow) <= goldBeforeCombat) fail(`처치 골드가 반영되지 않았다: ${goldNow}`);
   console.log(`[ok] 처치 골드 반영 — 골드 ${goldNow}`);
 
   // 세로 화면에서도 맵이 잘리지 않는지 (카메라 거리 재계산)
@@ -833,7 +837,9 @@ async function level2Pass(page: Page): Promise<void> {
     var g = window.game;
     // Isolate gait sampling from the ice-storm freeze exercised above.
     g.restart();
-    g.setPaused(true, false);
+    // Animation now correctly pauses with the game. Run this isolated scene
+    // while measuring a complete gait cycle.
+    g.setPaused(false, false);
     ['xl_infantry', 'xl_cavalry', 'huaxiong', 'lubu'].forEach(function (id) {
       g.world.spawnEnemy({ unitId: id, at: 0, hpMul: 1, speedMul: 1 });
     });

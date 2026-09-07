@@ -567,6 +567,7 @@ export class GameScene {
         () => {
           const v = new EnemyView(def, this.world.path, this.terrain, this.assets);
           v.mount(this.stage.root);
+          v.object3d.visible = false;
           return v;
         },
         (v) => {
@@ -613,20 +614,21 @@ export class GameScene {
 
   /**
    * @param alpha 시뮬 스텝 간 보간 계수
-   * @param dt    실제 프레임 시간 (연출은 배속과 무관하게 이 시간으로 돈다)
+   * @param dt    전투 시간 (배속 반영, 일시정지 시 0)
+   * @param frameDt 카메라와 환경의 실제 프레임 시간
    */
-  render(alpha: number, dt: number): void {
-    this.stage.update(dt);
-    this.terrain.update(dt);
+  render(alpha: number, dt: number, frameDt = dt): void {
+    this.stage.update(frameDt);
+    this.terrain.update(frameDt);
     this.storm.update();
 
     this.fxTimer += dt;
     const emitFx = this.fxTimer >= 0.12;
     if (emitFx) this.fxTimer = 0;
 
-    for (const [id, view] of this.enemyViews) {
-      const enemy = this.findEnemy(id);
-      if (!enemy) continue;
+    for (const enemy of this.world.enemies) {
+      const view = this.enemyViews.get(enemy.id);
+      if (!view) continue;
       view.setCharging(enemy.chargeTimer > 0 && enemy.freezeTimer <= 0);
       view.sync(enemy, alpha, dt);
       view.updateBurn(dt, this.stage.camera);
@@ -704,9 +706,9 @@ export class GameScene {
       }
     }
 
-    for (const [id, view] of this.projectileViews) {
-      const p = this.findProjectile(id);
-      if (!p) continue;
+    for (const p of this.world.projectiles) {
+      const view = this.projectileViews.get(p.id);
+      if (!view) continue;
       view.sync(p, alpha, dt, this.stage.camera, this.terrain.heightAt(p.toX, p.toZ));
       // 달군 투척체는 지나간 자리에 불티를 흘린다 (적 상태 파티클과 같은 간격으로)
       if (emitFx && p.fireSource !== 'flame' && heatOf(p.towerLevel) !== 'cold') {
@@ -805,19 +807,13 @@ export class GameScene {
   }
 
   forEachEnemyScreenPos(fn: (enemy: Enemy, sx: number, sy: number) => void): void {
-    for (const [id, view] of this.enemyViews) {
-      const enemy = this.findEnemy(id);
-      if (!enemy) continue;
+    for (const enemy of this.world.enemies) {
+      const view = this.enemyViews.get(enemy.id);
+      if (!view) continue;
       const p = view.object3d.position;
       this.project(p.x, p.y + view.headHeight, p.z);
       fn(enemy, this.screenBuf.x, this.screenBuf.y);
     }
-  }
-
-  private findEnemy(id: number): Enemy | null {
-    const list = this.world.enemies;
-    for (let i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
-    return null;
   }
 
   private findProjectile(id: number): Projectile | null {
@@ -949,7 +945,7 @@ export class GameScene {
     for (const d of this.dyingViews) d.view.dispose();
     this.enemyViews.clear();
     this.dyingViews.length = 0;
-    for (const pool of this.enemyPools.values()) pool.clear();
+    for (const pool of this.enemyPools.values()) pool.clear(v => v.dispose());
     this.enemyPools.clear();
 
 
@@ -957,7 +953,7 @@ export class GameScene {
 
     for (const v of this.projectileViews.values()) v.dispose();
     this.projectileViews.clear();
-    this.projectilePool.clear();
+    this.projectilePool.clear(v => v.dispose());
     this.projectileAssets.dispose();
 
     for (const v of this.groundFireViews.values()) v.dispose();

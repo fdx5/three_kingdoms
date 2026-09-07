@@ -77,7 +77,7 @@ class Game {
     this.debugPanel = document.getElementById('debug-panel')!;
 
     const stored = localStorage.getItem(PRESET_KEY) as PerformancePresetName | null;
-    this.preset = stored ?? guessPreset();
+    this.preset = stored === 'low' || stored === 'medium' || stored === 'high' ? stored : guessPreset();
     this.settings = this.loadSettings();
 
     // ?level=2 로 직접 지정할 수 있다 (개발·테스트용). 없으면 진행도가 정한다.
@@ -749,7 +749,7 @@ class Game {
   private render(alpha: number, dt: number): void {
     // 키보드로 누르고 있는 카메라 이동은 프레임 단위로 밀어준다.
     this.controls.update(dt);
-    this.scene.render(alpha, dt);
+    this.scene.render(alpha, this.loop.isPaused() ? 0 : dt * this.loop.getSpeed(), dt);
     this.fx.update(dt);
     this.hud.update(dt);
 

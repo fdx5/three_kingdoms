@@ -22,6 +22,8 @@ describe('Chapter landscapes', () => {
       expect(old).toBeDefined();
       expect(!!old.getObjectByName('chapter-water')).toBe(level.id !== 'level06');
       terrain.buildDecor(BALANCE.presets.low);
+      expect(old.parent).toBe(terrain.group);
+      terrain.buildDecor(BALANCE.presets.medium);
       expect(old.parent).toBeNull();
       expect(old.children).toHaveLength(0);
       expect(terrain.group.children.filter(c => c.name.startsWith('landscape-'))).toHaveLength(1);
