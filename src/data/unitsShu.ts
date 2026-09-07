@@ -192,6 +192,16 @@ export const SHU_UNITS: Record<string, UnitDef> = {
       fireResist: 0.55,
       healAura: { radius: 210, hps: 90 },
       speedAura: { radius: 210, speedMul: 1.4 },
+      /*
+       * 부채를 휘두르면 화염이 성벽에 붙는다. 한 방(2초 주기)이 통째로 불이 되어
+       * 1.6초에 걸쳐 들어가고, 총량은 1.15배다.
+       *
+       * 1.15 는 작아 보이지만 이 보스의 castleDamage 가 260 이라 한 번에 성 체력의
+       * 상당 부분이다. 여기를 더 키우면 6장이 성문 강화 여부와 무관하게 무너져서
+       * "성문을 올려야 한다"는 교훈이 깨진다. 지속으로 바꾼 것 자체가 체감 강화다 —
+       * 불이 붙어 있는 동안 성이 계속 깎이는 것이 눈과 소리로 보인다.
+       */
+      castleFlame: { duration: 1.6, damageMul: 1.15 },
     },
   },
 };

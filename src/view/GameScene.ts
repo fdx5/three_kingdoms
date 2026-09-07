@@ -46,6 +46,14 @@ const EMPTY_SLOT_HIT = { height: 8, radius: 32 };
 /** 판정 상한 — 측정이 어긋나도 기둥이 맵을 삼키지 않게 한다. */
 const MAX_SLOT_HIT = { height: 120, radius: 64 };
 
+/**
+ * 성벽에 붙은 불의 반경(u).
+ *
+ * 성문 폭(180u 모델)의 절반쯤이다. 지면 화재(66)보다 넓게 잡았다 — 좁으면
+ * 거대한 성문 앞에서 모닥불처럼 보이고, 더 넓히면 성벽을 넘어 길까지 덮는다.
+ */
+const CASTLE_FIRE_RADIUS = 84;
+
 export class GameScene {
   readonly stage: Stage;
   private storm: StratagemStorm;
@@ -69,6 +77,14 @@ export class GameScene {
   private projectilePool: ObjectPool<ProjectileView>;
   private projectileAssets = createProjectileAssets();
   private groundFireViews = new Map<number, GroundFireView>();
+  /**
+   * 성벽에 붙은 불 (제갈량의 화염).
+   *
+   * 지면 화재와 같은 뷰를 쓴다 — 불꽃·잉걸·연기·그을음이 이미 다 들어 있고,
+   * 새로 만들면 같은 그림을 두 벌 유지하게 된다. 다른 점은 수명을 이벤트가
+   * 정한다는 것뿐이다(지면 화재는 zone 이 스스로 꺼진다).
+   */
+  private castleFireView: GroundFireView | null = null;
   private coolingFireViews: GroundFireView[] = [];
   private groundFireAssets = createGroundFireAssets();
 
@@ -215,8 +231,11 @@ export class GameScene {
     );
 
     this.subs.add(
-      bus.on('enemy:damaged', ({ enemyId }) => {
-        this.enemyViews.get(enemyId)?.hit();
+      bus.on('enemy:damaged', ({ enemyId, amount, kind }) => {
+        const view = this.enemyViews.get(enemyId);
+        if (amount <= 0) return;
+        if (kind === 'fire') view?.ignite(this.groundFireAssets);
+        else view?.hit();
       }),
     );
 
@@ -270,6 +289,46 @@ export class GameScene {
     this.subs.add(
       bus.on('castle:damaged', ({ hp, maxHp }) => {
         this.castleView.setWarning(hp / maxHp <= 0.3);
+      }),
+    );
+
+    /*
+     * 성벽이 탄다 — 제갈량이 부채를 휘두르면 화염이 붙는다.
+     *
+     * 불을 새로 세우지 않고 하나를 계속 살려 둔다. 2초마다 다시 붙는데 그때마다
+     * 새 뷰를 만들면 잉걸과 그을음이 매번 처음부터 시작해서, 계속 타는 것이
+     * 아니라 두 번 터진 것처럼 보인다.
+     */
+    this.subs.add(
+      bus.on('castle:ignited', ({ worldPos }) => {
+        if (!this.castleFireView) {
+          const view = new GroundFireView(this.groundFireAssets, CASTLE_FIRE_RADIUS, 'flame', 7);
+          view.object3d.position.set(
+            worldPos.x,
+            this.terrain.heightAt(worldPos.x, worldPos.z) + 2.2,
+            worldPos.z,
+          );
+          this.stage.root.add(view.object3d);
+          this.castleFireView = view;
+        }
+        // 붙는 순간은 매번 보인다 — 다음 부채질이 왔다는 신호다
+        this.particles.emit('fire_burst', worldPos.x, worldPos.y, worldPos.z, 1.8);
+        this.particles.emit('weapon_spark', worldPos.x, worldPos.y, worldPos.z, 1.2);
+        this.castleView.hit();
+      }),
+    );
+
+    this.subs.add(
+      bus.on('castle:burn-ended', () => {
+        const view = this.castleFireView;
+        if (!view) return;
+        this.castleFireView = null;
+        // 꺼뜨리고 식는 것까지 보여준다 — 뚝 사라지면 불이 꺼진 게 아니라 지워진 것이다
+        view.extinguish();
+        this.coolingFireViews.push(view);
+        if (this.coolingFireViews.length > BALANCE.fire.maxZones) {
+          this.coolingFireViews.shift()!.dispose();
+        }
       }),
     );
 
@@ -332,8 +391,7 @@ export class GameScene {
         // 여기서 타워를 되찾아 봐도 알 수 없기 때문이다.
         const tower = this.world.towers.get(towerSlotId);
         // 레벨을 같이 넘긴다 — 업그레이드한 벽력거는 달군 바위를 던진다
-        const incendiary = tower?.def.id === 'fire_tower';
-        view.setKind(incendiary ? 'shell' : kind, tower?.level ?? this.world.castle.level, incendiary);
+        view.setKind(kind, tower?.level ?? this.world.castle.level);
 
         // 몇 번째 화살인지 = 어느 활에서 나가는지. 그 활을 조준시키고
         // 화살이 그 시위에서 떠나게 한다 (활 망루는 쇠뇌가 다섯 군데에 있다).
@@ -350,6 +408,7 @@ export class GameScene {
             ? this.castleView.muzzle(bowIndex, this.muzzleBuf)
             : towerView?.muzzle(bowIndex, this.muzzleBuf) ?? null;
         view.setLaunch(launch);
+        view.setFlameSource(this.groundFireAssets, towerView?.muzzleNode(bowIndex) ?? null);
 
         /*
          * 포구 화염과 화약 연기.
@@ -360,7 +419,10 @@ export class GameScene {
          * 아래로 깔렸다가 떠오르기 때문이다.
          */
         const blast = tower?.def.muzzleBlast;
-        if (blast && launch) {
+        if (kind === 'flame' && launch) {
+          this.particles.emit('weapon_spark', launch.x, launch.y, launch.z, .18);
+          this.particles.emit('muzzle_smoke', launch.x, launch.y, launch.z, .15);
+        } else if (blast && launch) {
           this.particles.emit('fire_burst', launch.x, launch.y, launch.z, blast.flash);
           this.particles.emit('weapon_spark', launch.x, launch.y, launch.z, blast.flash * 0.6);
           this.particles.emit('muzzle_smoke', launch.x, launch.y - 2, launch.z, blast.smoke);
@@ -378,9 +440,14 @@ export class GameScene {
     this.subs.add(
       bus.on('projectile:hit', ({ projectileId, worldPos, hit, splashRadius, fire }) => {
         const view = this.projectileViews.get(projectileId);
+        const breath = view?.isFlame;
         if (view) {
           this.projectileViews.delete(projectileId);
           this.projectilePool.release(view);
+        }
+        if (breath) {
+          this.particles.emit('weapon_spark', worldPos.x, this.terrain.heightAt(worldPos.x, worldPos.z) + 3, worldPos.z, .45);
+          return;
         }
         // 범위 피해는 빗나가도 터진다 — 착탄 지점 기준이기 때문이다.
         if (splashRadius && splashRadius > 0) {
@@ -398,23 +465,13 @@ export class GameScene {
 
     this.subs.add(
       bus.on('fire-zone:created', ({ zoneId, worldPos, radius, source }) => {
-        const view = new GroundFireView(this.groundFireAssets, radius, source, zoneId);
+        const centerY = this.terrain.heightAt(worldPos.x, worldPos.z);
+        const view = new GroundFireView(this.groundFireAssets, radius, source, zoneId,
+          (x, z) => this.terrain.heightAt(worldPos.x + x, worldPos.z + z) - centerY);
         view.object3d.position.set(worldPos.x, this.terrain.heightAt(worldPos.x, worldPos.z) + 2.2, worldPos.z);
         this.stage.root.add(view.object3d);
         this.groundFireViews.set(zoneId, view);
-        if (source === 'flame') {
-          const groundY = view.object3d.position.y;
-          // Seeded lobes vary each impact without allocating timers or extra persistent effects.
-          const lobes = 3 + zoneId % 3;
-          for (let i = 0; i < lobes; i++) {
-            const angle = zoneId * 2.399 + i * Math.PI * 2 / lobes;
-            const reach = radius * (.18 + (i % 3) * .09);
-            this.particles.emit('fire_burst', worldPos.x + Math.cos(angle) * reach,
-              groundY + 3, worldPos.z + Math.sin(angle) * reach, .65 + (i % 2) * .25);
-          }
-          this.particles.emit('weapon_spark', worldPos.x, groundY + 3, worldPos.z, 1.2);
-          this.particles.emit('splash_burst', worldPos.x, groundY + 1, worldPos.z, .85);
-        }
+        if (source === 'flame') return; // The spreading textured oil fire supplies its own ignition and embers.
         // 착탄 섬광과 불티. 투석은 화면을 채울 만큼 크게 터진다.
         this.particles.emit('fire_burst', worldPos.x, 8, worldPos.z, source === 'stone' ? 2.1 : 0.95);
         this.particles.emit('weapon_spark', worldPos.x, 7, worldPos.z, source === 'stone' ? 1.7 : 0.75);
@@ -424,7 +481,7 @@ export class GameScene {
          * 흔들리는 얇은 연기고, 이건 터지는 **그 순간** 한 번 치솟는 덩어리다.
          * 둘이 겹쳐야 "터졌고, 그 자리가 계속 탄다"로 읽힌다.
          */
-        this.particles.emit('ground_smoke', worldPos.x, 6, worldPos.z, source === 'flame' ? 1.1 : 1.5);
+        this.particles.emit('ground_smoke', worldPos.x, 6, worldPos.z, 1.5);
         if (source === 'stone' && this.shakeEnabled) this.stage.addShake(BALANCE.fx.cameraShakeOnLeak * 0.65);
       }),
     );
@@ -575,6 +632,7 @@ export class GameScene {
       if (!enemy) continue;
       view.setCharging(enemy.chargeTimer > 0 && enemy.freezeTimer <= 0);
       view.sync(enemy, alpha, dt);
+      view.updateBurn(dt, this.stage.camera);
       view.setSlowed(enemy.slowTimer > 0 || enemy.freezeTimer > 0);
 
       /*
@@ -594,13 +652,36 @@ export class GameScene {
         const len = Math.hypot(dx, dz) || 1;
         // 무기는 몸에서 성 쪽으로 이만큼 뻗어 있다 — 덩치가 클수록 멀리 닿는다
         const reach = 10 * def.scale;
-        this.particles.emit(
-          'weapon_spark',
-          p.x + (dx / len) * reach,
-          view.weaponHeight,
-          p.z + (dz / len) * reach,
-          def.scale,
-        );
+        if (def.view.weaponSweep) {
+          /*
+           * 날이 지나간 자리를 호로 그린다.
+           *
+           * 성 쪽 방향의 **직각**으로 좌우로 벌려 세 번 튄다 — 언월도는 앞으로
+           * 찌르는 것이 아니라 옆으로 쓸어 내리는 무기라, 앞뒤로 늘어놓으면
+           * 찌른 것처럼 보인다. 뒤에서 앞으로 갈수록 세게 튀게 해서 쓸어 내린
+           * 방향이 보이게 한다.
+           */
+          const sx = -dz / len;
+          const sz = dx / len;
+          const swing = 16 * def.scale;
+          for (const [side, power] of [[-1, 0.55], [0, 0.9], [1, 1.25]] as const) {
+            this.particles.emit(
+              'weapon_spark',
+              p.x + (dx / len) * reach + sx * swing * side,
+              view.weaponHeight + swing * 0.25 * side,
+              p.z + (dz / len) * reach + sz * swing * side,
+              def.scale * power,
+            );
+          }
+        } else {
+          this.particles.emit(
+            'weapon_spark',
+            p.x + (dx / len) * reach,
+            view.weaponHeight,
+            p.z + (dz / len) * reach,
+            def.scale,
+          );
+        }
         this.cb.onCastleSpark(def.kind !== 'minion');
         if (this.shakeEnabled && def.kind !== 'minion') {
           this.stage.addShake(BALANCE.fx.cameraShakeOnBossLeak);
@@ -619,6 +700,7 @@ export class GameScene {
     for (let i = this.dyingViews.length - 1; i >= 0; i--) {
       const d = this.dyingViews[i];
       d.view.sync(_deadEnemy, alpha, dt);
+      d.view.updateBurn(dt, this.stage.camera);
       if (d.view.isDeathFinished) {
         this.dyingViews.splice(i, 1);
         this.releaseEnemyView(d.unitId, d.view);
@@ -628,15 +710,16 @@ export class GameScene {
     for (const [id, view] of this.projectileViews) {
       const p = this.findProjectile(id);
       if (!p) continue;
-      view.sync(p, alpha, dt);
+      view.sync(p, alpha, dt, this.stage.camera, this.terrain.heightAt(p.toX, p.toZ));
       // 달군 투척체는 지나간 자리에 불티를 흘린다 (적 상태 파티클과 같은 간격으로)
-      if (emitFx && (heatOf(p.towerLevel) !== 'cold' || p.fireSource === 'flame')) {
+      if (emitFx && p.fireSource !== 'flame' && heatOf(p.towerLevel) !== 'cold') {
         const q = view.object3d.position;
         this.particles.emit('fire_burst', q.x, q.y, q.z, 0.35);
       }
     }
 
     for (const view of this.groundFireViews.values()) view.update(dt, this.stage.camera);
+    this.castleFireView?.update(dt, this.stage.camera);
     for (let i = this.coolingFireViews.length - 1; i >= 0; i--) {
       const view = this.coolingFireViews[i];
       view.update(dt, this.stage.camera);
@@ -849,6 +932,8 @@ export class GameScene {
 
     for (const v of this.groundFireViews.values()) v.dispose();
     this.groundFireViews.clear();
+    this.castleFireView?.dispose();
+    this.castleFireView = null;
     for (const v of this.coolingFireViews) v.dispose();
     this.coolingFireViews.length = 0;
     this.groundFireAssets.dispose();

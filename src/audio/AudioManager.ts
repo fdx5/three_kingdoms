@@ -31,6 +31,10 @@ export class AudioManager {
   /** 음원별 앞 묵음 길이(초). 디코드할 때 한 번만 잰다 */
   private leadIn = new Map<string, number>();
   private lastPlayed = new Map<string, number>();
+  /** 돌고 있는 반복 재생 (타는 성벽 같은 상태음) */
+  private loops = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
+  /** 디코드를 기다리는 중인 반복 재생 — 기다리는 사이의 stopLoop 를 놓치지 않는다 */
+  private loopPending = new Set<string>();
   /**
    * 배경음은 효과음과 경로가 완전히 다르다.
    * 곡 파일을 우리가 서빙하면 접속자마다 수 MB가 나가므로 유튜브에서 스트리밍한다.
@@ -104,6 +108,72 @@ export class AudioManager {
           (fallbackVariant ? mapping[fallbackVariant] : undefined);
     if (!id) return;
     void this.playId(id, SOUND_BUS[key] ?? 'sfx', panX);
+  }
+
+  /**
+   * 반복 재생을 건다 — 성벽이 타는 동안처럼 **상태가 이어지는** 소리.
+   *
+   * play() 로는 안 된다. 그쪽은 한 방짜리라 50ms 중복 차단에 걸려 두 번째부터
+   * 조용해지고, 끊길 때마다 딸깍거린다. 여기서는 소스 하나를 loop 로 걸어 두고
+   * stopLoop 가 페이드로 내린다.
+   *
+   * 이미 같은 id 가 돌고 있으면 아무 일도 하지 않는다 — 불이 두 번 붙어도
+   * 소리가 두 겹으로 겹치면 안 된다.
+   */
+  async startLoop(id: string, bus: BusName = 'sfx'): Promise<void> {
+    if (this.loops.has(id) || this.loopPending.has(id)) return;
+    if (!this.ctx || !this.assets.hasAudio(id)) return;
+    this.loopPending.add(id);
+    try {
+      const buf = await this.decode(id);
+      // 기다리는 사이에 stopLoop 가 왔을 수 있다 — 그러면 시작하지 않는다
+      if (!buf || !this.ctx || !this.loopPending.delete(id)) return;
+      const busGain = this.buses[bus].gain;
+      if (!busGain) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      /*
+       * 앞뒤 묵음을 빼고 돈다. 안 그러면 한 바퀴마다 소리가 끊겨 "타는 중"이
+       * 아니라 "반복 재생"으로 들린다.
+       */
+      const lead = this.leadIn.get(id) ?? 0;
+      src.loopStart = lead;
+      src.loopEnd = Math.max(lead + 0.1, buf.duration - 0.05);
+      const gain = this.ctx.createGain();
+      // 시작도 페이드로 — 갑자기 붙으면 딸깍 소리가 난다
+      gain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + 0.12);
+      src.connect(gain).connect(busGain);
+      src.start(0, lead);
+      this.loops.set(id, { src, gain });
+    } catch {
+      this.loopPending.delete(id);
+    }
+  }
+
+  /** 반복 재생을 페이드로 내린다. 안 돌고 있으면 아무 일도 없다. */
+  stopLoop(id: string, fadeSec = 0.25): void {
+    // 아직 디코드를 기다리는 중이면 시작 자체를 취소한다
+    this.loopPending.delete(id);
+    const loop = this.loops.get(id);
+    if (!loop || !this.ctx) return;
+    this.loops.delete(id);
+    const t0 = this.ctx.currentTime;
+    loop.gain.gain.cancelScheduledValues(t0);
+    loop.gain.gain.setValueAtTime(loop.gain.gain.value, t0);
+    loop.gain.gain.linearRampToValueAtTime(0.0001, t0 + fadeSec);
+    try {
+      loop.src.stop(t0 + fadeSec);
+    } catch {
+      // 이미 멈춘 소스 — 그냥 넘어간다
+    }
+  }
+
+  /** 돌고 있는 반복 재생을 전부 내린다 (레벨을 나갈 때) */
+  stopAllLoops(): void {
+    for (const id of [...this.loops.keys()]) this.stopLoop(id, 0.1);
+    this.loopPending.clear();
   }
 
   async playId(id: string, bus: BusName = 'sfx', panX = 0): Promise<void> {

@@ -198,6 +198,7 @@ class Game {
   private async logout(): Promise<void> {
     this.accounts.logout();
     this.audio.stopBgm();
+    this.audio.stopAllLoops();
     this.setPaused(true, false);
     await this.signIn();
     this.level = getLevel(suggestedLevelId());
@@ -296,6 +297,7 @@ class Game {
           this.setPaused(true, false);
           // 장 선택으로 나가면 그 레벨의 배경음도 끝난다.
           this.audio.stopBgm();
+          this.audio.stopAllLoops();
           this.levelSelect.open();
         },
         onRequestExitToMenu: () => {
@@ -306,6 +308,7 @@ class Game {
           this.hud.closeOverlay();
           this.setPaused(true, false);
           this.audio.stopBgm();
+          this.audio.stopAllLoops();
           this.levelSelect.open();
         },
         onOpenSettings: () => {
@@ -442,6 +445,16 @@ class Game {
     });
 
     bus.on('castle:damaged', ({ hp, maxHp }) => this.hud.setCastle(hp, maxHp));
+
+    /*
+     * 성벽이 타는 동안 불소리를 **계속** 튼다.
+     *
+     * 한 방짜리 효과음으로는 안 된다 — 제갈량은 2초마다 불을 붙이는데 그때마다
+     * 한 번 "훅" 하고 마니까, 정작 성이 깎이고 있는 사이에는 아무 소리도 안 난다.
+     * 붙는 순간부터 꺼질 때까지 이어져야 "타고 있다"가 들린다.
+     */
+    bus.on('castle:ignited', () => void this.audio.startLoop('sfx_fire_burn'));
+    bus.on('castle:burn-ended', () => this.audio.stopLoop('sfx_fire_burn'));
     bus.on('castle:repaired', ({ hp, maxHp }) => this.hud.setCastle(hp, maxHp));
     // 강화하면 최대 체력이 늘어난다 — 게이지가 그 자리에서 늘어나야 이해된다
     bus.on('castle:upgraded', ({ hp, maxHp }) => this.hud.setCastle(hp, maxHp));
@@ -458,9 +471,9 @@ class Game {
       );
     });
 
-    bus.on('enemy:damaged', ({ enemyId, amount, hpRatio, worldPos }) => {
+    bus.on('enemy:damaged', ({ enemyId, amount, hpRatio, worldPos, kind }) => {
       const p = this.scene.project(worldPos.x, worldPos.y, worldPos.z);
-      this.fx.showDamage(p.x, p.y, amount, amount >= 20);
+      if (amount > 0) this.fx.showDamage(p.x, p.y, amount, amount >= 20, kind === 'fire');
       const isBoss = this.scene.bossEnemyId === enemyId;
       this.fx.setHealth(enemyId, hpRatio, isBoss);
       if (isBoss) this.hud.showBoss(this.bossName(), hpRatio);
@@ -481,9 +494,10 @@ class Game {
       if (getUnit(unitId).kind !== 'minion') this.audio.play('enemy:spawned', unitId);
     });
 
-    bus.on('projectile:fired', ({ towerSlotId, from }) => {
+    bus.on('projectile:fired', ({ projectileId, towerSlotId, from }) => {
       // 발사음은 쏜 타워 종류로 고른다 — 활 망루는 활, 벽력거는 돌.
       const towerId = this.world.towers.get(towerSlotId)?.def.id;
+      if (towerId === 'fire_tower' && this.world.projectiles.find(p => p.id === projectileId)?.salvoIndex !== 0) return;
       if (towerId) this.audio.play('projectile:fired', towerId, this.panOf(from.x));
     });
 
@@ -514,6 +528,7 @@ class Game {
     bus.on('level:won', ({ stats }) => {
       this.audio.play('level:won');
       this.audio.stopBgm();
+      this.audio.stopAllLoops();
       recordClear(this.level.id, stats.stars);
       this.saveRecord(stats, true);
       const next = nextLevelId(this.level.id);
@@ -523,6 +538,7 @@ class Game {
     bus.on('level:lost', ({ stats }) => {
       this.audio.play('level:lost');
       this.audio.stopBgm();
+      this.audio.stopAllLoops();
       this.saveRecord(stats, false);
       this.hud.showResult(false, stats, null);
     });
@@ -821,6 +837,7 @@ class Game {
     // 새로고침 없이 완전히 재시작한다. 뷰와 구독을 전부 정리하고 다시 만든다.
     // 배경음은 buildWorld에서 그 레벨의 곡으로 다시 시작한다.
     this.audio.stopBgm();
+    this.audio.stopAllLoops();
     this.hud.closeOverlay();
     this.panel.close();
     this.fx.clear();

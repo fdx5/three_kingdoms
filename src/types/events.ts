@@ -35,11 +35,18 @@ export interface RunStats {
 
 export interface GameEvents {
   'enemy:spawned': { enemyId: number; unitId: string; distance: number };
-  'enemy:damaged': { enemyId: number; amount: number; hpRatio: number; worldPos: WorldPos };
+  'enemy:damaged': { enemyId: number; amount: number; hpRatio: number; worldPos: WorldPos; kind?: import('./towers').DamageKind };
   'enemy:killed': { enemyId: number; unitId: string; gold: number; worldPos: WorldPos };
   'enemy:leaked': { enemyId: number; unitId: string; castleDamage: number };
   /** 성문 앞의 적이 반복 공격을 실제로 적중시켰다. */
   'enemy:castle-attack': { enemyId: number; unitId: string; castleDamage: number };
+  /**
+   * 성벽에 불이 붙었다 (제갈량의 화염). 이미 타고 있으면 시간이 갱신된다.
+   * 뷰는 성문 앞에 불을 세우고, 오디오는 타는 소리를 **반복 재생**으로 건다.
+   */
+  'castle:ignited': { worldPos: WorldPos; duration: number; dps: number };
+  /** 불이 꺼졌다. 뷰와 소리를 거둔다. */
+  'castle:burn-ended': { worldPos: WorldPos };
 
   'projectile:fired': {
     projectileId: number;

@@ -35,6 +35,18 @@ export interface UnitTraits {
    * every초마다 duration초 동안 속도가 speedMul배가 된다.
    */
   charge?: { every: number; duration: number; speedMul: number };
+  /**
+   * 성문을 **불로** 때린다 — 부채를 휘두르면 화염이 날아가 성벽에 붙는다.
+   *
+   * 보통 적은 성문을 칠 때마다 그 자리에서 피해를 준다. 이 특성이 있으면 그
+   * 한 방이 통째로 불이 되어 duration 초에 걸쳐 들어간다. 총량은 원래 한 방에
+   * damageMul 을 곱한 값이다.
+   *
+   * 왜 즉발이 아니라 지속인가: 제갈량은 성벽을 두드리러 온 것이 아니라 태우러
+   * 온 것이다. 한 번 붙은 불이 계속 깎아 내려가야 "먼저 끊어야 한다"가 몸으로
+   * 읽힌다 — 때리는 순간만 아픈 적은 서서 버티면 되지만, 태우는 적은 그렇지 않다.
+   */
+  castleFlame?: { duration: number; damageMul: number };
 }
 
 export interface UnitAudio {
@@ -47,6 +59,14 @@ export interface UnitView {
   primitive: PrimitiveSpec;
   /** 매니페스트의 모델 id. 없거나 로드 실패면 primitive로 폴백한다. */
   modelId?: string;
+  /**
+   * 타격 순간 무기가 지나간 자리를 **호**로 그린다.
+   *
+   * 보통은 무기 끝에서 불꽃이 한 번 튄다. 청룡언월도처럼 날이 몸만 한 무기는
+   * 그걸로 "휘둘렀다"가 안 읽힌다 — 점 하나가 튀는 것과 날이 쓸고 지나가는 것은
+   * 다른 그림이다. 켠 유닛만 호를 따라 여러 번 튄다.
+   */
+  weaponSweep?: boolean;
 }
 
 export interface UnitDef {

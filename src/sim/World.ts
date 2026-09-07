@@ -84,6 +84,10 @@ export class World {
   private rallyMul = 1;
   private rallyId = '';
   private castleFireCooldown = 0;
+  /** 성벽에 붙은 불 (제갈량의 화염). null 이면 안 타고 있다 */
+  private castleBurn: { dps: number; remaining: number } | null = null;
+  /** 1 이 안 되는 피해를 모아 두는 곳 — 프레임률이 게임을 바꾸지 않게 한다 */
+  private castleBurnCarry = 0;
 
   /** 총 경과 시뮬 시간 (초) */
   elapsed = 0;
@@ -299,6 +303,20 @@ export class World {
       e.castleAttackCooldown += boss ? cc.bossAttackInterval : cc.enemyAttackInterval;
       const mul = boss ? cc.bossStrikeDamageMul : cc.enemyStrikeDamageMul;
       const strike = Math.max(1, Math.round(e.castleDamage * mul));
+
+      /*
+       * 불로 때리는 적(제갈량)은 이 한 방을 그 자리에서 주지 않는다.
+       * 통째로 성벽의 불로 옮겨 duration 동안 나눠 들어간다 — 그래서 여기서는
+       * 피해가 0 이고, 실제로 깎이는 것은 아래 tickCastleBurn 이다.
+       * 공격 이벤트는 그대로 낸다: 부채를 휘두르는 동작과 화면 흔들림은 필요하다.
+       */
+      const flame = e.traits?.castleFlame;
+      if (flame) {
+        this.igniteCastle(strike * flame.damageMul, flame.duration);
+        this.bus.emit('enemy:castle-attack', { enemyId: e.id, unitId: e.defId, castleDamage: 0 });
+        continue;
+      }
+
       const dmg = this.castle.takeDamage(strike);
       this.bus.emit('enemy:castle-attack', { enemyId: e.id, unitId: e.defId, castleDamage: dmg });
       this.bus.emit('castle:damaged', { hp: this.castle.hp, maxHp: this.castle.maxHp, amount: dmg });
@@ -308,7 +326,55 @@ export class World {
       }
     }
 
+    if (this.tickCastleBurn(dt)) return;
     this.updateCastleWeapon(dt);
+  }
+
+  /**
+   * 성벽에 불을 붙인다. 이미 타고 있으면 **남은 것에 더한다.**
+   *
+   * 덮어쓰면 2초마다 오는 다음 화염이 앞의 불을 지워서, 촘촘히 맞을수록 총
+   * 피해가 줄어드는 거꾸로 된 일이 벌어진다.
+   */
+  private igniteCastle(total: number, duration: number): void {
+    const left = this.castleBurn ? this.castleBurn.dps * this.castleBurn.remaining : 0;
+    this.castleBurn = { dps: (total + left) / duration, remaining: duration };
+    const c = this.castlePosition();
+    this.bus.emit('castle:ignited', {
+      worldPos: { x: c.x, y: BALANCE.castleCombat.muzzleHeight, z: c.z },
+      duration,
+      dps: this.castleBurn.dps,
+    });
+  }
+
+  /**
+   * 타는 성벽을 깎는다. 게임이 끝났으면 true 를 돌려준다.
+   *
+   * 소수점 피해를 모았다가 1 이 넘을 때만 준다 — 프레임마다 반올림하면
+   * 프레임률이 높을수록 더 아픈, 기기마다 다른 게임이 된다.
+   */
+  private tickCastleBurn(dt: number): boolean {
+    const burn = this.castleBurn;
+    if (!burn) return false;
+    burn.remaining -= dt;
+    this.castleBurnCarry += burn.dps * dt;
+    const whole = Math.floor(this.castleBurnCarry);
+    if (whole > 0) {
+      this.castleBurnCarry -= whole;
+      const dmg = this.castle.takeDamage(whole);
+      this.bus.emit('castle:damaged', { hp: this.castle.hp, maxHp: this.castle.maxHp, amount: dmg });
+      if (this.castle.destroyed) {
+        this.finish('lost');
+        return true;
+      }
+    }
+    if (burn.remaining <= 0) {
+      this.castleBurn = null;
+      this.castleBurnCarry = 0;
+      const c = this.castlePosition();
+      this.bus.emit('castle:burn-ended', { worldPos: { x: c.x, y: BALANCE.castleCombat.muzzleHeight, z: c.z } });
+    }
+    return false;
   }
 
   /**
@@ -695,6 +761,7 @@ export class World {
     this.bus.emit('enemy:damaged', {
       enemyId: e.id,
       amount: applied,
+      kind,
       hpRatio: e.hpRatio,
       worldPos: { x: e.worldX, y: 20 * e.scale, z: e.worldZ },
     });
@@ -903,6 +970,8 @@ export class World {
     const def: CastleLevelDef = this.castle.applyUpgrade();
     // 새 무기로 바뀌는 순간은 쿨다운을 비워 준다 — 눌렀는데 아무 일도 안 일어나면 안 된다.
     this.castleFireCooldown = 0;
+    this.castleBurn = null;
+    this.castleBurnCarry = 0;
     this.bus.emit('castle:upgraded', {
       level: def.level,
       title: def.title,
