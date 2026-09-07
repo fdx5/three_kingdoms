@@ -134,6 +134,18 @@ export interface RigOptions {
    */
   staff?: boolean;
   /**
+   * 봉의 **양 끝에 넓은 날**이 달렸는가 (쌍날 언월도).
+   *
+   * 봉 캡슐의 반경은 대의 굵기다 — 그보다 넓은 날은 캡슐 밖으로 삐져나가
+   * 거리 스키닝이 가져간다. 날 끝이 발 옆에 있으면 그 조각이 **발 뼈**에 붙어,
+   * 걸을 때 날 끝이 다리를 따라 날아간다(실측: 화웅의 아래 날이 그랬다).
+   *
+   * 켜면 대 굵기의 세 배까지 날로 인정하되, **봉보다 몸통에서 더 바깥으로 나간
+   * 쪽만** 받는다. 봉과 몸 사이(장화·갑주 자락)는 그대로 몸이 가져간다 —
+   * 안 그러면 이번엔 장화가 무기를 따라 날아다닌다.
+   */
+  staffBlade?: boolean;
+  /**
    * 한 손에 든 긴 무기(대도·언월도)를 통째로 그 팔 뼈에 묶는가.
    *
    * 켜지 않으면 거리 스키닝이 칼을 팔·가슴·골반으로 나눠 가져서, 걷기만 해도
@@ -2594,6 +2606,24 @@ export async function rig(
   const weights = new Float32Array(n * 4) as Float32Array<ArrayBuffer>;
   const usage = new Array<number>(bones.length).fill(0);
   const staff = stats.staff;
+  /**
+   * 날까지 인정하는 반경. 대 굵기의 세 배 — 화웅의 아래 날이 대에서 0.10 나가 있고
+   * 대 굵기가 0.105 라, 세 배(0.315)면 날 전체가 들어오고 그 이상은 갑주를 문다.
+   */
+  const staffBladeR = opts.staffBlade === true && staff ? Math.max(staff.r, staff.rLow) * 3 : 0;
+  /**
+   * 날을 넓게 잡을 때 **다리 뼈의 살**은 건드리지 않는다.
+   *
+   * 화웅의 자루는 왼 장화 뒤를 스쳐 지나간다 — 발치에서는 봉 축이 장화 **안**을
+   * 지나므로 반경으로는 둘을 못 가른다. 대신 굵기로 가른다: 장화는 발 뼈를 감싼
+   * 통이고(중앙값 0.19), 날은 그 통 밖에 있다(0.23). 이 통 안이면 무조건 몸이다.
+   *
+   * 안 그러면 장화 바닥이 무기에 붙고, 이음매를 자를 때 그 바닥이 통째로 떨어져
+   * 나가 **발이 3.6u 뜬 채로 걷는다**(실측).
+   */
+  const legBones = bones
+    .map((b, i) => ({ b, i }))
+    .filter(({ b }) => /^(leg|foot)/.test(b.name) && (b.coreR ?? 0) > 0);
   const backProp = stats.backProp;
   const propIndex = bones.findIndex((b) => b.name === 'prop');
   const weaponIndex = bones.findIndex((b) => b.name === 'weapon');
@@ -2679,7 +2709,36 @@ export async function rig(
         const a = alongAxis(p, staff.grip, staff.dir);
         // 손(t=0) 위아래로 반경이 다르다 — 위는 허공, 아래는 몸 옆이다
         const rr = a.t < 0 ? staff.rLow : staff.r;
-        return a.d <= rr && a.t >= staff.tMin - rr && a.t <= staff.tMax + rr;
+        if (a.t < staff.tMin - rr || a.t > staff.tMax + rr) return false;
+        if (a.d <= rr) {
+          // 좁은 캡슐도 장화 속을 지날 수 있다 — 다리 통 안이면 몸이 가져간다
+          if (staffBladeR > 0) {
+            for (const { b, i: bi } of legBones) {
+              if (distToSegment(p, b.head, tails[bi]) <= (b.coreR ?? 0)) return false;
+            }
+          }
+          return true;
+        }
+        if (staffBladeR <= 0 || a.d > staffBladeR) return false;
+        for (const { b, i: bi } of legBones) {
+          if (distToSegment(p, b.head, tails[bi]) <= (b.coreR ?? 0)) return false;
+        }
+        /*
+         * 날은 봉의 **양 끝**에만 있다. 가운데(손 언저리)까지 넓히면 안 된다 —
+         * 자루가 몸을 가로지르는 구간이라 갑주와 골반이 통째로 딸려온다
+         * (실측: 넓히자 무기 뼈가 2,410정점을 가져가고 왼다리가 92개만 남았다).
+         */
+        const end = a.t < 0 ? a.t <= staff.tMin * 0.6 : a.t >= staff.tMax * 0.6;
+        if (!end) return false;
+        // 날은 봉보다 넓다 — 다만 몸 쪽으로는 넓히지 않는다. [[staffBlade]]
+        const ax: Vec3 = [
+          staff.grip[0] + staff.dir[0] * a.t,
+          staff.grip[1] + staff.dir[1] * a.t,
+          staff.grip[2] + staff.dir[2] * a.t,
+        ];
+        const outward = Math.hypot(p[0] - stats.bodyX, p[2] - stats.bodyZ);
+        const poleOut = Math.hypot(ax[0] - stats.bodyX, ax[2] - stats.bodyZ);
+        return outward > poleOut;
       })();
     if (staffMask && onStaff) {
       joints[i * 4] = weaponIndex;
@@ -2793,6 +2852,39 @@ export async function rig(
         freed += flip.length;
       }
       if (freed > 0) console.log(`[rig] 봉 경계 정리: 잘못 물린 정점 ${freed}개를 몸으로 되돌렸다`);
+
+      /*
+       * 반대 방향의 정리 — 이웃이 거의 다 봉이면 그 정점도 봉으로 가져온다.
+       *
+       * 넓은 날의 가장자리는 캡슐을 몇 점씩 벗어난다. 그 점들이 몸 뼈에 남으면
+       * 날 끝에 **검은 바늘 하나**가 매달려 걸음마다 따로 흔들린다(실측: 화웅의
+       * 아래 날 끝에 그런 조각이 남았다). 날을 쓰는 모델에서만 돈다 —
+       * 가는 봉만 있는 모델은 캡슐이 이미 봉 전체를 덮으므로 건드릴 이유가 없다.
+       */
+      if (staffBladeR > 0) {
+        let taken = 0;
+        for (let pass = 0; pass < 2; pass++) {
+          const flip: number[] = [];
+          for (let i = 0; i < n; i++) {
+            if (staffMask[i] === 1 || adj[i].length === 0) continue;
+            let same = 0;
+            for (const j of adj[i]) if (staffMask[j] === 1) same++;
+            if (same / adj[i].length >= 0.7) flip.push(i);
+          }
+          if (flip.length === 0) break;
+          for (const i of flip) {
+            staffMask[i] = 1;
+            joints[i * 4] = weaponIndex;
+            weights[i * 4] = 1;
+            for (let k = 1; k < 4; k++) {
+              joints[i * 4 + k] = 0;
+              weights[i * 4 + k] = 0;
+            }
+          }
+          taken += flip.length;
+        }
+        if (taken > 0) console.log(`[rig] 날 가장자리 ${taken}개를 무기로 데려왔다`);
+      }
     }
   }
 

@@ -22,6 +22,12 @@
     "ys_spear": {
       "url": "models/ys_spear.glb"
     },
+    "huaxiong": {
+      "url": "models/huaxiong.glb"
+    },
+    "oxcart": {
+      "url": "models/oxcart.glb"
+    },
     "yanliang": {
       "url": "models/yanliang.glb",
       "scale": 15

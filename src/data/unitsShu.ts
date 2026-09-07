@@ -158,7 +158,8 @@ export const SHU_UNITS: Record<string, UnitDef> = {
     castleDamage: 50,
     scale: 1.45,
     kind: 'minion',
-    view: { primitive: supplyCartPrimitive() },
+    // 5장 공성 목우와 같은 수레다 — 매니페스트가 id -> 파일이라 파일은 하나면 된다
+    view: { primitive: supplyCartPrimitive(), modelId: 'oxcart' },
     audio: { die: 'sfx_die_boss', hit: 'sfx_hit_shield' },
     /**
      * 2장의 도사가 하던 일을 6장에서는 수레가 한다 — 다만 도사와 달리

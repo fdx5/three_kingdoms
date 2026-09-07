@@ -41,6 +41,8 @@
     "asset:healer": "tsx scripts/bake-assets.ts healer",
     "asset:lubu": "tsx scripts/bake-assets.ts lubu",
     "asset:yuanshao": "tsx scripts/bake-assets.ts yuanshao",
+    "asset:huaxiong": "tsx scripts/bake-assets.ts huaxiong",
+    "asset:oxcart": "tsx scripts/bake-assets.ts oxcart",
     "asset:all": "tsx scripts/bake-assets.ts",
     "deploy:check": "node scripts/deploy-check.mjs"
   },

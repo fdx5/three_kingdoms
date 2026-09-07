@@ -150,7 +150,8 @@ export const JING_UNITS: Record<string, UnitDef> = {
     castleDamage: 60,
     scale: 1.5,
     kind: 'minion',
-    view: { primitive: oxCartPrimitive() },
+    // 6장 목우유마와 같은 수레다 (docs/ASSETS.md — 진영이 달라도 모델은 하나)
+    view: { primitive: oxCartPrimitive(), modelId: 'oxcart' },
     audio: { die: 'sfx_die_boss', hit: 'sfx_hit_shield' },
     /**
      * 느리지만 묶을 수 없고 잘 죽지도 않는다. 성문에 닿으면 피해가 크다 —

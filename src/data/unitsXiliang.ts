@@ -124,8 +124,8 @@ export const XILIANG_UNITS: Record<string, UnitDef> = {
     castleDamage: 100,
     scale: 1.9,
     kind: 'elite',
-    // 중간보스는 1장 두목과 같은 모델을 쓴다
-    view: { primitive: generalPrimitive(XL_RED, '#a03030'), modelId: 'yt_captain' },
+    // 쌍날 언월도를 양손으로 잡은 제 모델을 쓴다 (1장 두목을 빌려 쓰던 자리다)
+    view: { primitive: generalPrimitive(XL_RED, '#a03030'), modelId: 'huaxiong' },
     audio: { spawn: 'sfx_boss_spawn', die: 'sfx_die_boss', hit: 'sfx_hit' },
     traits: { rangedResist: 0.25 },
   },

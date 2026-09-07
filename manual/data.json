@@ -1139,7 +1139,7 @@
       "goldOnKill": 300,
       "castleDamage": 100,
       "scale": 1.9,
-      "modelId": "yt_captain",
+      "modelId": "huaxiong",
       "traits": {
         "rangedResist": 0.25
       },
@@ -1410,6 +1410,7 @@
       "goldOnKill": 28,
       "castleDamage": 60,
       "scale": 1.5,
+      "modelId": "oxcart",
       "traits": {
         "slowImmune": true,
         "fireResist": 0.7,
@@ -1519,6 +1520,7 @@
       "goldOnKill": 52,
       "castleDamage": 50,
       "scale": 1.45,
+      "modelId": "oxcart",
       "traits": {
         "slowImmune": true,
         "healAura": {

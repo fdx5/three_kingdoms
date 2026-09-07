@@ -70,6 +70,36 @@ function snap(page: Page): Promise<Snapshot> {
 }
 
 /** 로딩 화면이 사라질 때까지 */
+/**
+ * 발끝 높이를 재는 브라우저 코드 조각 — 스킨드 메시에서 **무기 뼈를 뺀** 최저점.
+ *
+ * 무기를 빼는 이유: 접지는 발 기준으로 굽는다(rig-model 이 봉을 빼고 잰다).
+ * 손에서 비스듬히 내려온 날은 지면을 스치는 것이 정상이라, 통째로 재면
+ * "모델이 파묻혔다"로 잘못 잡힌다 — 실제로 화웅의 아래 날이 그랬다(-2.2u).
+ */
+const FOOT_LOW = `function (view, stride) {
+  var sk = null;
+  view.object3d.updateMatrixWorld(true);
+  view.object3d.traverse(function (o) { if (o.isSkinnedMesh) sk = o; });
+  if (!sk) return null;
+  var weapon = -1;
+  var bones = sk.skeleton ? sk.skeleton.bones : [];
+  for (var b = 0; b < bones.length; b++) if (bones[b].name === 'weapon') weapon = b;
+  var si = sk.geometry.attributes.skinIndex;
+  var tmp = view.object3d.position.clone();
+  var n = sk.geometry.attributes.position.count;
+  var lo = Infinity;
+  for (var k = 0; k < n; k += stride) {
+    if (weapon >= 0 && si && si.getX(k) === weapon) continue;
+    var p = sk.getVertexPosition(k, tmp);
+    var m = sk.matrixWorld.elements;
+    var wy = m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13];
+    if (wy < lo) lo = wy;
+  }
+  return lo === Infinity ? null : lo - view.object3d.position.y;
+}`;
+
+
 async function boot(page: Page, url: string): Promise<void> {
   // Smoke accounts must stay local, including when checking a deployed build.
   const localUrl = new URL(url);
@@ -316,6 +346,7 @@ async function level1Pass(page: Page): Promise<void> {
    * 둘 다 콘솔 에러가 없어서 스모크가 통과했다. 그래서 여기서 직접 잰다.
    */
   const anim = await page.evaluate(`(function () {
+    var footLow = ${FOOT_LOW};
     var g = window.game;
     var worst = null;
     var running = 0;
@@ -323,20 +354,8 @@ async function level1Pass(page: Page): Promise<void> {
     g.scene.enemyViews.forEach(function (v) {
       total++;
       v.actions.forEach(function (a, st) { if (st === 'walk' && a.isRunning()) running++; });
-      var sk = null;
-      v.object3d.updateMatrixWorld(true);
-      v.object3d.traverse(function (o) { if (o.isSkinnedMesh) sk = o; });
-      if (!sk) return;
-      var tmp = v.object3d.position.clone();
-      var n = sk.geometry.attributes.position.count;
-      var lo = Infinity;
-      for (var k = 0; k < n; k += 5) {
-        var p = sk.getVertexPosition(k, tmp);
-        var m = sk.matrixWorld.elements;
-        var wy = m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13];
-        if (wy < lo) lo = wy;
-      }
-      var rel = lo - v.object3d.position.y;
+      var rel = footLow(v, 5);
+      if (rel === null) return;
       if (worst === null || rel < worst) worst = rel;
     });
     return { total: total, running: running, lowestRelToFeet: worst === null ? null : +worst.toFixed(2) };
@@ -845,6 +864,7 @@ async function level2Pass(page: Page): Promise<void> {
     });
   })()`);
   const l2models = await page.evaluate(`new Promise(function (res, rej) {
+    var footLow = ${FOOT_LOW};
     var g = window.game, t0 = performance.now(), started = 0;
     var legLo = Infinity, legHi = -Infinity;
     // 여포는 말 다리 3마디가 전부 움직여야 한다 (고관절·무릎·구절)
@@ -886,18 +906,8 @@ async function level2Pass(page: Page): Promise<void> {
           v.object3d.traverse(function (o) { if (o.isSkinnedMesh) sk = o; });
           var running = [];
           v.actions.forEach(function (a, st) { if (a.isRunning()) running.push(st); });
-          var lo = Infinity;
-          if (sk) {
-            var tmp = v.object3d.position.clone();
-            var n = sk.geometry.attributes.position.count;
-            for (var k = 0; k < n; k += 7) {
-              var pp = sk.getVertexPosition(k, tmp);
-              var mm = sk.matrixWorld.elements;
-              var wy = mm[1] * pp.x + mm[5] * pp.y + mm[9] * pp.z + mm[13];
-              if (wy < lo) lo = wy;
-            }
-          }
-          out[id] = { skinned: !!sk, walking: running.indexOf('walk') >= 0, footRel: lo - v.object3d.position.y };
+          var rel = footLow(v, 7);
+          out[id] = { skinned: !!sk, walking: running.indexOf('walk') >= 0, footRel: rel === null ? 0 : rel };
         });
         var js = {};
         Object.keys(joint).forEach(function (b) { js[b] = joint[b][1] - joint[b][0]; });
@@ -947,9 +957,9 @@ async function level3Pass(page: Page): Promise<void> {
   console.log('\n[초기 상태]');
   console.table(initial);
   if (initial.drawCalls === 0) fail('드로우콜이 0이다 — 레벨 3 씬이 그려지지 않았다');
-  // level03.ts 의 startGold 와 맞춘다. 225 로 남아 있어 스모크가 늘 실패하고 있었다 —
-  // 레벨 쪽은 "시작하자마자 궁노+벽력거 뼈대를 세운다"로 400 으로 바뀌었는데 여기가 안 따라왔다.
-  if (initial.gold !== '400') fail(`레벨 3 시작 골드가 400이 아니다: ${initial.gold}`);
+  // level03.ts 의 startGold 와 맞춘다. 400 -> 500 으로 오른 것은 난이도 조정 때다 —
+  // 횡대가 넓어진 뒤로 400 으로는 일곱 슬롯을 세우는 동안 업그레이드가 밀렸다.
+  if (initial.gold !== '500') fail(`레벨 3 시작 골드가 500이 아니다: ${initial.gold}`);
   if (initial.castle !== '500') fail(`레벨 3 시작 성 체력이 500이 아니다: ${initial.castle}`);
 
   // 3장부터도 화공과 얼음폭풍을 사용할 수 있다.

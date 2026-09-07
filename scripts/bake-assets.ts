@@ -11,13 +11,14 @@ import { optimize } from './optimize-model';
 import { rig, type BodyKind, type AttackStyle } from './rig-model';
 import { rigTower, type TowerKind } from './rig-tower';
 import { rigTrap } from './rig-trap';
+import { rigCart } from './rig-cart';
 import { rigDragonTower } from './rig-dragon-tower';
 import { isolateFigure } from './isolate-figure';
 import { unlinkSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
-/** 사람 형상은 rig-model, 건물은 rig-tower 로 간다 */
-type RigKind = 'humanoid' | 'tower' | 'trap' | 'dragon';
+/** 사람 형상은 rig-model, 건물은 rig-tower, 바퀴 달린 탈것은 rig-cart 로 간다 */
+type RigKind = 'humanoid' | 'tower' | 'trap' | 'dragon' | 'cart';
 
 interface Recipe {
   kind: RigKind;
@@ -39,6 +40,8 @@ interface Recipe {
   cadence?: number;
   /** 바닥까지 닿는 긴 봉을 든 모델 — 봉을 통째로 손에 묶는다 */
   staff?: boolean;
+  /** 그 봉의 양 끝에 넓은 날이 달렸을 때 (쌍날 언월도) */
+  staffBlade?: boolean;
   /** 한 손에 든 긴 칼을 통째로 그 팔 뼈에 묶는다 (걸을 때 칼이 휘는 모델) */
   blade?: boolean;
   /** 허리에 매달린 갑주 자락 — 다리가 아니라 골반을 따라가게 한다 */
@@ -70,6 +73,13 @@ interface Recipe {
   legCloseFactor?: number;
   /** tower 전용 */
   towerKind?: TowerKind;
+  /**
+   * cart 전용 — 바퀴 한 바퀴가 굴러가는 거리를 정하는 화면 배율 (units.ts 의 scale).
+   * 한 모델을 두 유닛이 쓰면 그 사이값을 적는다.
+   */
+  unitScale?: number;
+  /** cart 전용 — 바퀴를 찾을 좌우 끝 대역 (폭 대비 비율) */
+  wheelBand?: number;
   /** trap 전용 — 완성된 원반의 지름(u). targetHeight 는 쓰지 않는다 */
   diameter?: number;
   /** trap 전용 — 이 높이(두께 비율) 위로 솟은 것을 가시로 본다 */
@@ -413,6 +423,78 @@ const RECIPES: Record<string, Recipe> = {
    *
    * attackStyle 은 thrust — 성문을 창으로 찌른다.
    */
+  /**
+   * 화웅 (2장 중간보스) — 쌍날 언월도를 **양손으로** 잡는다.
+   *
+   * 1장 두목 모델(yt_captain)을 빌려 쓰던 자리다. 이제 제 모델이 생겼다.
+   *
+   * armMode 가 split 이 아닌 이유: 두 손이 한 자루를 앞뒤로 나눠 잡고 있어서
+   * 좌우 팔을 따로 돌리면 한 손이 자루에서 떨어진다(docs/ASSETS.md 의 창 규칙).
+   * 그래서 아래팔·손·무기를 arms 하나로 묶고 어깨까지만 좌우로 가른다.
+   *
+   * staff 를 켠 이유: 자루가 머리 위 날부터 발치 아래 날까지 몸을 가로지른다.
+   * 거리 스키닝에 맡기면 위는 머리, 가운데는 가슴, 아래는 다리 뼈로 갈려
+   * 걷기만 해도 무기가 세 토막으로 휜다.
+   *
+   * 걸음은 화웅의 자리에 맞춘다 — 속도 46, 체력 950 의 중간보스다.
+   * 서량 보병(0.9)보다 느리고 여포보다 무겁게, 갑주가 실린 걸음으로 1.12.
+   */
+  huaxiong: {
+    kind: 'humanoid',
+    input: 'img/화웅.glb',
+    output: 'public/assets/models/huaxiong.glb',
+    tris: 7000,
+    tex: 1024,
+    error: 0.012,
+    forwardDeg: 0,
+    targetHeight: 34,
+    armMode: 'single',
+    attackStyle: 'thrust',
+    staff: true,
+    // 자루 양 끝이 넓은 날이다 — 아래 날 끝이 왼발 옆에 있어서, 켜지 않으면
+    // 그 조각이 발 뼈에 붙어 걸을 때 다리를 따라 날아간다(실측으로 그랬다).
+    staffBlade: true,
+    bulky: true,
+    // 무릎까지 내려오는 갑주 자락 — 안 묶으면 걸을 때 두 쪽으로 찢어진다
+    skirt: { toRatio: 0.30, legInfluence: 0.3 },
+    cadence: 1.12,
+    /*
+     * 보폭은 창을 든 하북 창병(0.72)에 맞춘다. 0.82 로 구웠더니 다리가
+     * 양옆으로 크게 벌어져 무거운 장수가 아니라 달리는 사람처럼 보였다 —
+     * 몸을 가로지르는 긴 자루가 그 벌어짐을 그대로 따라가 더 눈에 띈다.
+     */
+    walkStride: 0.72,
+    kneeBend: 0.16,
+    legCloseFactor: 0.12,
+  },
+
+  /**
+   * 목우유마 (6장) 겸 공성 목우 (5장) — 사람이 아니라 **바퀴 달린 수레**다.
+   *
+   * 두 장이 같은 모델을 쓴다. 촉의 목우유마와 형주의 공성 목우는 진영만 다른
+   * 같은 물건이고, 매니페스트가 모델 id -> 파일이라 유닛 둘이 같은 id 를 가리키면
+   * 파일이 늘지 않는다(docs/ASSETS.md 의 "진영이 달라도 모델은 하나").
+   *
+   * 소머리가 -X 를 보고 있어 forward 는 -90 이다. 크기 26u 는 프리미티브 폴백
+   * (짐칸 24u)에 맞춘 값이다 — 유닛 scale(1.45/1.5)이 곱해져 화면에서 38u,
+   * 보병(34u)보다 한 뼘 크고 장수보다는 작다.
+   *
+   * 삼각형이 보병(2,500)의 세 배인 이유는 바큇살이다. 얇은 살이 감면에서 가장
+   * 먼저 사라지는데, 바퀴는 이 유닛의 정체(굴러온다)를 알리는 부분이다.
+   */
+  oxcart: {
+    kind: 'cart',
+    input: 'img/목우유마.glb',
+    output: 'public/assets/models/oxcart.glb',
+    tris: 9000,
+    tex: 1024,
+    error: 0.006,
+    forwardDeg: -90,
+    targetHeight: 26,
+    // 목우유마 1.45 / 공성 목우 1.5 의 사이값. 바퀴 굴림 주기가 여기서 나온다.
+    unitScale: 1.475,
+  },
+
   ys_spear: {
     kind: 'humanoid',
     input: 'img/하복 창병.glb',
@@ -700,6 +782,13 @@ async function bake(name: string): Promise<void> {
   if (r.isolate) await isolateFigure(tmp, tmp, r.isolate);
   if (r.kind === 'dragon') {
     await rigDragonTower(tmp, r.output, r.targetHeight);
+  } else if (r.kind === 'cart') {
+    await rigCart(tmp, r.output, {
+      targetHeight: r.targetHeight,
+      forwardDeg: r.forwardDeg,
+      unitScale: r.unitScale ?? 1,
+      wheelBand: r.wheelBand,
+    });
   } else if (r.kind === 'trap') {
     await rigTrap(tmp, r.output, {
       diameter: r.diameter ?? 52,
@@ -731,6 +820,7 @@ async function bake(name: string): Promise<void> {
       kneeBend: r.kneeBend ?? 0.3,
       legCloseFactor: r.legCloseFactor ?? 0.3,
       staff: r.staff,
+      staffBlade: r.staffBlade,
       blade: r.blade,
       skirt: r.skirt,
       bulky: r.bulky,
