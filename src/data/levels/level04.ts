@@ -106,7 +106,12 @@ export const LEVEL_04: LevelDef = {
      */
     baseCount: 23,
     countStep: 8,
-    hpGrowth: 0.19,
+    /*
+     * 0.19 -> 0.230. 물량 1.5배만으로는 성이 **한 대도 안 맞았다**(누수 2).
+     * 실측: 승리하되 성 1004/1160, 누수 157. 0.250 이면 성문을 6단계까지
+     * 못 사고 성이 절반으로 깎인다 — 거기까지가 이 장의 상한이다.
+     */
+    hpGrowth: 0.230,
     speedGrowth: 0.013,
     spawnInterval: (n) => Math.max(0.32, 0.9 - 0.026 * n),
     formationColumns: 4,

@@ -197,7 +197,8 @@ describe('레벨 6 — 앞의 다섯을 한꺼번에 묻는다', () => {
 /**
  * 헤드리스 밸런스 — "이 장이 가르치는 것"이 실제로 성립하는지 실측한다.
  *   4장  성문을 안 올리면 진다 (슬롯만으로는 성 앞을 못 막는다)
- *   5장  성문 없이도 이길 수는 있지만 성이 3분의 1로 깎인다 — 여기 필수는 화포다
+ *   5장  성문을 안 올리면 진다 — 여기 필수는 화포다
+ *        (예전에는 "안 올려도 이길 수는 있다"였다. 물량과 체력을 조이면서 그 여유가 사라졌다)
  *   6장  성문을 안 올리면 진다 (앞의 다섯을 다 써야 넘어간다)
  * 세 장 공통: 전부 궁노로 도배하면 진다.
  */
@@ -252,7 +253,7 @@ describe('레벨 4~6 밸런스 (헤드리스 15웨이브)', () => {
     expect(without.won).toBe(false);
   }, 60_000);
 
-  it('레벨 5 — 성문 없이도 이길 수는 있지만 성이 훨씬 더 깎인다', () => {
+  it('레벨 5 — 성문을 안 올리면 진다', () => {
     const withGate = run(5, 'after');
     const without = run(5, 'none');
     console.log(
@@ -260,7 +261,13 @@ describe('레벨 4~6 밸런스 (헤드리스 15웨이브)', () => {
         `X: 성 ${without.castleHp}/${without.castleMaxHp} 누수 ${without.leaks}`,
     );
     expect(without.towerKinds).toEqual(withGate.towerKinds);
-    // 성문이 없으면 마지막 직선이 얇아져 그만큼 성으로 옮겨 붙는다
+    expect(withGate.won).toBe(true);
+    /*
+     * 예전에는 성문 없이도 이겼고(성이 3분의 1로 깎일 뿐), 그게 5장을 4·6장과
+     * 가르는 점이었다. 물량 2.25배 + 체력 0.180 으로 조이면서 그 여유가 사라졌다 —
+     * 0.155 만 넘어도 안 올리면 진다. 5장을 되돌리려면 hpGrowth 를 0.150 아래로.
+     */
+    expect(without.won).toBe(false);
     expect(without.castleHp).toBeLessThan(withGate.castleHp * 0.75);
   }, 60_000);
 
