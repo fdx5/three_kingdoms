@@ -198,6 +198,49 @@ async function level1Pass(page: Page): Promise<void> {
   console.log(`[ok] 망루 몸통 전 높이 탭 가능 — 판정 ${hitBox.h.toFixed(0)}u x r${hitBox.r.toFixed(0)}u`);
 
   /*
+   * 가로로 든 휴대폰에서 슬롯을 짚을 수 있는가.
+   *
+   * 판정 기둥은 월드 좌표라 화면에서의 크기가 시점에 따라 변한다. 전장 전체를 담는
+   * 가로 폰(844x390)에서는 슬롯 지름이 25px 밖에 안 돼서, 손가락 끝이 그보다 굵다 —
+   * 분명히 눌렀는데 아무 일도 안 일어나는 일이 생겼다. 그래서 빗나간 탭은
+   * 화면 좌표로 한 번 더 보고 가장 가까운 슬롯으로 끌어당긴다.
+   */
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(400);
+  const tapSnap = await page.evaluate(`(function () {
+    var g = window.game;
+    var r = g.handle.domElement.getBoundingClientRect();
+    var out = { 지름: 0, 맞은거리: [], 잘못잡힘: [] };
+    var s = g.world.level.buildSlots[0];
+    var a = g.scene.project(s.x - 28, 0, s.z); var ax = a.x;
+    var c = g.scene.project(s.x + 28, 0, s.z);
+    out.지름 = Math.round(Math.abs(c.x - ax));
+    var center = g.scene.project(s.x, 0, s.z);
+    var cx = center.x, cy = center.y;
+    [0, 10, 18, 22].forEach(function (off) {
+      g.scene.handleTap(r.left + 4, r.top + 4, r);  // 빈 땅을 눌러 선택을 푼다
+      g.scene.handleTap(r.left + cx + off, r.top + cy, r);
+      if (g.selectedSlot === s.id) out.맞은거리.push(off);
+    });
+    // 각 슬롯의 한복판을 눌렀을 때 제 것이 잡히는가 (스냅이 옆 슬롯을 훔치지 않는지)
+    g.world.level.buildSlots.forEach(function (q) {
+      var pt = g.scene.project(q.x, 0, q.z); var qx = pt.x, qy = pt.y;
+      g.scene.handleTap(r.left + qx, r.top + qy, r);
+      if (g.selectedSlot !== q.id) out.잘못잡힘.push(q.id + '->' + g.selectedSlot);
+    });
+    return out;
+  })()`) as { 지름: number; 맞은거리: number[]; 잘못잡힘: string[] };
+  if (tapSnap.맞은거리.length < 4) {
+    fail(`가로 폰에서 슬롯 탭이 빗나간다 — 지름 ${tapSnap.지름}px, 잡힌 거리 ${JSON.stringify(tapSnap.맞은거리)}`);
+  }
+  if (tapSnap.잘못잡힘.length > 0) {
+    fail(`탭 스냅이 옆 슬롯을 훔친다: ${tapSnap.잘못잡힘.join(', ')}`);
+  }
+  console.log(`[ok] 가로 폰 슬롯 탭 — 화면 지름 ${tapSnap.지름}px 인데 ±22px 까지 잡힌다`);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(400);
+
+  /*
    * 활 망루: 레벨 수만큼만 쇠뇌가 보이고, 쏠 때 시위가 당겨졌다 놓이고,
    * 화살이 각 쇠뇌의 시위에서 떠나는지.
    *

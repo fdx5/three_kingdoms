@@ -43,6 +43,14 @@ export interface GameSceneCallbacks {
  */
 /** 빈 슬롯의 탭 판정 크기. 예전 원판(반지름 32)과 같은 감각을 유지한다. */
 const EMPTY_SLOT_HIT = { height: 8, radius: 32 };
+/**
+ * 빗나간 탭을 슬롯으로 끌어당기는 화면 거리(px).
+ *
+ * 가장 가까이 붙은 두 슬롯이 화면에서 37px 떨어져 있으므로, 그 절반보다 조금 넓게
+ * 잡아도 "가장 가까운 하나"라는 규칙 덕에 옆 슬롯이 잡히지 않는다.
+ * 이보다 크게 잡으면 빈 땅을 눌러 선택을 푸는 것이 어려워진다.
+ */
+const TAP_SNAP_PX = 24;
 /** 판정 상한 — 측정이 어긋나도 기둥이 맵을 삼키지 않게 한다. */
 const MAX_SLOT_HIT = { height: 120, radius: 64 };
 
@@ -828,20 +836,53 @@ export class GameScene {
 
   /** 캔버스 탭 -> 슬롯 판정 */
   handleTap(clientX: number, clientY: number, rect: DOMRect): void {
-    this.pointer.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    this.pointer.set((localX / rect.width) * 2 - 1, -(localY / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.stage.camera);
     const hits = this.raycaster.intersectObjects(this.slotHitPlanes, false);
-    if (hits.length === 0) {
-      this.cb.onEmptyTapped();
+    if (hits.length > 0) {
+      const slotId = hits[0].object.userData.slotId as string;
+      const world = hits[0].point;
+      this.project(world.x, world.y, world.z);
+      this.cb.onSlotTapped(slotId, this.screenBuf.x, this.screenBuf.y);
       return;
     }
-    const slotId = hits[0].object.userData.slotId as string;
-    const world = hits[0].point;
-    this.project(world.x, world.y, world.z);
-    this.cb.onSlotTapped(slotId, this.screenBuf.x, this.screenBuf.y);
+    // 정확히는 빗나갔지만 코앞이면 그 슬롯으로 쳐 준다.
+    const near = this.nearestSlotOnScreen(localX, localY);
+    if (near) {
+      this.cb.onSlotTapped(near.slotId, near.x, near.y);
+      return;
+    }
+    this.cb.onEmptyTapped();
+  }
+
+  /**
+   * 화면에서 손가락 근처의 슬롯을 찾는다.
+   *
+   * 왜 필요한가: 슬롯의 판정 기둥은 월드 좌표라 화면에서의 크기가 시점에 따라 변한다.
+   * 데스크톱에서는 지름이 57px 쯤 되지만, **가로로 든 휴대폰에서는 25px** 밖에 안 된다
+   * (전장 전체를 담느라 화면이 눌리기 때문이다). 손가락 끝은 그보다 굵어서,
+   * 분명히 슬롯을 눌렀는데 아무 일도 일어나지 않는 일이 생긴다.
+   *
+   * 그래서 빗나간 탭은 화면 좌표로 한 번 더 본다. 여러 슬롯이 근처에 있어도
+   * **가장 가까운 하나**만 고르므로, 옆 슬롯이 잘못 잡히지 않는다
+   * (가장 붙어 있는 두 슬롯도 화면에서 37px 은 떨어져 있다).
+   */
+  private nearestSlotOnScreen(localX: number, localY: number):
+    { slotId: string; x: number; y: number } | null {
+    let best: { slotId: string; x: number; y: number } | null = null;
+    let bestDist = TAP_SNAP_PX;
+    for (const hit of this.slotHitPlanes) {
+      const p = hit.position;
+      this.project(p.x, p.y, p.z);
+      const d = Math.hypot(this.screenBuf.x - localX, this.screenBuf.y - localY);
+      if (d < bestDist) {
+        bestDist = d;
+        best = { slotId: hit.userData.slotId as string, x: this.screenBuf.x, y: this.screenBuf.y };
+      }
+    }
+    return best;
   }
 
   /** 선택 표시: 건설된 타워는 사거리 링을 흰색으로, 미건설 슬롯은 미리보기 링을 띄운다. */

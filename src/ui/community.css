@@ -114,3 +114,32 @@
   .hist th, .hist td { padding: 8px 6px; }
   .hist__title { display: none; } /* 좁은 화면에서는 "제 3 장"만으로 충분하다 */
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   가로로 든 휴대폰
+   높이가 390px 뿐이라, 머리말(COMMUNITY · 제목 · 설명)이 250px 을 먹으면
+   열 줄짜리 목록이 넉 줄만 보인다. 머리말을 한 줄로 눕혀 목록에 자리를 준다.
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-height: 500px) and (orientation: landscape) {
+  .community { padding: 0; }
+  .community__panel { width: 100%; height: 100%; max-height: none; border: 0; padding: 10px 14px; }
+  .community__panel::before, .community__panel::after { display: none; }
+
+  /* 제목·설명·탭·닫기를 한 줄에 */
+  .community__head { align-items: center; padding-bottom: 8px; gap: 10px; }
+  .community__head > div:first-child { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .community__head .menu-eyebrow { display: none; }   /* 탭이 이미 어느 화면인지 말한다 */
+  .community__title { font-size: 16px; white-space: nowrap; }
+  .community__sub { margin: 0; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .community__tab { padding: 6px 10px; }
+
+  .community__composer { padding: 8px 0; }
+  .community__input { min-height: 32px; font-size: 13px; }
+  .community__send { min-height: 32px; }
+
+  .gb__row { padding: 8px 2px; }
+  .gb__msg { margin-top: 3px; font-size: 12.5px; line-height: 1.55; }
+  .hist th, .hist td { padding: 6px 8px; }
+  .community__pager { padding-top: 8px; }
+  .community__page { min-width: 28px; min-height: 28px; }
+}
