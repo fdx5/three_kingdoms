@@ -32,10 +32,20 @@ try {
     await page.waitForTimeout(100);
     const failures = await page.evaluate(() => {
       const errors = [];
+      /*
+       * 최소 탭 크기는 화면에 따라 다르다.
+       *
+       * 세로·태블릿에서는 44px 이 맞다. 그런데 **가로로 든 휴대폰**은 높이가 390px
+       * 안팎뿐이라, 44px 버튼 한 줄에 상단바까지 더하면 전장이 남지 않는다.
+       * 실제로 그 크기 때문에 건설 패널이 화면을 덮어 게임이 불가능했다.
+       * 그 화면에서는 30px 로 줄이는 대신, 잘리지 않는 것은 그대로 요구한다.
+       */
+      const short = innerHeight <= 500 && innerWidth > innerHeight;
+      const min = short ? 30 : 44;
       for (const b of document.querySelectorAll('.bottombar__left button, .bottombar__right button')) {
         const r = b.getBoundingClientRect();
         if (r.left < 0 || r.right > innerWidth + 1 || r.bottom > innerHeight || r.top < 0) errors.push(`clipped: ${b.textContent}`);
-        if (r.height < 44 || r.width < 44) errors.push(`small target: ${b.textContent}`);
+        if (r.height < min || r.width < min) errors.push(`small target(${min}): ${b.textContent} ${Math.round(r.width)}x${Math.round(r.height)}`);
       }
       return errors;
     });
@@ -44,7 +54,24 @@ try {
     await page.waitForTimeout(50);
     const panelBox = await page.locator('.panel').boundingBox();
     assert(panelBox.y >= 0 && panelBox.y + panelBox.height <= height, `panel clipped at ${width}x${height}`);
-    await page.locator('.panel__actions button').first().scrollIntoViewIfNeeded();
+    /*
+     * 가로로 든 휴대폰에서는 건설 패널이 전장을 덮으면 안 된다.
+     *
+     * 예전에는 화면 가운데에 500x254 로 떠서, 아이폰 가로(844x390)에서 전장이
+     * 통째로 가려졌다 — 어디에 짓는지 보이지 않는 채로 지어야 했다.
+     * 지금은 왼쪽 기둥으로 세우므로 폭의 절반을 넘지 않아야 한다.
+     */
+    if (height <= 500 && width > height) {
+      assert(panelBox.width <= width * 0.45,
+        `panel covers the battlefield at ${width}x${height}: ${Math.round(panelBox.width)}px of ${width}px`);
+    }
+    /*
+     * 건설 버튼은 스크롤하지 않고도 보여야 한다. 패널이 넘칠 때 이 줄이 아래로
+     * 밀려나면 사용자 눈에는 "건설 버튼이 없는" 화면이 된다.
+     */
+    const build = await page.locator('.panel__actions button').first().boundingBox();
+    assert(build.y >= 0 && build.y + build.height <= height + 1,
+      `build button out of view at ${width}x${height}: y=${Math.round(build.y)} h=${Math.round(build.height)}`);
     await page.locator('.panel__actions button').first().click({ trial: true });
     await page.evaluate(() => { window.mobileFixture.panel.close(); window.mobileFixture.hud.showSettings(); });
     await page.getByRole('button', { name: '닫기', exact: true }).scrollIntoViewIfNeeded();

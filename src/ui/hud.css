@@ -1274,3 +1274,123 @@ body.debug .leveltitle {
   .bottombar__left .seg button { flex: 1; }
   .bottombar__left > button { flex: 1; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   가로로 든 휴대폰
+
+   여기가 이 게임에서 화면이 가장 모자란 자리다. 아이폰 가로는 폭이 844px나
+   되지만 **높이가 390px뿐**이다. 그런데 지금까지의 모바일 규칙은 전부
+   `(pointer: coarse)` 로만 갈라져서, 폭이 넓으면 태블릿과 같은 크기가 붙었다.
+   그 결과 상단바 40 + 하단바 두 줄 110 이 세로의 40%를 먹고, 건설 패널이
+   전장을 통째로 덮어 "어디에 짓는지 보이지 않는 채로 짓는" 상태가 됐다.
+
+   그래서 여기서는 **높이**를 기준으로 다시 짠다.
+     - 글자와 버튼을 절반 가까이 줄인다 (--ui 17px -> 12px, --tap 44 -> 30)
+     - 하단바를 다시 한 줄로 되돌린다 (계략이 따로 한 줄을 먹지 않게)
+     - 건설 패널을 화면 가운데가 아니라 **왼쪽 기둥**으로 옮긴다 —
+       가로에서는 남는 것이 폭이므로, 세로를 다 쓰고 전장을 가리지 않는다
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (max-height: 500px) and (orientation: landscape) {
+  :root {
+    /* 태블릿 기준(17px)은 세로 390px 화면에서 너무 크다 */
+    --ui: 12px;
+    /* 44px 은 손가락 기준이지만, 이 화면에서는 버튼 셋이면 세로가 없어진다.
+       30px 이어도 실제 탭 영역은 padding 으로 34px 안팎이 된다. */
+    --tap: 30px;
+    --radius: 7px;
+  }
+
+  /* ── 상단: 값만 남긴다 ─────────────────────────────────────────── */
+  .topbar { top: calc(var(--safe-t) + 5px); left: calc(var(--safe-l) + 6px);
+            right: calc(var(--safe-r) + 6px); gap: 5px; }
+  .chip { min-height: 26px; padding: 0 8px; gap: 5px; border-radius: 6px; }
+  .chip__label { display: none; }      /* "골드" "웨이브" 는 아이콘으로 안다 */
+  .chip__icon { font-size: 1em; }
+  .chip__value { font-size: 1em; }
+  .castle-bar { width: clamp(60px, 12vw, 110px); height: 8px; }
+  .countdown-ring { width: 20px; height: 20px; }
+  .leveltitle { display: none; }       /* 배너가 같은 말을 이미 한다 */
+
+  /* ── 하단: 한 줄로 되돌린다 ────────────────────────────────────── */
+  /*
+   * 한 줄을 고집하지 않는다. 667px(아이폰 SE 가로)에서는 속도·아이콘·계략·성문·
+   * 수리·소집이 한 줄에 들어가지 않아 계략이 통째로 밀려났다. 넘치면 줄을 바꾸되,
+   * 한 줄이 30px 이라 두 줄이어도 예전 두 줄(110px)의 절반이 조금 넘는다.
+   */
+  .bottombar {
+    display: flex; flex-wrap: wrap; justify-content: flex-end;
+    left: calc(var(--safe-l) + 6px); right: calc(var(--safe-r) + 6px);
+    bottom: calc(var(--safe-b) + 6px); gap: 4px; align-items: flex-end;
+  }
+  .bottombar__left { gap: 4px; flex: 0 0 auto; margin-right: auto; }
+  .bottombar__right { gap: 4px; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; }
+  .bottombar__center { flex: 1 1 auto; min-width: 0; justify-content: flex-start; }
+  .bottombar button { min-height: var(--tap); min-width: var(--tap); padding: 0 7px; }
+  .seg { padding: 1px; gap: 1px; }
+  /* 속도 버튼도 다른 버튼과 같은 최소 크기를 지킨다 — 여기만 작으면 여기만 안 눌린다 */
+  .seg button { min-height: var(--tap); min-width: 32px; padding: 0 6px; font-size: 0.9em; }
+
+  /* 계략 — 글자와 비용만. 이름은 폭을 두 배로 만든다. */
+  .stratcard { min-width: 40px; min-height: var(--tap); padding: 3px 6px; gap: 0; border-radius: 6px; }
+  .stratcard__name { display: none; }
+  .stratcard__glyph { font-size: 1.05em; }
+  .stratcard__note { font-size: 0.78em; }
+
+  /* 지금 소집 · 성벽 수리 · 성문 강화 — 두 줄이던 것을 한 줄로 눕힌다 */
+  .call-wave { flex-direction: row; align-items: baseline; gap: 5px; padding: 0 8px; }
+  .call-wave__bonus { font-size: 0.82em; }
+  .bottombar__right button { font-size: 0.9em; }
+
+  /* ── 건설 패널: 왼쪽 기둥 ──────────────────────────────────────── */
+  /*
+   * 위에서부터 내려오되 **내용만큼만** 길다.
+   * 위아래를 모두 붙잡아 늘리면 짧은 패널 아래로 검은 여백이 길게 남는다.
+   */
+  .panel--popover {
+    left: calc(var(--safe-l) + 6px) !important;
+    right: auto;
+    top: calc(var(--safe-t) + 34px) !important;
+    bottom: auto;
+    transform: none; margin: 0;
+    width: clamp(180px, 27vw, 230px); max-width: none;
+    max-height: calc(var(--viewport-height, 100dvh) - var(--safe-t) - var(--safe-b)
+                     - var(--bottombar-height, 40px) - 46px);
+    padding: 8px; border-radius: 9px;
+  }
+  .panel__title { margin-bottom: 5px; font-size: 1em; }
+  .panel__desc { margin-block: 4px; font-size: 0.86em; line-height: 1.45; }
+  .panel__note { margin-top: 5px; font-size: 0.8em; }
+  .bows { margin-bottom: 5px; font-size: 1em; }
+  .statgrid { grid-template-columns: auto 1fr; gap: 2px 6px; margin-bottom: 6px; font-size: 0.86em; }
+  .targeting { gap: 3px; margin-bottom: 6px; }
+  .targeting button { min-height: 26px; padding: 0 6px; font-size: 0.8em; }
+  /* 이름과 값을 한 줄에 눕힌다 — 두 줄이면 다섯 종류가 세로를 100px 넘게 먹는다 */
+  .towerpick { flex-wrap: wrap; gap: 3px; margin-bottom: 6px; }
+  .towerpick button {
+    flex: 1 1 46%; min-height: var(--tap); padding: 3px 6px;
+    flex-direction: row; justify-content: space-between; gap: 5px;
+  }
+  .towerpick__name { font-size: 0.82em; }
+  .towerpick__cost { font-size: 0.78em; }
+  /*
+   * 건설·업그레이드 버튼은 **늘 보여야 한다.**
+   * 패널이 넘쳐 스크롤될 때 이 줄이 아래로 밀려나면, 사용자 눈에는
+   * "건설 버튼이 아예 없는" 화면이 된다(실제로 SE 가로에서 잘려 있었다).
+   */
+  .panel__actions {
+    position: sticky; bottom: -8px; z-index: 1;
+    gap: 5px; flex-wrap: nowrap;
+    margin-inline: -8px; padding: 6px 8px 0;
+    background: linear-gradient(180deg, #1a161100, var(--panel-solid) 40%);
+  }
+  .panel__actions button { flex: 1 1 0; min-height: var(--tap); padding: 0 6px; font-size: 0.92em; }
+
+  /* ── 그 밖에 세로를 먹던 것들 ──────────────────────────────────── */
+  .banner { padding: 5px 10px; font-size: 0.95em; }
+  .bossbar { top: calc(var(--safe-t) + 34px); width: 200px; }
+  .overlay__card { padding: 12px 14px; }
+  .overlay__title { font-size: 1.2em; }
+  .overlay__actions button { min-height: var(--tap); padding-block: 5px; }
+  #backend-label { display: none; }
+}
