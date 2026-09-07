@@ -27,7 +27,7 @@ function burningWorld(): World {
 
 describe('성벽 화염', () => {
   it('제갈량은 특성으로 이 동작을 켠다 — 다른 적은 그대로 즉발이다', () => {
-    expect(SHU_UNITS.zhugeliang.traits?.castleFlame).toEqual({ duration: 1.6, damageMul: 1.15 });
+    expect(SHU_UNITS.zhugeliang.traits?.castleFlame).toBeDefined();
     for (const u of Object.values(SHU_UNITS)) {
       if (u.id !== 'zhugeliang') expect(u.traits?.castleFlame).toBeUndefined();
     }
@@ -86,9 +86,12 @@ describe('성벽 화염', () => {
      * 간격이 좁아졌을 때 여기가 먼저 깨진다.
      */
     expect(dps[1]).toBeGreaterThanOrEqual(dps[0] - 1e-6);
-    // 한 방(=castleDamage × 장수 배율)에 1.15 를 곱한 것이 1.6초에 걸쳐 들어간다
-    const strike = Math.max(1, Math.round(260 * BALANCE.castleCombat.bossStrikeDamageMul));
-    expect(dps[0]).toBeCloseTo((strike * 1.15) / 1.6, 5);
+    // 한 방(=castleDamage × 장수 배율)에 damageMul 을 곱한 것이 duration 에 걸쳐 들어간다.
+    // 값은 유닛 정의에서 읽는다 — 밸런스를 손볼 때마다 테스트가 깨지면 안 된다.
+    const boss = SHU_UNITS.zhugeliang;
+    const flame = boss.traits!.castleFlame!;
+    const strike = Math.max(1, Math.round(boss.castleDamage * BALANCE.castleCombat.bossStrikeDamageMul));
+    expect(dps[0]).toBeCloseTo((strike * flame.damageMul) / flame.duration, 5);
   });
 
   it('불은 스스로 꺼진다 — 켜 두고 잊으면 성이 조용히 사라진다', () => {

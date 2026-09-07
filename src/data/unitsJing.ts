@@ -91,7 +91,7 @@ export const JING_UNITS: Record<string, UnitDef> = {
     faction: 'jing',
     hp: 88,
     speed: 52,
-    goldOnKill: 9,
+    goldOnKill: 6,
     castleDamage: 18,
     scale: 1.0,
     kind: 'minion',
@@ -110,7 +110,7 @@ export const JING_UNITS: Record<string, UnitDef> = {
     faction: 'jing',
     hp: 215,
     speed: 40,
-    goldOnKill: 18,
+    goldOnKill: 12,
     castleDamage: 32,
     scale: 1.18,
     kind: 'minion',
@@ -120,13 +120,33 @@ export const JING_UNITS: Record<string, UnitDef> = {
     traits: { rangedResist: 0.5, fireResist: 0.55 },
   },
 
+  /**
+   * 형주 기병 — 4장의 강동 기병보다 한 단계 위다.
+   *
+   * 체력 105 에 속도 120. 이 장의 수레(380)를 상대하느라 공성 타워를 깔아 두면
+   * 그 사이로 기병이 빠져나간다 — 두 종류를 동시에 답해야 하는 자리다.
+   */
+  jz_cavalry: {
+    id: 'jz_cavalry',
+    displayName: '형주 기병',
+    faction: 'jing',
+    hp: 105,
+    speed: 120,
+    goldOnKill: 15,
+    castleDamage: 36,
+    scale: 1.12,
+    kind: 'minion',
+    view: { primitive: cavalryPrimitive(JZ_CLOTH, JZ_STEEL), modelId: 'cavalry' },
+    audio: { die: 'sfx_die_small', hit: 'sfx_hit' },
+  },
+
   jz_oxcart: {
     id: 'jz_oxcart',
     displayName: '공성 목우',
     faction: 'jing',
     hp: 380,
     speed: 30,
-    goldOnKill: 42,
+    goldOnKill: 28,
     castleDamage: 60,
     scale: 1.5,
     kind: 'minion',
@@ -146,7 +166,13 @@ export const JING_UNITS: Record<string, UnitDef> = {
     hp: 3200,
     speed: 48,
     goldOnKill: 260,
-    castleDamage: 110,
+    /*
+     * 장수의 성문 피해는 3장을 기준으로 장마다 1.35배씩 오른다.
+     * 3장 150 → 4장 200 → 5장 275 → 6장 370 (정예는 90 → 120 → 165 → 220).
+     * 성문 앞에 장수를 들여보내는 값이 뒤로 갈수록 커져야, 성문 강화와
+     * "장수는 길에서 끊는다"가 계속 유효한 판단으로 남는다.
+     */
+    castleDamage: 165,
     scale: 1.95,
     kind: 'elite',
     view: { primitive: jingGeneralPrimitive('#2f6b3a', '#4a9a5a'), modelId: 'yt_captain' },
@@ -161,7 +187,13 @@ export const JING_UNITS: Record<string, UnitDef> = {
     hp: 5200,
     speed: 46,
     goldOnKill: 900,
-    castleDamage: 200,
+    /*
+     * 장수의 성문 피해는 3장을 기준으로 장마다 1.35배씩 오른다.
+     * 3장 150 → 4장 200 → 5장 275 → 6장 370 (정예는 90 → 120 → 165 → 220).
+     * 성문 앞에 장수를 들여보내는 값이 뒤로 갈수록 커져야, 성문 강화와
+     * "장수는 길에서 끊는다"가 계속 유효한 판단으로 남는다.
+     */
+    castleDamage: 275,
     scale: 2.4,
     kind: 'boss',
     // 청룡언월도를 든 전용 모델. 등 뒤 깃발은 몸통에 묶여 팔과 따로 논다.

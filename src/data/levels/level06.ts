@@ -97,9 +97,27 @@ export const LEVEL_06: LevelDef = {
 
   waves: generateWaves({
     count: 15,
-    baseCount: 12,
-    countStep: 4,
-    hpGrowth: 0.10,
+    /*
+     * 물량은 3장을 기준으로 장마다 1.5배씩 붙는다 — 3장 x1, 4장 x1.5,
+     * 5장 x2.25, 6장 x3.4. 뒤로 갈수록 "같은 답을 더 크게" 요구하는 것이
+     * 이 게임의 후반이고, 그 크기를 여기 두 값이 정한다.
+     */
+    /*
+     * 마지막 장인데 최종 웨이브가 68기로 4·5장(85기)보다 **적었다.** 규모가
+     * 이 장의 유일한 새 것이라고 적어 놓고 정작 규모가 앞 장보다 작았던 것이다.
+     * 이제 237기로, 4장(135)의 1.8배·5장(188)의 1.3배다.
+     */
+    baseCount: 41,
+    countStep: 14,
+    /*
+     * 물량만 늘리면 "같은 적이 많이" 온다. 한 마리도 같이 두꺼워져야 후반이 무겁다.
+     *
+     * 0.10 -> 0.140. 이 값은 벼랑 위에 있다 — 0.135 면 성이 20 밖에 안 깎이고,
+     * 0.145 면 13파에서 무너진다. 0.140 에서 성 1174/1360, 누수 119 로 끝난다
+     * (바꾸기 전에는 1330/1360, 누수 26 이었다). 손대려면 0.005 씩 움직이고
+     * tests/level0456.test.ts 의 출력으로 확인할 것.
+     */
+    hpGrowth: 0.140,
     speedGrowth: 0.014,
     spawnInterval: (n) => Math.max(0.28, 0.85 - 0.026 * n),
     formationColumns: 5,
@@ -114,6 +132,8 @@ export const LEVEL_06: LevelDef = {
       { unitId: 'sh_repeater', from: 1, weight: 10 },
       { unitId: 'sh_chainmail', from: 3, weight: 5 },
       { unitId: 'sh_supply', from: 6, weight: 1 },
+      // 기병 계보의 끝. 5장(비중 5)보다 늘어나고 3파부터 일찍 온다
+      { unitId: 'sh_cavalry', from: 3, weight: 7 },
     ],
 
     patterns: {

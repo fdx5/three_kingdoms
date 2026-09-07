@@ -75,7 +75,7 @@ export const WU_UNITS: Record<string, UnitDef> = {
     faction: 'wu',
     hp: 84,
     speed: 56,
-    goldOnKill: 7,
+    goldOnKill: 6,
     castleDamage: 16,
     scale: 1.0,
     kind: 'minion',
@@ -90,7 +90,7 @@ export const WU_UNITS: Record<string, UnitDef> = {
     faction: 'wu',
     hp: 215,
     speed: 40,
-    goldOnKill: 14,
+    goldOnKill: 11,
     castleDamage: 28,
     scale: 1.15,
     kind: 'minion',
@@ -105,13 +105,37 @@ export const WU_UNITS: Record<string, UnitDef> = {
     traits: { rangedResist: 0.65, fireVuln: 2.2 },
   },
 
+  /**
+   * 강동 기병 — 4장에서 처음 나오는 말 탄 적.
+   *
+   * 3장까지 기병은 2장의 서량 철기뿐이었다. 4·5·6장은 보병만 와서, 후반으로
+   * 갈수록 "빠른 것"이라는 축이 사라졌다. 여기서 다시 넣고 장마다 비중을 늘린다.
+   *
+   * 속도 118 은 이 장에서 가장 빠르다(수병 56의 두 배). 체력은 등갑(215)의
+   * 3분의 1이라 맞으면 죽지만, 느린 타워는 조준을 마치기 전에 지나쳐 버린다 —
+   * 답은 철질려로 묶는 것이다.
+   */
+  wu_cavalry: {
+    id: 'wu_cavalry',
+    displayName: '강동 기병',
+    faction: 'wu',
+    hp: 70,
+    speed: 118,
+    goldOnKill: 13,
+    castleDamage: 30,
+    scale: 1.1,
+    kind: 'minion',
+    view: { primitive: cavalryPrimitive(WU_CLOTH, WU_STEEL), modelId: 'cavalry' },
+    audio: { die: 'sfx_die_small', hit: 'sfx_hit' },
+  },
+
   wu_raider: {
     id: 'wu_raider',
     displayName: '강동 야습대',
     faction: 'wu',
     hp: 44,
     speed: 118,
-    goldOnKill: 10,
+    goldOnKill: 8,
     castleDamage: 22,
     scale: 1.05,
     kind: 'minion',
@@ -132,7 +156,13 @@ export const WU_UNITS: Record<string, UnitDef> = {
     hp: 2100,
     speed: 50,
     goldOnKill: 220,
-    castleDamage: 100,
+    /*
+     * 장수의 성문 피해는 3장을 기준으로 장마다 1.35배씩 오른다.
+     * 3장 150 → 4장 200 → 5장 275 → 6장 370 (정예는 90 → 120 → 165 → 220).
+     * 성문 앞에 장수를 들여보내는 값이 뒤로 갈수록 커져야, 성문 강화와
+     * "장수는 길에서 끊는다"가 계속 유효한 판단으로 남는다.
+     */
+    castleDamage: 120,
     scale: 1.9,
     kind: 'elite',
     // 용머리 철퇴와 대형 방패를 든 강동의 맹장. scale 1.9 가 곱해져 화면에서 65u 다.
@@ -149,7 +179,13 @@ export const WU_UNITS: Record<string, UnitDef> = {
     hp: 3600,
     speed: 42,
     goldOnKill: 600,
-    castleDamage: 160,
+    /*
+     * 장수의 성문 피해는 3장을 기준으로 장마다 1.35배씩 오른다.
+     * 3장 150 → 4장 200 → 5장 275 → 6장 370 (정예는 90 → 120 → 165 → 220).
+     * 성문 앞에 장수를 들여보내는 값이 뒤로 갈수록 커져야, 성문 강화와
+     * "장수는 길에서 끊는다"가 계속 유효한 판단으로 남는다.
+     */
+    castleDamage: 200,
     scale: 2.3,
     kind: 'boss',
     // 봉황 방패와 오환도를 든 강동의 주인. scale 2.3 이 곱해져 화면에서 78u —

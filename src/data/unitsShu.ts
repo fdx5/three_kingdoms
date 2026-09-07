@@ -101,7 +101,7 @@ export const SHU_UNITS: Record<string, UnitDef> = {
     faction: 'shu',
     hp: 105,
     speed: 62,
-    goldOnKill: 22,
+    goldOnKill: 12,
     castleDamage: 20,
     scale: 1.0,
     kind: 'minion',
@@ -116,7 +116,7 @@ export const SHU_UNITS: Record<string, UnitDef> = {
     faction: 'shu',
     hp: 200,
     speed: 42,
-    goldOnKill: 47,
+    goldOnKill: 26,
     castleDamage: 34,
     scale: 1.2,
     kind: 'minion',
@@ -126,13 +126,35 @@ export const SHU_UNITS: Record<string, UnitDef> = {
     traits: { rangedResist: 0.38, fireResist: 0.42 },
   },
 
+  /**
+   * 서량 기병 — 마초가 데려온 철기가 촉의 선봉에 선다.
+   *
+   * 세 장에 걸친 기병 계보의 끝이다(강동 70 → 형주 105 → 여기 150).
+   * 화살 20% 를 흘리므로 궁노만으로는 못 세운다. 속도 124 에 성문 피해 42 라,
+   * 한 무리를 놓치면 성이 눈에 띄게 깎인다.
+   */
+  sh_cavalry: {
+    id: 'sh_cavalry',
+    displayName: '서량 기병',
+    faction: 'shu',
+    hp: 150,
+    speed: 124,
+    goldOnKill: 18,
+    castleDamage: 42,
+    scale: 1.15,
+    kind: 'minion',
+    view: { primitive: cavalryPrimitive(SHU_CLOTH, SHU_STEEL), modelId: 'cavalry' },
+    audio: { die: 'sfx_die_small', hit: 'sfx_hit' },
+    traits: { rangedResist: 0.2 },
+  },
+
   sh_supply: {
     id: 'sh_supply',
     displayName: '목우유마',
     faction: 'shu',
     hp: 460,
     speed: 34,
-    goldOnKill: 95,
+    goldOnKill: 52,
     castleDamage: 50,
     scale: 1.45,
     kind: 'minion',
@@ -153,7 +175,13 @@ export const SHU_UNITS: Record<string, UnitDef> = {
     hp: 4600,
     speed: 50,
     goldOnKill: 420,
-    castleDamage: 130,
+    /*
+     * 장수의 성문 피해는 3장을 기준으로 장마다 1.35배씩 오른다.
+     * 3장 150 → 4장 200 → 5장 275 → 6장 370 (정예는 90 → 120 → 165 → 220).
+     * 성문 앞에 장수를 들여보내는 값이 뒤로 갈수록 커져야, 성문 강화와
+     * "장수는 길에서 끊는다"가 계속 유효한 판단으로 남는다.
+     */
+    castleDamage: 220,
     scale: 2.0,
     kind: 'elite',
     view: { primitive: shuGeneralPrimitive('#7a2f2f', '#d9b64a'), modelId: 'yt_captain' },
@@ -173,7 +201,13 @@ export const SHU_UNITS: Record<string, UnitDef> = {
     hp: 9000,
     speed: 38,
     goldOnKill: 1500,
-    castleDamage: 260,
+    /*
+     * 장수의 성문 피해는 3장을 기준으로 장마다 1.35배씩 오른다.
+     * 3장 150 → 4장 200 → 5장 275 → 6장 370 (정예는 90 → 120 → 165 → 220).
+     * 성문 앞에 장수를 들여보내는 값이 뒤로 갈수록 커져야, 성문 강화와
+     * "장수는 길에서 끊는다"가 계속 유효한 판단으로 남는다.
+     */
+    castleDamage: 370,
     scale: 2.5,
     kind: 'boss',
     // 우선깃털부채를 든 전용 모델. 큰 소매라 팔을 따로 돌리지 않고 상체가 쓸고 지나간다.

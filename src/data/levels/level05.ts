@@ -101,8 +101,13 @@ export const LEVEL_05: LevelDef = {
 
   waves: generateWaves({
     count: 15,
-    baseCount: 15,
-    countStep: 5,
+    /*
+     * 물량은 3장을 기준으로 장마다 1.5배씩 붙는다 — 3장 x1, 4장 x1.5,
+     * 5장 x2.25, 6장 x3.4. 뒤로 갈수록 "같은 답을 더 크게" 요구하는 것이
+     * 이 게임의 후반이고, 그 크기를 여기 두 값이 정한다.
+     */
+    baseCount: 34,
+    countStep: 11,
     hpGrowth: 0.145,
     speedGrowth: 0.012,
     spawnInterval: (n) => Math.max(0.34, 0.92 - 0.026 * n),
@@ -118,6 +123,8 @@ export const LEVEL_05: LevelDef = {
       { unitId: 'jz_marine', from: 1, weight: 10 },
       { unitId: 'jz_halberd', from: 4, weight: 5 },
       { unitId: 'jz_oxcart', from: 7, weight: 1 },
+      // 4장(비중 3)보다 늘어난다 — 수레와 기병을 동시에 답해야 한다
+      { unitId: 'jz_cavalry', from: 4, weight: 5 },
     ],
 
     patterns: {

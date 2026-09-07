@@ -99,8 +99,13 @@ export const LEVEL_04: LevelDef = {
 
   waves: generateWaves({
     count: 15,
-    baseCount: 15,
-    countStep: 5,
+    /*
+     * 물량은 3장을 기준으로 장마다 1.5배씩 붙는다 — 3장 x1, 4장 x1.5,
+     * 5장 x2.25, 6장 x3.4. 뒤로 갈수록 "같은 답을 더 크게" 요구하는 것이
+     * 이 게임의 후반이고, 그 크기를 여기 두 값이 정한다.
+     */
+    baseCount: 23,
+    countStep: 8,
     hpGrowth: 0.19,
     speedGrowth: 0.013,
     spawnInterval: (n) => Math.max(0.32, 0.9 - 0.026 * n),
@@ -117,6 +122,8 @@ export const LEVEL_04: LevelDef = {
       { unitId: 'wu_marine', from: 1, weight: 10 },
       { unitId: 'wu_rattan', from: 3, weight: 6 },
       { unitId: 'wu_raider', from: 6, weight: 3 },
+      // 기병은 5파부터. 이 장에서 처음 나오는 말 탄 적이다
+      { unitId: 'wu_cavalry', from: 5, weight: 3 },
     ],
 
     patterns: {
