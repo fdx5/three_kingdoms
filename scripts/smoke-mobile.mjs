@@ -72,6 +72,18 @@ try {
     const build = await page.locator('.panel__actions button').first().boundingBox();
     assert(build.y >= 0 && build.y + build.height <= height + 1,
       `build button out of view at ${width}x${height}: y=${Math.round(build.y)} h=${Math.round(build.height)}`);
+    /*
+     * 가로 폰에서는 패널이 **스크롤 없이** 다 보여야 한다.
+     * 스크롤이 되기는 해도, 손가락으로 판을 짚어 가며 하는 게임에서 패널 안까지
+     * 굴려 읽어야 하는 것은 불편하다. 내용이 넘치면 내용을 줄이는 쪽이 맞다.
+     */
+    if (height <= 500 && width > height) {
+      const over = await page.evaluate(() => {
+        const n = document.querySelector('.panel');
+        return n.scrollHeight - n.clientHeight;
+      });
+      assert(over <= 1, `build panel needs scrolling at ${width}x${height}: ${over}px over`);
+    }
     await page.locator('.panel__actions button').first().click({ trial: true });
     await page.evaluate(() => { window.mobileFixture.panel.close(); window.mobileFixture.hud.showSettings(); });
     await page.getByRole('button', { name: '닫기', exact: true }).scrollIntoViewIfNeeded();
@@ -80,8 +92,18 @@ try {
       window.mobileFixture.hud.closeOverlay();
       const { Tower } = await import('/src/sim/Tower.ts');
       const { TOWER_LIST } = await import('/src/data/towers.ts');
-      window.mobileFixture.panel.showTower(new Tower('test', TOWER_LIST[0], 0, 0), 99999);
+      // 3단계까지 올려 둔다 — 업그레이드 패널은 "지금 -> 다음" 열이 붙어 가장 길다
+      const tower = new Tower('test', TOWER_LIST[0], 0, 0);
+      tower.level = 3;
+      window.mobileFixture.panel.showTower(tower, 99999);
     });
+    if (height <= 500 && width > height) {
+      const over = await page.evaluate(() => {
+        const n = document.querySelector('.panel');
+        return n.scrollHeight - n.clientHeight;
+      });
+      assert(over <= 1, `upgrade panel needs scrolling at ${width}x${height}: ${over}px over`);
+    }
     await page.locator('.panel__close').click();
     assert.equal(await page.locator('.panel').isVisible(), false);
     for (const screen of ['pause', 'win', 'lose']) {

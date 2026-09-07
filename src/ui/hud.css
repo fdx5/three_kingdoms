@@ -1353,22 +1353,36 @@ body.debug .leveltitle {
     top: calc(var(--safe-t) + 34px) !important;
     bottom: auto;
     transform: none; margin: 0;
-    width: clamp(180px, 27vw, 230px); max-width: none;
+    /* 가로에서 남는 것은 폭이다. 조금 더 주면 줄바꿈이 줄어 세로가 그만큼 짧아진다. */
+    width: clamp(200px, 32vw, 268px); max-width: none;
     max-height: calc(var(--viewport-height, 100dvh) - var(--safe-t) - var(--safe-b)
                      - var(--bottombar-height, 40px) - 46px);
     padding: 8px; border-radius: 9px;
   }
   .panel__title { margin-bottom: 5px; font-size: 1em; }
   .panel__desc { margin-block: 4px; font-size: 0.86em; line-height: 1.45; }
-  .panel__note { margin-top: 5px; font-size: 0.8em; }
-  .bows { margin-bottom: 5px; font-size: 1em; }
-  .statgrid { grid-template-columns: auto 1fr; gap: 2px 6px; margin-bottom: 6px; font-size: 0.86em; }
-  .targeting { gap: 3px; margin-bottom: 6px; }
-  .targeting button { min-height: 26px; padding: 0 6px; font-size: 0.8em; }
+  /*
+   * 배치 요령 한 줄은 접는다 — 한 번 읽으면 되는 안내인데 19px 을 쓴다.
+   * 그 자리를 비워야 다섯 종류의 망루가 스크롤 없이 다 보인다.
+   * 다만 **경고**(골드 부족)는 남긴다. 그건 지금 눌러도 되는지를 말하는 줄이다.
+   */
+  .panel__note { display: none; }
+  .panel__note--warn { display: block; margin-top: 4px; font-size: 0.8em; }
+  .bows { margin-bottom: 4px; font-size: 0.9em; gap: 2px; }
+  /*
+   * 수치표는 **4열 그대로** 둔다 (라벨·값·화살표·다음 값).
+   * 2열로 좁혀 봤더니 한 줄에 하나씩 들어가 표가 두 배로 길어졌다 —
+   * 폭을 아끼려다 세로를 두 배로 쓴 셈이었다. 세로가 모자란 화면에서는 반대로 가야 한다.
+   */
+  .statgrid { gap: 2px 5px; margin-bottom: 5px; font-size: 0.84em; }
+  /* 조준 방식 넷은 한 줄에 나눠 갖는다. 줄바꿈하면 그것만으로 26px 을 더 쓴다. */
+  .targeting { gap: 3px; margin-bottom: 5px; flex-wrap: nowrap; }
+  .targeting button { flex: 1 1 0; min-width: 0; min-height: 26px; padding: 0 2px; font-size: 0.78em; }
   /* 이름과 값을 한 줄에 눕힌다 — 두 줄이면 다섯 종류가 세로를 100px 넘게 먹는다 */
   .towerpick { flex-wrap: wrap; gap: 3px; margin-bottom: 6px; }
   .towerpick button {
-    flex: 1 1 46%; min-height: var(--tap); padding: 3px 6px;
+    /* 세로로만 26px — 가로로는 120px 이 넘어 손가락이 빗나가지 않는다 */
+    flex: 1 1 46%; min-height: 26px; padding: 2px 6px;
     flex-direction: row; justify-content: space-between; gap: 5px;
   }
   .towerpick__name { font-size: 0.82em; }
@@ -1384,7 +1398,11 @@ body.debug .leveltitle {
     margin-inline: -8px; padding: 6px 8px 0;
     background: linear-gradient(180deg, #1a161100, var(--panel-solid) 40%);
   }
-  .panel__actions button { flex: 1 1 0; min-height: var(--tap); padding: 0 6px; font-size: 0.92em; }
+  /* "업그레이드 200 G" 가 두 줄로 접히면 그 버튼만 키가 커져 줄이 어긋난다 */
+  .panel__actions button {
+    flex: 1 1 0; min-height: var(--tap); padding: 0 5px;
+    font-size: 0.88em; white-space: nowrap;
+  }
 
   /* ── 그 밖에 세로를 먹던 것들 ──────────────────────────────────── */
   .banner { padding: 5px 10px; font-size: 0.95em; }
