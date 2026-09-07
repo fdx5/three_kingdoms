@@ -57,6 +57,8 @@ interface Recipe {
   bodyAxis?: { x: number; z: number };
   /** 팔을 따로 돌리지 않는다 — 큰 소매의 장포를 입은 인물 */
   rigidArms?: boolean;
+  /** 다리가 안 보이는 인물의 걷기 — 골반이 몸 전체를 흔든다 */
+  robeGait?: boolean;
   /**
    * 원본에 인물이 둘 이상이면 하나만 남긴다.
    * keep 은 자르는 축에서 어느 쪽을 남길지다.
@@ -364,6 +366,12 @@ const RECIPES: Record<string, Recipe> = {
      * 돌리면 상체가 접힌다. 부채는 상체가 비틀리며 쓸고 지나간다.
      */
     rigidArms: true,
+    /*
+     * 다리 뼈가 정점을 하나도 안 든다(자락을 전부 골반으로 옮겼다). 그래서
+     * 다리를 흔들어도 화면에서는 아무 일이 없다 — 그냥 미끄러져 다녔다.
+     * 골반이 대신 걷는다.
+     */
+    robeGait: true,
     bulky: false,
     /*
      * 머리 위에는 아무것도 없다 — 관(冠)이 곧 꼭대기다. 그런데 자동 규칙은
@@ -733,6 +741,7 @@ async function bake(name: string): Promise<void> {
       backProp: r.backProp,
       bodyAxis: r.bodyAxis,
       rigidArms: r.rigidArms,
+      robeGait: r.robeGait,
     });
   }
   unlinkSync(tmp);

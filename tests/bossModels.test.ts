@@ -167,6 +167,39 @@ describe('제갈량 — 장포와 우선깃털부채', () => {
     expect(w.get('hips') ?? 0).toBeGreaterThan(1000);
   });
 
+  it('걷는 것이 보인다 — 미끄러지지 않는다', () => {
+    /*
+     * 다리 뼈가 정점을 하나도 안 드는 인물이라, 다리를 흔들어 봐야 화면에서는
+     * 아무 일도 일어나지 않는다. 실제로 그래서 **공중에 떠서 미끄러졌다.**
+     * 지금은 골반이 몸 전체를 흔든다(robeGait) — 그것이 실제로 움직이는지 잰다.
+     */
+    const mixer = new THREE.AnimationMixer(model.scene);
+    const clip = model.animations.find((a) => a.name === 'walk')!;
+    mixer.clipAction(clip).play();
+
+    const box = new THREE.Box3();
+    const samples: THREE.Box3[] = [];
+    for (let i = 0; i <= 8; i++) {
+      mixer.setTime((i / 8) * clip.duration);
+      model.scene.updateMatrixWorld(true);
+      model.scene.traverse((o) => {
+        if (o instanceof THREE.SkinnedMesh) o.skeleton.update();
+      });
+      samples.push(box.setFromObject(model.scene, true).clone());
+    }
+    const span = (pick: (b: THREE.Box3) => number): number => {
+      const v = samples.map(pick);
+      return Math.max(...v) - Math.min(...v);
+    };
+    const height = samples[0].max.y - samples[0].min.y;
+
+    // 몸이 걸음마다 오르내린다 (위로만 흔든다 — 아래로 내리면 옷단이 땅에 묻힌다)
+    expect(span((b) => b.max.y) / height, '위아래로 안 움직인다').toBeGreaterThan(0.015);
+    expect(Math.min(...samples.map((b) => b.min.y))).toBeCloseTo(samples[0].min.y, 2);
+    // 옷자락이 좌우로 쓸린다 — 골반이 디딘 쪽으로 기울기 때문이다
+    expect(span((b) => b.min.x) / height, '옷자락이 좌우로 안 쓸린다').toBeGreaterThan(0.02);
+  });
+
   it('클립을 태워도 정점이 발산하지 않는다', () => {
     const mixer = new THREE.AnimationMixer(model.scene);
     for (const clip of model.animations) {

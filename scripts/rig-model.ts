@@ -205,6 +205,21 @@ export interface RigOptions {
    */
   rigidArms?: boolean;
   /**
+   * 장포 걸음 — **다리가 안 보이는 인물**의 걷기.
+   *
+   * 보통 걷기는 다리 뼈가 만든다. 바닥까지 끌리는 장포를 입은 인물은 그 다리에
+   * 정점이 하나도 없으므로(자락을 전부 골반으로 옮겼다) 다리를 아무리 흔들어도
+   * 화면에서는 아무 일도 일어나지 않는다 — 제갈량이 **공중에 떠서 미끄러졌다.**
+   *
+   * 그래서 골반이 대신 걷는다. 몸 전체를 좌우로 싣고(sway), 걸음마다 살짝
+   * 들어 올리고(bob), 디딘 쪽으로 기운다(roll). 옷자락은 골반에 매달려 있으므로
+   * 기우는 만큼 밑단이 크게 쓸린다 — 그것이 이 인물의 걸음으로 읽힌다.
+   *
+   * 위아래는 **위로만** 흔든다. 아래로 내리면 접지 계산이 그만큼 몸을 띄워서
+   * 서 있을 때 옷단이 바닥에서 떠 버린다.
+   */
+  robeGait?: boolean;
+  /**
    * 등에 진 깃발·창통을 몸통 뼈에 묶는다.
    *
    * 켜지 않으면 머리 위 부속이 "가장 가까운 뼈"인 팔로 떨어져, 내려치기에서
@@ -2032,7 +2047,46 @@ function buildClips(
     return [rot('armL', T, flip ? inv : angles, swingAxis), rot('armR', T, flip ? angles : inv, swingAxis)];
   };
 
-  const walk: ClipSpec = {
+  /*
+   * 장포 걸음. 다리가 아니라 골반이 걷는다 — 위 RigOptions.robeGait 참고.
+   *
+   * 9개 키가 한 주기(두 걸음)를 덮는다. 좌우 흔들림과 기울기는 주기당 한 번,
+   * 위아래는 걸음마다 한 번이라 두 번 오르내린다.
+   */
+  const robeWalk = (): ClipSpec => {
+    const H = m.bodyTopY - m.minY;
+    const bob = H * 0.030;
+    const sway = H * 0.020;
+    const roll = 0.125;
+    /** 걸음마다 앞으로 실렸다 돌아온다 — 나아가는 인상을 준다 */
+    const pitch = 0.035;
+    const wave = [0, 0.7, 1, 0.7, 0, -0.7, -1, -0.7, 0];
+    const lift = [0, 0.7, 1, 0.7, 0, 0.7, 1, 0.7, 0];
+    // 좌우 축은 swingAxis 다 (다리를 앞뒤로 흔들 때 쓰는 회전축 = 몸의 좌우선)
+    const move: number[] = [];
+    for (let i = 0; i < 9; i++) {
+      move.push(swingAxis[0] * sway * wave[i], lift[i] * bob, swingAxis[2] * sway * wave[i]);
+    }
+    return {
+      name: 'walk',
+      tracks: [
+        track('hips', T, move, 'translation'),
+        // 디딘 발 쪽으로 기운다 — 옷자락 밑단이 이 회전으로 쓸린다
+        rot('hips', T, wave.map((v) => v * roll), sideAxis),
+        // 몸통은 절반만 되돌린다. 다 되돌리면 상체가 굳어 보이고, 안 하면 머리까지 기운다
+        rot('chest', T, wave.map((v) => -v * roll * 0.45), sideAxis),
+        // 머리는 수평을 지킨다
+        rot('head', T, wave.map((v) => -v * roll * 0.35), sideAxis),
+        // 걸음마다 몸통이 조금 비틀린다
+        rot('hips', T, wave.map((v) => v * 0.05), [0, 1, 0]),
+        rot('chest', T, wave.map((v) => -v * 0.035), [0, 1, 0]),
+        // 걸음마다(주기당 두 번) 앞으로 실린다
+        rot('chest', T, lift.map((v) => v * pitch), swingAxis),
+      ],
+    };
+  };
+
+  const walk: ClipSpec = opts.robeGait ? robeWalk() : {
     name: 'walk',
     tracks: [
       // legA(왼쪽, X가 작은 쪽)는 +X 로, legB는 -X 로 모은다
@@ -2901,7 +2955,17 @@ export async function rig(
   const skinCtx = makeSkinContext(P, n, joints, weights, bones, staffMask);
   // 걷기는 지지발이 땅에 붙어 있어야 한다 (제자리·찌르기는 발을 옮기지 않으므로 그대로 둔다)
   const rootBone = mount ? 'body' : 'hips';
-  for (const clip of clips) if (clip.name === 'walk') plantFeet(skinCtx, clip, rootBone);
+  /*
+   * 발 고정은 **다리로 걷는 모델**의 것이다.
+   *
+   * 프레임마다 최저점을 한 높이로 맞춰서 지지발이 땅을 파거나 뜨지 않게 한다.
+   * 그런데 장포 걸음은 위아래 흔들림 자체가 걸음의 신호다 — 여기에 이 보정을
+   * 걸면 그 흔들림이 정확히 지워져서, 옷자락만 좌우로 쓸리는 미끄러짐이 된다
+   * (실측: 골반을 0.030 올렸는데 보정이 같은 만큼 도로 내렸다).
+   */
+  if (!opts.robeGait) {
+    for (const clip of clips) if (clip.name === 'walk') plantFeet(skinCtx, clip, rootBone);
+  }
 
   // 접지 기준점은 오프셋 표현일 때 재야 한다 — 아래에서 절대 좌표로 바꾸기 전에.
   const lowest = lowestAnimatedY(skinCtx, clips);
