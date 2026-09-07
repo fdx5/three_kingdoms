@@ -1,6 +1,5 @@
 /** 설명서용 인물·타워 사진을 굽는다. */
 import { chromium } from 'playwright-core';
-/* global console, window, process */
 import { mkdirSync, readFileSync } from 'node:fs';
 
 const data = JSON.parse(readFileSync('manual/data.json', 'utf8'));

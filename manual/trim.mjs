@@ -1,6 +1,5 @@
 /** 투명 여백을 잘라 낸다 — 레이아웃이 프레임을 정하게 하려고. */
 import sharp from 'sharp';
-/* global console, process */
 import { readdirSync } from 'node:fs';
 
 for (const name of readdirSync('manual/img').filter((f) => f.endsWith('.png'))) {
