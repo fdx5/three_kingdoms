@@ -164,7 +164,8 @@ export const JING_UNITS: Record<string, UnitDef> = {
     castleDamage: 200,
     scale: 2.4,
     kind: 'boss',
-    view: { primitive: guanyuPrimitive(), modelId: 'lubu' },
+    // 청룡언월도를 든 전용 모델. 등 뒤 깃발은 몸통에 묶여 팔과 따로 논다.
+    view: { primitive: guanyuPrimitive(), modelId: 'guanyu' },
     audio: { spawn: 'sfx_boss_spawn', die: 'sfx_die_boss', hit: 'sfx_hit' },
     /**
      * 여포의 돌진과 원소의 오라를 한 몸에 가진 최종보스.

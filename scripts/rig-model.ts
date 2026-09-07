@@ -113,7 +113,18 @@ export interface RigOptions {
    * toRatio 는 자락 아랫단의 높이(몸 높이 비율), legInfluence 는 아랫단에서 허용할
    * 다리 가중치의 상한이다.
    */
-  skirt?: { toRatio: number; legInfluence?: number };
+  skirt?: {
+    toRatio: number;
+    legInfluence?: number;
+    /**
+     * 자락 대역의 **윗단** — 몸 높이 비율. 기본 0.5 (허리).
+     *
+     * 다리 뼈는 반경 안이면 위쪽 정점도 가져간다. 장포처럼 다리가 아예 없는
+     * 인물은 그 반경이 가슴 아래까지 닿아서(실측: 제갈량의 다리 뼈가 y 0.22,
+     * 몸 높이의 73% 지점까지 가중치 1,372를 들었다) 허리까지만 눌러서는 모자란다.
+     */
+    topRatio?: number;
+  };
   /**
    * 바닥까지 닿는 긴 봉을 든 모델인가.
    *
@@ -132,6 +143,75 @@ export interface RigOptions {
    * 세로줄을 칼로 잡는다. 걷을 때 칼이 휘는 것이 실제로 보이는 모델에만 켠다.
    */
   blade?: boolean;
+  /**
+   * 몸(머리 끝)의 높이 — bbox 높이 대비 비율. 큰 부속이 머리 위로 솟았을 때만 준다.
+   *
+   * 평소에는 analyze 가 "Y 칸별 정점 수가 최대치의 3% 밑으로 떨어지는 곳부터는
+   * 부속"이라는 규칙으로 알아서 자른다. 창처럼 **가느다란** 것은 그걸로 잘린다.
+   * 관우의 등 뒤 깃발은 안 잘린다 — 넓은 천이라 정점이 많고(실측: 머리 위 칸에
+   * 315개, 3% 문턱은 훨씬 아래였다) 깃대가 몸통 축에서 0.14H 밖에 안 떨어져 있다.
+   *
+   * 그대로 두면 bodyTopY 가 깃발 꼭대기까지 올라가고, **거기서 파생되는 모든 것**이
+   * 어긋난다 — 머리 뼈가 깃발 속에 박히고(실측: 머리 정점 대신 깃천 682개를 잡았다),
+   * 어깨·팔 높이가 밀리고, targetHeight 가 깃발까지 포함한 키에 걸려 관우가 작아진다.
+   *
+   * 그래서 이 모델에서만 손으로 준다. 값은 참고 그림과 probe 로 잰다.
+   */
+  bodyTopRatio?: number;
+  /**
+   * 발을 찾을 때 몸통 축에서 이 거리(bodyH 비율) 밖의 정점은 무시한다.
+   *
+   * 발은 하단 20% 대역을 XZ 2-means 로 갈라 찾는다. 그 대역에 **바닥까지 닿는
+   * 무기**가 있으면 한쪽 군집이 통째로 그 무기가 된다 — 관우의 언월도 날 끝이
+   * 축에서 0.47H 떨어진 자리에 있어서 왼발로 잡혔고, 그 결과 다리 뼈가 몸이
+   * 아니라 칼을 향해 뻗었다.
+   *
+   * 발은 아무리 벌려도 축에서 0.4H 안쪽이다. 기본값(없음)은 지금까지 구운
+   * 모델들의 결과를 바꾸지 않기 위한 것이다 — 필요한 모델만 켠다.
+   */
+  footRadius?: number;
+  /**
+   * 무기를 든 손을 못 박는다.
+   *
+   * 자동 판정은 "몸통 축에서 더 멀리 뻗은 팔"이다. 무기 말고는 아무것도 안 뻗은
+   * 모델에서는 맞지만, 등에 깃발을 진 관우는 깃발 쪽(오른쪽)이 이겨서 언월도를
+   * 든 왼손을 놓쳤다. 그럴 때만 준다.
+   */
+  weaponSide?: 'L' | 'R';
+  /**
+   * 척추가 지나는 자리(모델 로컬 x·z)를 못 박는다.
+   *
+   * 자동 판정은 허리 대역의 XZ 중앙값이고, bulky 면 머리 대역으로 갈아탄다.
+   * 둘 다 "정점이 몸 부위에 고르게 퍼져 있다"를 전제한다. 제갈량은 그렇지 않다 —
+   * 우선깃털부채와 장포 앞자락이 정점의 절반을 가져가 중앙값을 앞으로 0.10 밀었고
+   * (실측: 머리는 z 0.030 인데 축은 0.148), 머리 뼈가 머리 밖에 놓여 58정점만 잡았다.
+   *
+   * 이럴 때만 준다. 값은 머리 대역의 중앙값을 재서 넣는다.
+   */
+  bodyAxis?: { x: number; z: number };
+  /**
+   * 팔을 따로 움직이지 않는다 — 소매·손에 든 것까지 몸통이 통째로 들고 돈다.
+   *
+   * 큰 소매의 장포를 입은 인물(제갈량)에게 쓴다. 그런 모델에서는 팔과 옷이
+   * 공간적으로 구분되지 않는다 — 거리 스키닝이 팔 뼈에 **모델의 70%** 를 붙였고
+   * (실측: 오른팔 26,182 / 전체 35,582. 부채 깃털이 정점 예산을 다 먹어서
+   * 부채·깃·앞자락이 한 덩어리로 뭉쳐 있다), 그 팔을 0.75rad 돌리면 상체가
+   * 통째로 접힌다.
+   *
+   * 켜면 팔·어깨 뼈의 반경을 0 으로 만들어 정점을 하나도 잡지 않게 한다.
+   * 뼈와 클립은 그대로 남지만 아무것도 움직이지 않고, 보이는 동작은 몸통(chest)의
+   * 비틀기가 한다 — 부채를 쥔 팔이 따로 도는 대신 **상체가 돌며 부채를 쓸고
+   * 지나간다.** 소매 안에 팔이 있는 인물의 실제 동작에 가깝고, 무엇보다 찢어지지 않는다.
+   */
+  rigidArms?: boolean;
+  /**
+   * 등에 진 깃발·창통을 몸통 뼈에 묶는다.
+   *
+   * 켜지 않으면 머리 위 부속이 "가장 가까운 뼈"인 팔로 떨어져, 내려치기에서
+   * 깃발이 팔처럼 휘둘린다. 켜면 부속 전용 뼈(prop)가 chest 밑에 생기고
+   * 아무 클립도 그 뼈를 돌리지 않는다 — 몸통이 도는 만큼만 따라 돈다.
+   */
+  backProp?: boolean;
 }
 
 interface BoneSpec {
@@ -245,6 +325,14 @@ function buildSkeleton(m: MeshStats, armMode: ArmMode, weaponArms = false): Bone
     { name: 'head', parent: 'chest', head: [pelvisX, headY, pelvisZ], tail: [pelvisX, bodyTopY, pelvisZ], maxR: bodyH * 0.13 },
     { name: 'shoulderL', parent: 'chest', head: shoulderL, tail: [shoulderL[0] - bodyH * 0.10, shoulderY - bodyH * 0.08, shoulderL[2]], maxR: bodyH * 0.13 },
     { name: 'shoulderR', parent: 'chest', head: shoulderR, tail: [shoulderR[0] + bodyH * 0.10, shoulderY - bodyH * 0.08, shoulderR[2]], maxR: bodyH * 0.13 },
+    /*
+     * 등짐(깃발) 뼈 — 몸통에 매달린다. maxR 0 이라 거리 스키닝에는 안 잡히고,
+     * 캡슐 안 정점만 나중에 통째로 묶인다. 어떤 클립도 이 뼈를 돌리지 않는다:
+     * 등에 묶인 물건이니 가슴이 도는 만큼만 따라 돌면 된다.
+     */
+    ...(m.backProp
+      ? [{ name: 'prop', parent: 'chest', head: m.backProp.head, tail: m.backProp.tail, maxR: 0 } as BoneSpec]
+      : []),
   ];
 
   const legs: BoneSpec[] = [
@@ -360,6 +448,8 @@ interface MeshStats {
   weaponSide: 'L' | 'R';
   /** 바닥까지 닿는 봉 (staff 옵션이 켜졌고 실제로 찾았을 때만) */
   staff: StaffInfo | null;
+  /** 등에 진 깃발 (backProp 옵션이 켜졌고 실제로 찾았을 때만) */
+  backProp: BackProp | null;
 }
 
 /**
@@ -369,6 +459,13 @@ interface MeshStats {
  * 아래끝이 원기둥 밖으로 나가 다리 뼈에 붙었다. 그러면 걷을 때 봉 아래 토막만
  * 다리를 따라 흔들려 봉이 두 동강 난 것처럼 보인다. 그래서 축을 직접 맞춘다.
  */
+/** 등에 진 부속 — 어느 정점이 부속인지와, 그 부속을 대표하는 뼈의 양 끝 */
+interface BackProp {
+  mask: Uint8Array;
+  head: Vec3;
+  tail: Vec3;
+}
+
 interface StaffInfo {
   /** 손이 잡은 지점 = 회전 중심 */
   grip: Vec3;
@@ -683,6 +780,148 @@ function findStaff(
  *   - 팔 뼈를 칼끝까지 늘리기: 내린 칼은 가슴보다 아래라 팔 덩어리에 안 들어온다.
  *     그 바람에 뼈가 투구 장식 쪽을 향했다.
  */
+/**
+ * 등에 진 부속 — 깃발·깃대·창통처럼 **몸통에 매달려 머리 위로 솟은 것**.
+ *
+ * 왜 따로 잡는가
+ * -------------
+ * 이런 부속은 어느 뼈에도 안 맞는다. 머리 뼈는 짧아서 반경 밖이고, 그러면 거리
+ * 스키닝의 마지막 수단인 "가장 가까운 뼈"가 가져간다 — 관우의 깃발은 그렇게
+ * **오른팔**에 통째로 붙었다(1,062정점). 내려치기 클립에서 반대 팔이 ±26도를
+ * 도니까, 깃발이 어깨를 축으로 팔처럼 휘둘렸다.
+ *
+ * 깃발은 등에 묶인 것이다. 팔이 아니라 몸통을 따라가야 한다.
+ *
+ * 어떻게 잡는가
+ * ------------
+ * 머리 위 정점만 씨앗으로 삼아 주성분으로 축을 맞추고(깃대의 기울기), 그 축의
+ * 캡슐을 가슴 높이까지 내려 늘린다. 내려오는 구간에서는 **몸통 굵기 밖**만
+ * 받는다 — 안 그러면 등판 갑주까지 딸려와 몸통이 부속을 따라 도는 꼴이 된다.
+ */
+function findBackProp(
+  P: Float32Array,
+  n: number,
+  axisX: number,
+  axisZ: number,
+  bodyTopY: number,
+  chestY: number,
+  bodyH: number,
+  torsoRadius: number,
+): BackProp | null {
+  /*
+   * 씨앗은 두 가지다.
+   *   머리 위               깃천 본체. 몸이 거기까지 올라갈 일은 없다
+   *   몸 뒤로 크게 벗어난 것  깃대 밑동과 뒤로 늘어진 갈래
+   *
+   * 두 번째가 없으면 아래로 처진 갈래를 놓친다 — 실측: 102정점이 양팔에 남아,
+   * 내려칠 때 그것만 팔을 따라 휘둘렸다(천은 가만있고 갈래만 도는 꼴).
+   *
+   * 등 뒤 판정은 몸통 굵기를 넘는 뒤쪽으로 잡는다. 언월도를 쥔 손이 z -0.080 인데
+   * 문턱은 그보다 더 뒤(-0.111)라 무기는 안 걸리고, 등판 갑주는 몸통 굵기 안이라
+   * farOut 에서 걸러진다.
+   */
+  const behindZ = axisZ - torsoRadius * 1.1;
+  const farOut = (i: number): boolean =>
+    Math.hypot(P[i * 3] - axisX, P[i * 3 + 2] - axisZ) > torsoRadius * 1.15;
+  const seeds: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const y = P[i * 3 + 1];
+    if (y > bodyTopY) { seeds.push(i); continue; }
+    if (y > chestY && P[i * 3 + 2] < behindZ && farOut(i)) seeds.push(i);
+  }
+  if (seeds.length < 30) {
+    console.log(`[rig] 등짐 없음: 씨앗 ${seeds.length}개 (몸통 굵기 ${torsoRadius.toFixed(3)})`);
+    return null;
+  }
+
+  let cx = 0, cy = 0, cz = 0;
+  for (const i of seeds) { cx += P[i * 3]; cy += P[i * 3 + 1]; cz += P[i * 3 + 2]; }
+  const origin: Vec3 = [cx / seeds.length, cy / seeds.length, cz / seeds.length];
+
+  // 주성분 = 깃대 축. 멱반복으로 충분하다 (씨앗이 한 방향으로 길게 늘어서 있다)
+  const cov = new Array<number>(9).fill(0);
+  for (const i of seeds) {
+    const v = [P[i * 3] - origin[0], P[i * 3 + 1] - origin[1], P[i * 3 + 2] - origin[2]];
+    for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) cov[a * 3 + b] += v[a] * v[b];
+  }
+  let dir: Vec3 = [0, 1, 0];
+  for (let it = 0; it < 48; it++) {
+    const nx = cov[0] * dir[0] + cov[1] * dir[1] + cov[2] * dir[2];
+    const ny = cov[3] * dir[0] + cov[4] * dir[1] + cov[5] * dir[2];
+    const nz = cov[6] * dir[0] + cov[7] * dir[1] + cov[8] * dir[2];
+    const L = Math.hypot(nx, ny, nz) || 1;
+    dir = [nx / L, ny / L, nz / L];
+  }
+  if (dir[1] < 0) dir = [-dir[0], -dir[1], -dir[2]];
+
+  /*
+   * 캡슐로 잡지 않는다. 깃발은 봉이 아니라 **넓은 천**이라, 주성분이 세로가 아니라
+   * 가로로 눕는다(실측: 관우의 깃천은 x 로 0.23 퍼지고 y 로는 0.05 밖에 안 된다).
+   * 그 축으로 캡슐을 세우면 깃천만 잡히고 **깃대 아랫도리가 남아** 팔에 붙는다 —
+   * 그러면 내려칠 때 천은 가만있고 대만 휘둘려 부속이 두 동강 난다.
+   *
+   * 대신 머리 위 정점에서 시작해 **가까운 이웃으로 번져 나간다.** 깃대는 천에서
+   * 이어져 내려오므로 자연스럽게 딸려온다. 몸으로 새지 않게 두 가지로 막는다 —
+   * 가슴보다 아래로는 안 가고, 몸통 굵기 안으로도 안 들어간다.
+   */
+  /*
+   * 번지는 거리. 감면된 메시라 정점 간격이 고르지 않고, 깃발은 여러 갈래로 찢긴
+   * 천이라 갈래끼리 떨어져 있다. 0.06 으로는 갈래 하나(66정점)를 놓쳐 그것만
+   * 팔에 남았다 — 몸으로 새는 것은 inBody 가 막으므로 넉넉히 잡는 편이 낫다.
+   */
+  const grow = bodyH * 0.11;
+  const inBody = (i: number): boolean => !farOut(i);
+  const mask = new Uint8Array(n);
+  let frontier: number[] = [];
+  for (const i of seeds) { mask[i] = 1; frontier.push(i); }
+
+  // 격자로 이웃을 찾는다 — 전수 비교는 정점 수의 제곱이라 못 쓴다
+  const cell = grow;
+  const key = (x: number, y: number, z: number): string =>
+    `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  const grid = new Map<string, number[]>();
+  for (let i = 0; i < n; i++) {
+    if (P[i * 3 + 1] < chestY) continue;
+    const k = key(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
+    const cellList = grid.get(k);
+    if (cellList) cellList.push(i); else grid.set(k, [i]);
+  }
+  for (let pass = 0; pass < 60 && frontier.length > 0; pass++) {
+    const next: number[] = [];
+    for (const i of frontier) {
+      const bx = Math.floor(P[i * 3] / cell);
+      const by = Math.floor(P[i * 3 + 1] / cell);
+      const bz = Math.floor(P[i * 3 + 2] / cell);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+        for (const j of grid.get(`${bx + dx},${by + dy},${bz + dz}`) ?? []) {
+          if (mask[j]) continue;
+          if (P[j * 3 + 1] <= bodyTopY && inBody(j)) continue;
+          const d = Math.hypot(P[j * 3] - P[i * 3], P[j * 3 + 1] - P[i * 3 + 1], P[j * 3 + 2] - P[i * 3 + 2]);
+          if (d > grow) continue;
+          mask[j] = 1;
+          next.push(j);
+        }
+      }
+    }
+    frontier = next;
+  }
+
+  let count = 0;
+  let loY = Infinity;
+  let hiY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (!mask[i]) continue;
+    count++;
+    if (P[i * 3 + 1] < loY) loY = P[i * 3 + 1];
+    if (P[i * 3 + 1] > hiY) hiY = P[i * 3 + 1];
+  }
+  console.log(
+    `[rig] 등짐: 씨앗 ${seeds.length} -> 정점 ${count}  y ${loY.toFixed(3)}~${hiY.toFixed(3)}` +
+      `  몸통 굵기 ${torsoRadius.toFixed(3)}  등 뒤 문턱 z<${behindZ.toFixed(3)}`,
+  );
+  return { mask, head: [origin[0], loY, origin[2]], tail: [origin[0], hiY, origin[2]] };
+}
+
 function findBlade(
   P: Float32Array,
   n: number,
@@ -693,6 +932,8 @@ function findBlade(
   bodyH: number,
   headY: number,
   shoulder: Vec3,
+  /** 이 높이 위는 칼이 아니다 (등에 진 깃발 같은 것). 기본은 제한 없음 */
+  maxY = Infinity,
 ): StaffInfo | null {
   const label = sign < 0 ? '-X' : '+X';
   /**
@@ -704,6 +945,7 @@ function findBlade(
     const dx = P[i * 3] - axisX;
     const dz = P[i * 3 + 2] - axisZ;
     const r = Math.hypot(dx, dz);
+    if (P[i * 3 + 1] > maxY) return false;
     if (P[i * 3 + 1] > headY && r < bodyH * 0.25) return false;
     return r > bodyH * 0.17 && Math.sign(dx) === sign;
   };
@@ -839,7 +1081,27 @@ function findBlade(
  */
 type BladeMode = 'none' | 'one' | 'both';
 
-function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: BladeMode = 'none', bulky = false): MeshStats {
+interface AnalyzeTweaks {
+  /** 몸 높이를 손으로 준다 (bbox 비율). RigOptions.bodyTopRatio 참고 */
+  bodyTopRatio?: number;
+  /** 발 탐색 반경 (bodyH 비율). RigOptions.footRadius 참고 */
+  footRadius?: number;
+  /** 무기를 든 손. RigOptions.weaponSide 참고 */
+  weaponSide?: 'L' | 'R';
+  /** 등에 진 깃발을 찾아 몸통에 묶는다. RigOptions.backProp 참고 */
+  backProp?: boolean;
+  /** 몸통 축을 손으로 준다. RigOptions.bodyAxis 참고 */
+  bodyAxis?: { x: number; z: number };
+}
+
+function analyze(
+  P: Float32Array,
+  n: number,
+  detectStaff = false,
+  bladeMode: BladeMode = 'none',
+  bulky = false,
+  tweak: AnalyzeTweaks = {},
+): MeshStats {
   let minY = Infinity;
   let maxY = -Infinity;
   for (let i = 0; i < n; i++) {
@@ -879,7 +1141,15 @@ function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: Bla
   const peak = Math.max(...bin);
   let topBin = BINS - 1;
   while (topBin > 0 && bin[topBin] < peak * 0.03) topBin--;
-  const bodyTopY = minY + ((topBin + 1) / BINS) * height;
+  const autoTopY = minY + ((topBin + 1) / BINS) * height;
+  // 넓은 부속(깃발)은 3% 규칙으로 안 잘린다 — 그런 모델만 손으로 준다
+  const bodyTopY = tweak.bodyTopRatio ? minY + height * tweak.bodyTopRatio : autoTopY;
+  if (tweak.bodyTopRatio) {
+    console.log(
+      `[rig] 몸 높이를 지정받았다: 자동 ${((autoTopY - minY) / height * 100).toFixed(0)}% -> ` +
+        `${(tweak.bodyTopRatio * 100).toFixed(0)}% (머리 위 부속을 몸으로 세지 않는다)`,
+    );
+  }
   const bodyH0 = bodyTopY - minY;
 
   /*
@@ -902,7 +1172,14 @@ function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: Bla
       headZs.push(P[i * 3 + 2]);
     }
   }
-  if (bulky && headXs.length >= 20) {
+  if (tweak.bodyAxis) {
+    console.log(
+      `[rig] 몸통 축을 지정받았다: 자동 (${bodyX.toFixed(3)}, ${bodyZ.toFixed(3)}) -> ` +
+        `(${tweak.bodyAxis.x.toFixed(3)}, ${tweak.bodyAxis.z.toFixed(3)})`,
+    );
+    bodyX = tweak.bodyAxis.x;
+    bodyZ = tweak.bodyAxis.z;
+  } else if (bulky && headXs.length >= 20) {
     const hx = median(headXs);
     const hz = median(headZs);
     if (Math.hypot(hx - bodyX, hz - bodyZ) > bodyH0 * 0.06) {
@@ -916,7 +1193,14 @@ function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: Bla
 
   // 발 — 하단 20% 를 XZ 2-means 로 나눈다 (결정론: 시작점을 X 최소/최대로 고정)
   const low: number[] = [];
-  for (let i = 0; i < n; i++) if ((P[i * 3 + 1] - minY) / height < 0.2) low.push(i);
+  // 바닥까지 닿는 무기가 발로 잡히지 않도록, 켠 모델만 축에서 가까운 것으로 좁힌다
+  const footR = tweak.footRadius ? tweak.footRadius * bodyH0 : Infinity;
+  for (let i = 0; i < n; i++) {
+    if ((P[i * 3 + 1] - minY) / height >= 0.2) continue;
+    if (Math.hypot(P[i * 3] - bodyX, P[i * 3 + 2] - bodyZ) > footR) continue;
+    low.push(i);
+  }
+  if (tweak.footRadius) console.log(`[rig] 발 탐색 반경 ${footR.toFixed(3)} — 하단 정점 ${low.length}개만 본다`);
   let cA: [number, number] = [Infinity, 0];
   let cB: [number, number] = [-Infinity, 0];
   for (const i of low) {
@@ -942,10 +1226,44 @@ function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: Bla
   const axisZ = bodyZ;
   const chestY = minY + bodyH * 0.66;
   const far = bodyH * 0.16;
+
+  // 몸통 굵기 — 가슴 대역 정점이 축에서 얼마나 떨어져 있는지의 중앙값
+  const torsoDs: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = (P[i * 3 + 1] - minY) / bodyH;
+    if (t < 0.52 || t > 0.78) continue;
+    torsoDs.push(Math.hypot(P[i * 3] - axisX, P[i * 3 + 2] - axisZ));
+  }
+  const torsoRadius = torsoDs.length > 0 ? median(torsoDs) : bodyH * 0.12;
+
+  /*
+   * 등짐은 팔을 재기 **전에** 찾아 빼낸다.
+   *
+   * 나중에 찾으면 늦다. 깃대 밑동이 어깨 옆을 지나므로 팔 무리에 섞이고,
+   * "어깨에서 가장 먼 5%" 로 팔 축을 잡는 axisOf 가 그 밑동을 팔 끝으로 본다 —
+   * 실측: 관우의 오른팔 뼈가 등 뒤 위쪽(0.076, 0.250, -0.296)을 가리켰다.
+   * 팔은 앞에 있는데 뼈는 뒤를 보므로, 그 뼈를 돌리면 팔이 엉뚱하게 돈다.
+   */
+  const backProp = tweak.backProp
+    ? findBackProp(P, n, axisX, axisZ, bodyTopY, chestY, bodyH, torsoRadius)
+    : null;
+
+  /*
+   * 팔은 머리 위에 없다.
+   *
+   * bodyTopRatio 를 준 모델은 "머리 위에 몸이 아닌 것이 있다"고 말한 것이다.
+   * 그 위를 팔 후보로 두면 부속이 팔 중심을 통째로 끌어간다 — 관우의 깃발이
+   * 오른팔 축을 등 뒤 위쪽으로 눕혀서, 언월도 대신 깃대가 무기로 잡혔다.
+   * 지정하지 않은 모델은 지금까지와 똑같이 위쪽 제한 없이 본다.
+   */
+  const armTopY = tweak.bodyTopRatio ? bodyTopY : Infinity;
+  /** 등짐 정점은 팔이 아니다 — 중심에서도 축 맞추기에서도 뺀다 */
+  const propMask = backProp?.mask;
   let ax = 0, ay = 0, az = 0, ac = 0;
   for (let i = 0; i < n; i++) {
     const y = P[i * 3 + 1];
-    if (y < chestY) continue;
+    if (y < chestY || y > armTopY) continue;
+    if (propMask?.[i]) continue;
     const dx = P[i * 3] - axisX;
     const dz = P[i * 3 + 2] - axisZ;
     if (Math.hypot(dx, dz) < far) continue;
@@ -962,7 +1280,8 @@ function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: Bla
     const members: number[] = [];
     for (let i = 0; i < n; i++) {
       const y = P[i * 3 + 1];
-      if (y < chestY) continue;
+      if (y < chestY || y > armTopY) continue;
+      if (propMask?.[i]) continue;
       const dx = P[i * 3] - axisX;
       const dz = P[i * 3 + 2] - axisZ;
       if (Math.hypot(dx, dz) < far) continue;
@@ -1025,16 +1344,15 @@ function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: Bla
   const armAxisR = axisOf([axisX + shoulderOff, shoulderY, axisZ], sideR.members);
   // 무기(몽둥이)는 몸에서 멀리 뻗어 있으므로 그쪽 중심이 축에서 더 멀다
   const reach = (c: Vec3): number => Math.hypot(c[0] - axisX, c[2] - axisZ);
-  const weaponSide: 'L' | 'R' = reach(armCenterL) >= reach(armCenterR) ? 'L' : 'R';
-
-  // 몸통 굵기 — 가슴 대역 정점이 축에서 얼마나 떨어져 있는지의 중앙값
-  const torsoDs: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = (P[i * 3 + 1] - minY) / bodyH;
-    if (t < 0.52 || t > 0.78) continue;
-    torsoDs.push(Math.hypot(P[i * 3] - axisX, P[i * 3 + 2] - axisZ));
+  const autoSide: 'L' | 'R' = reach(armCenterL) >= reach(armCenterR) ? 'L' : 'R';
+  /*
+   * "더 멀리 뻗은 쪽이 무기 손"은 무기 말고 아무것도 안 뻗었을 때만 맞다.
+   * 등에 깃발을 지거나 망토를 늘어뜨린 모델은 그쪽이 이긴다. 그럴 때만 손으로 준다.
+   */
+  const weaponSide: 'L' | 'R' = tweak.weaponSide ?? autoSide;
+  if (tweak.weaponSide && tweak.weaponSide !== autoSide) {
+    console.log(`[rig] 무기 손을 지정받았다: 자동 ${autoSide} -> ${tweak.weaponSide}`);
   }
-  const torsoRadius = torsoDs.length > 0 ? median(torsoDs) : bodyH * 0.12;
 
   const staff = detectStaff ? findStaff(P, n, minY, height, bodyH, axisX, axisZ) : null;
   const headY = minY + bodyH * 0.86;
@@ -1051,11 +1369,12 @@ function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: Bla
    */
   const wantL = bladeMode === 'both' || (bladeMode === 'one' && weaponSide === 'L');
   const wantR = bladeMode === 'both' || (bladeMode === 'one' && weaponSide === 'R');
+  // 칼도 머리 위 부속을 물면 안 된다 — 팔과 같은 상한을 쓴다
   const bladeL = wantL
-    ? findBlade(P, n, -1, axisX, axisZ, minY, bodyH, headY, [axisX - shoulderOff, shoulderY, axisZ])
+    ? findBlade(P, n, -1, axisX, axisZ, minY, bodyH, headY, [axisX - shoulderOff, shoulderY, axisZ], armTopY)
     : null;
   const bladeR = wantR
-    ? findBlade(P, n, 1, axisX, axisZ, minY, bodyH, headY, [axisX + shoulderOff, shoulderY, axisZ])
+    ? findBlade(P, n, 1, axisX, axisZ, minY, bodyH, headY, [axisX + shoulderOff, shoulderY, axisZ], armTopY)
     : null;
 
   return {
@@ -1077,6 +1396,7 @@ function analyze(P: Float32Array, n: number, detectStaff = false, bladeMode: Bla
     torsoRadius,
     weaponSide,
     staff,
+    backProp,
     bladeL,
     bladeR,
   };
@@ -2124,7 +2444,13 @@ export async function rig(
    */
   const bladeMode: BladeMode =
     opts.attackStyle === 'dual_swing' ? 'both' : opts.blade === true ? 'one' : 'none';
-  const stats = analyze(P, n, opts.staff === true, bladeMode, opts.bulky === true);
+  const stats = analyze(P, n, opts.staff === true, bladeMode, opts.bulky === true, {
+    bodyTopRatio: opts.bodyTopRatio,
+    footRadius: opts.footRadius,
+    weaponSide: opts.weaponSide,
+    backProp: opts.backProp,
+    bodyAxis: opts.bodyAxis,
+  });
   console.log(
     `[rig] bbox 높이 ${stats.height.toFixed(3)}  몸 높이 ${(stats.bodyTopY - stats.minY).toFixed(3)}  ` +
       `(bodyTopY ${stats.bodyTopY.toFixed(3)} / maxY ${stats.maxY.toFixed(3)})`,
@@ -2165,6 +2491,16 @@ export async function rig(
     );
   }
   const bones = mount ? buildMountSkeleton(mount) : buildSkeleton(stats, opts.armMode, opts.bulky === true);
+  if (opts.rigidArms) {
+    // 반경 0 = 거리 스키닝의 후보에서 빠진다(fallback 에서도 제외된다)
+    let zeroed = 0;
+    for (const b of bones) {
+      if (!/^(arm|shoulder)/.test(b.name) || b.maxR <= 0) continue;
+      b.maxR = 0;
+      zeroed++;
+    }
+    console.log(`[rig] 팔을 몸통에 붙였다 — 뼈 ${zeroed}개의 반경을 0 으로 (소매·손에 든 것은 chest 가 든다)`);
+  }
   const tails: Vec3[] = bones.map((b, i) => {
     if (b.tail) return b.tail;
     const child = bones.find((c, j) => c.parent === b.name && j !== i);
@@ -2203,6 +2539,8 @@ export async function rig(
   const weights = new Float32Array(n * 4) as Float32Array<ArrayBuffer>;
   const usage = new Array<number>(bones.length).fill(0);
   const staff = stats.staff;
+  const backProp = stats.backProp;
+  const propIndex = bones.findIndex((b) => b.name === 'prop');
   const weaponIndex = bones.findIndex((b) => b.name === 'weapon');
   const hipsIndex = bones.findIndex((b) => b.name === 'hips');
   /** 칼날 캡슐 — 그 안의 정점은 통째로 그 팔 뼈가 가져간다 */
@@ -2225,7 +2563,7 @@ export async function rig(
   const bodyHeight0 = stats.bodyTopY - stats.minY;
   const skirtBand = opts.skirt
     ? {
-        top: stats.minY + bodyHeight0 * 0.5,
+        top: stats.minY + bodyHeight0 * (opts.skirt.topRatio ?? 0.5),
         bottom: stats.minY + bodyHeight0 * opts.skirt.toRatio,
         legInfluence: opts.skirt.legInfluence ?? 0.3,
       }
@@ -2250,6 +2588,17 @@ export async function rig(
      * 투구와 그 장식(머리 위 좁은 원기둥)은 예외다 — 칼날 축이 그 옆을 스치기 때문에
      * 그냥 두면 투구 절반이 팔에 묶여 휘두를 때 검은 판때기로 늘어난다.
      */
+    /*
+     * 등짐이 먼저다. 깃대는 어깨 옆을 스쳐 지나가므로 칼날 캡슐이나 팔 반경에
+     * 먼저 걸릴 수 있는데, 그러면 다시 팔을 따라 휘둘린다.
+     */
+    if (propIndex >= 0 && backProp?.mask[i]) {
+      joints[i * 4] = propIndex;
+      weights[i * 4] = 1;
+      usage[propIndex]++;
+      continue;
+    }
+
     let bladeBone = -1;
     const headZone =
       p[1] > headBoneY && Math.hypot(p[0] - stats.bodyX, p[2] - stats.bodyZ) < (stats.bodyTopY - stats.minY) * 0.25;

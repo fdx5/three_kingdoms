@@ -176,7 +176,8 @@ export const SHU_UNITS: Record<string, UnitDef> = {
     castleDamage: 260,
     scale: 2.5,
     kind: 'boss',
-    view: { primitive: zhugeliangPrimitive() },
+    // 우선깃털부채를 든 전용 모델. 큰 소매라 팔을 따로 돌리지 않고 상체가 쓸고 지나간다.
+    view: { primitive: zhugeliangPrimitive(), modelId: 'zhugeliang' },
     audio: { spawn: 'sfx_boss_spawn', die: 'sfx_die_boss', hit: 'sfx_hit' },
     /**
      * 팔진도 — 이 게임 최종보스의 답은 "한 가지로는 안 된다"이다.

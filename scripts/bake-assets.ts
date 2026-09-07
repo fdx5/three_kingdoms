@@ -11,11 +11,12 @@ import { optimize } from './optimize-model';
 import { rig, type BodyKind, type AttackStyle } from './rig-model';
 import { rigTower, type TowerKind } from './rig-tower';
 import { rigTrap } from './rig-trap';
+import { rigDragonTower } from './rig-dragon-tower';
 import { isolateFigure } from './isolate-figure';
 import { unlinkSync } from 'node:fs';
 
 /** 사람 형상은 rig-model, 건물은 rig-tower 로 간다 */
-type RigKind = 'humanoid' | 'tower' | 'trap';
+type RigKind = 'humanoid' | 'tower' | 'trap' | 'dragon';
 
 interface Recipe {
   kind: RigKind;
@@ -40,9 +41,21 @@ interface Recipe {
   /** 한 손에 든 긴 칼을 통째로 그 팔 뼈에 묶는다 (걸을 때 칼이 휘는 모델) */
   blade?: boolean;
   /** 허리에 매달린 갑주 자락 — 다리가 아니라 골반을 따라가게 한다 */
-  skirt?: { toRatio: number; legInfluence?: number };
+  skirt?: { toRatio: number; legInfluence?: number; topRatio?: number };
   /** 갑주를 두른 덩치 — 몸통 축·뼈 굵기 보정을 켠다 */
   bulky?: boolean;
+  /** 머리 위로 솟은 넓은 부속(깃발)이 있어 몸 높이를 자동으로 못 자를 때 (bbox 비율) */
+  bodyTopRatio?: number;
+  /** 바닥까지 닿는 무기가 발로 잡히지 않게 발 탐색을 좁힌다 (bodyH 비율) */
+  footRadius?: number;
+  /** 무기를 든 손을 못 박는다 (등에 깃발을 진 모델은 자동 판정이 진다) */
+  weaponSide?: 'L' | 'R';
+  /** 등에 진 깃발을 몸통 뼈에 묶는다 (안 하면 팔에 붙어 휘둘린다) */
+  backProp?: boolean;
+  /** 척추가 지나는 자리를 못 박는다 (정점이 한쪽으로 몰린 모델) */
+  bodyAxis?: { x: number; z: number };
+  /** 팔을 따로 돌리지 않는다 — 큰 소매의 장포를 입은 인물 */
+  rigidArms?: boolean;
   /**
    * 원본에 인물이 둘 이상이면 하나만 남긴다.
    * keep 은 자르는 축에서 어느 쪽을 남길지다.
@@ -76,6 +89,10 @@ interface Recipe {
 }
 
 const RECIPES: Record<string, Recipe> = {
+  fire_tower: {
+    kind: 'dragon', input: 'img/화공 망루.glb', output: 'public/assets/models/fire_tower.glb',
+    tris: 28000, tex: 2048, error: .003, forwardDeg: 0, targetHeight: 80,
+  },
   // 황건적 보병 — 창을 양손으로 잡아 팔을 나눌 수 없다
   soldier: {
     kind: 'humanoid',
@@ -252,6 +269,113 @@ const RECIPES: Record<string, Recipe> = {
     legCloseFactor: 0.10,
   },
 
+
+  /**
+   * 관우 — 5장 최종보스. 청룡언월도를 한 손에 들고 등에 깃발을 세웠다.
+   *
+   * blade 를 켠 이유는 장각과 같다. 언월도가 손에서 비스듬히 내려와 발치까지
+   * 닿는데, 거리 스키닝은 그 긴 자루를 팔·골반·다리로 토막 내서 걷기만 해도
+   * 칼이 활처럼 휜다. 켜면 날 캡슐 안의 정점이 전부 그 팔 뼈 하나를 따라간다.
+   *
+   * bulky 는 갑주 두른 덩치라 켠다 — 허리 중앙값이 언월도 쪽으로 끌려가므로
+   * 몸통 축을 머리에서 다시 잡아야 한다.
+   *
+   * 등 뒤 깃대는 머리 위까지 솟아 bbox 를 부풀린다. 그래도 targetHeight 는
+   * 몸 높이(bodyTopY)에 걸리므로 관우 자신이 작아지지는 않는다 —
+   * analyze 가 정점 수 3% 규칙으로 가느다란 부속을 잘라 낸다.
+   */
+  guanyu: {
+    kind: 'humanoid',
+    input: 'img/관우.glb',
+    output: 'public/assets/models/guanyu.glb',
+    tris: 9000,
+    tex: 1024,
+    forwardDeg: 0,
+    targetHeight: 34,
+    armMode: 'split',
+    attackStyle: 'swing',
+    blade: true,
+    bulky: true,
+    // 투구 끝이 bbox 의 82%. 그 위는 깃발이다 (probe 로 쟀다)
+    bodyTopRatio: 0.82,
+    // 언월도 날 끝이 축에서 0.47H — 발로 잡히지 않게 0.40H 로 자른다
+    footRadius: 0.40,
+    // 언월도는 왼손이다. 자동 판정은 등 뒤 깃발이 있는 오른쪽을 고른다
+    weaponSide: 'L',
+    // 등 뒤 깃발 — 켜지 않으면 오른팔에 붙어 내려칠 때 팔처럼 휘둘린다
+    backProp: true,
+    skirt: { toRatio: 0.30, legInfluence: 0.3 },
+    cadence: 1.3,
+    walkStride: 0.9,
+    kneeBend: 0.16,
+    legCloseFactor: 0.2,
+  },
+
+  /**
+   * 제갈량 — 6장 최종보스. 바닥까지 끌리는 장포에 우선깃털부채.
+   *
+   * 이 모델에는 **다리가 없다.** 장포가 허리부터 바닥까지 한 덩어리라
+   * 발 대역을 2-means 로 갈라도 옷자락 왼쪽/오른쪽이 나올 뿐이다. 그대로
+   * 걷기 클립을 태우면 옷자락이 두 쪽으로 찢어져 가위질한다.
+   *
+   * 그래서 skirt 의 아랫단을 바닥(0.02)까지 내리고 다리 영향을 0 으로 막는다.
+   * 장포 전체가 골반을 따라가고, 걸음은 다리가 아니라 몸통의 위아래·좌우
+   * 흔들림으로 읽힌다 — 승상이 미끄러지듯 다가오는 편이 맞다.
+   * 보폭과 무릎을 거의 0 으로 두는 것도 같은 이유다.
+   */
+  zhugeliang: {
+    kind: 'humanoid',
+    input: 'img/제갈량.glb',
+    output: 'public/assets/models/zhugeliang.glb',
+    /*
+     * 삼각형이 다른 인물(9,000)보다 많고 오차도 크게 준다.
+     *
+     * 우선깃털부채가 얇은 깃 수십 장이라 감면기가 거기서 멈춘다 — 기본 오차
+     * 0.02 로는 9,000 을 목표로 줘도 27,748 에서 서고, 그 예산의 84%가 가슴
+     * 높이(부채·소매)로 간다. 머리에 남은 정점이 13개였다.
+     * 오차를 키워 깃을 뭉개면 예산이 골고루 퍼진다.
+     */
+    tris: 12000,
+    error: 0.003,
+    tex: 1024,
+    forwardDeg: 0,
+    targetHeight: 34,
+    armMode: 'split',
+    attackStyle: 'swing',
+    /*
+     * 팔을 따로 돌리지 않는다. 소매가 커서 팔과 옷이 구분되지 않고, 거리
+     * 스키닝이 오른팔에 모델의 70%(26,182정점)를 붙였다 — 그 팔을 0.75rad
+     * 돌리면 상체가 접힌다. 부채는 상체가 비틀리며 쓸고 지나간다.
+     */
+    rigidArms: true,
+    bulky: false,
+    /*
+     * 머리 위에는 아무것도 없다 — 관(冠)이 곧 꼭대기다. 그런데 자동 규칙은
+     * 여기서 반대로 틀린다: 장포가 정점의 대부분을 가져가서 머리·관 대역이
+     * 최대치의 3% 밑으로 떨어지고, 그래서 **머리를 부속으로 잘라 냈다**
+     * (실측: 몸 높이 78% — 머리 뼈가 가슴에 놓이고 정점 16,920개를 삼켰다).
+     * 그래서 "꼭대기까지가 몸"이라고 말해 준다.
+     */
+    bodyTopRatio: 0.99,
+    /*
+     * 척추 자리. 부채와 앞자락이 정점의 절반을 쥐고 있어 중앙값이 앞으로 0.10
+     * 밀린다 — 실측: 머리 중앙은 (-0.028, 0.030) 인데 자동 축은 (0.079, 0.148)
+     * 이 나와서 머리 뼈가 머리 밖에 놓였다(정점 58개).
+     */
+    bodyAxis: { x: -0.02, z: 0.04 },
+    // 장포 자락이 바닥에 넓게 깔린다. 그 끝을 발로 잡으면 다리 뼈가 옷단으로 뻗는다
+    footRadius: 0.25,
+    /*
+     * 자락 아랫단을 **바닥(0)** 까지 내린다. 0.02 로 두었더니 바닥에 깔린 옷단
+     * 정점(가중치 합 382)이 자락 대역 밖에 남아 다리를 그대로 탔다 — 걸을 때
+     * 옷단만 가위질했다. 다리 영향은 0 이다: 이 인물에게 다리는 없다.
+     */
+    skirt: { toRatio: 0, topRatio: 0.78, legInfluence: 0 },
+    cadence: 1.5,
+    walkStride: 0.22,
+    kneeBend: 0.04,
+    legCloseFactor: 0.5,
+  },
 
   /**
    * 하북 창병 (3장 주력) — 바닥까지 닿는 긴 창을 **한 손**으로 세워 들었다.
@@ -551,7 +675,9 @@ async function bake(name: string): Promise<void> {
   await optimize({ input: r.input, output: tmp, tris: r.tris, tex: r.tex, error: r.error });
   // 원본에 인물이 둘이면 여기서 하나만 남긴다 (감면 뒤에 잘라야 빠르다)
   if (r.isolate) await isolateFigure(tmp, tmp, r.isolate);
-  if (r.kind === 'trap') {
+  if (r.kind === 'dragon') {
+    await rigDragonTower(tmp, r.output, r.targetHeight);
+  } else if (r.kind === 'trap') {
     await rigTrap(tmp, r.output, {
       diameter: r.diameter ?? 52,
       spikeTop: r.spikeTop ?? 0.57,
@@ -585,6 +711,12 @@ async function bake(name: string): Promise<void> {
       blade: r.blade,
       skirt: r.skirt,
       bulky: r.bulky,
+      bodyTopRatio: r.bodyTopRatio,
+      footRadius: r.footRadius,
+      weaponSide: r.weaponSide,
+      backProp: r.backProp,
+      bodyAxis: r.bodyAxis,
+      rigidArms: r.rigidArms,
     });
   }
   unlinkSync(tmp);
