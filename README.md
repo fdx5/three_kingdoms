@@ -254,6 +254,19 @@ Web Service 를 손으로 만들었다면 Settings 에 같은 값을 넣는다.
 
 배포 주소: **https://three-kingdoms-cmus.onrender.com**
 
+#### 배포가 한 시간째 "진행 중"이면 — 빌드가 안 끝나는 것이다
+
+`npm run build` 는 **반드시 끝나야 한다.** 한때 `postbuild` 훅이 빌드 뒤에
+`npm start` 를 띄웠다 — Start Command 가 빌드로 잘못 잡혀 있어도 서비스가 살게
+하려는 안전장치였는데, 대가로 빌드 단계가 영영 끝나지 않았다. render.com 은 그
+배포를 "진행 중"으로 붙들고, 뒤따르는 푸시는 전부 그 뒤에 줄을 선다. 로그에는
+서버가 정상 기동했다고 찍혀 있어서 어디가 막혔는지도 안 보인다.
+
+**하루치 커밋이 그렇게 배포되지 않았다.** 지금은 그 훅을 뺐고
+`tests/deployConfig.test.ts` 가 다시 들어오는 것을 막는다. 대신 Start Command 가
+틀렸다면 "Application exited early" 로 **빠르게** 실패한다 — 한 시간짜리 침묵보다 낫다.
+대시보드 Settings > Start Command 는 `npm start` 여야 한다.
+
 #### 배포가 됐는지 확인하는 법
 
 ```
