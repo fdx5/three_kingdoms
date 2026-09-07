@@ -395,8 +395,8 @@ const RECIPES: Record<string, Recipe> = {
      * 옷단만 가위질했다. 다리 영향은 0 이다: 이 인물에게 다리는 없다.
      */
     skirt: { toRatio: 0, topRatio: 0.78, legInfluence: 0 },
-    cadence: 1.5,
-    walkStride: 0.22,
+    cadence: 1.35,
+    walkStride: 0.24,
     kneeBend: 0.04,
     legCloseFactor: 0.5,
   },

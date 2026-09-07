@@ -22,13 +22,18 @@ const SESSION_KEY = 'samtd.session';
 /**
  * 저장소를 고른다.
  *
- * ?api=https://... 또는 VITE_API_BASE 가 있으면 토르소 DB를, 없으면 브라우저를 쓴다.
- * 게임 코드는 어느 쪽인지 모르며 [[GameStore]] 인터페이스만 본다.
+ * ?api=https://... 또는 VITE_API_BASE 가 있으면 토르소 DB를 쓴다.
+ * 명시하지 않으면 웹(http/https) 환경에서는 기본값 `/api` 를 써서 토르소 DB를 바라본다.
+ * 브라우저 로컬 저장소만 쓰고 싶다면 ?api=local 을 붙인다.
  */
 export function createGameStore(): GameStore {
-  const fromUrl = new URLSearchParams(location.search).get('api');
+  const fromUrl = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('api') : null;
+  if (fromUrl === 'local') return new LocalGameStore();
+
   const fromEnv = (import.meta.env?.VITE_API_BASE as string | undefined) ?? '';
-  const base = (fromUrl ?? fromEnv).replace(/\/+$/, '');
+  const isHttp = typeof location !== 'undefined' && location.protocol.startsWith('http');
+  const fallback = isHttp ? '/api' : '';
+  const base = (fromUrl ?? (fromEnv || fallback)).replace(/\/+$/, '');
   return base ? new TorsoGameStore(base) : new LocalGameStore();
 }
 

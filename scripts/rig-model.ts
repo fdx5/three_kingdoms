@@ -2054,34 +2054,18 @@ function buildClips(
    * 위아래는 걸음마다 한 번이라 두 번 오르내린다.
    */
   const robeWalk = (): ClipSpec => {
-    const H = m.bodyTopY - m.minY;
-    const bob = H * 0.030;
-    const sway = H * 0.020;
-    const roll = 0.125;
-    /** 걸음마다 앞으로 실렸다 돌아온다 — 나아가는 인상을 준다 */
-    const pitch = 0.035;
-    const wave = [0, 0.7, 1, 0.7, 0, -0.7, -1, -0.7, 0];
-    const lift = [0, 0.7, 1, 0.7, 0, 0.7, 1, 0.7, 0];
-    // 좌우 축은 swingAxis 다 (다리를 앞뒤로 흔들 때 쓰는 회전축 = 몸의 좌우선)
-    const move: number[] = [];
-    for (let i = 0; i < 9; i++) {
-      move.push(swingAxis[0] * sway * wave[i], lift[i] * bob, swingAxis[2] * sway * wave[i]);
-    }
+    const wave = [0, .7, 1, .7, 0, -.7, -1, -.7, 0];
+    const left = [stride, stride * .72, 0, -stride * .72, -stride, -stride * .72, 0, stride * .72, stride];
     return {
       name: 'walk',
       tracks: [
-        track('hips', T, move, 'translation'),
-        // 디딘 발 쪽으로 기운다 — 옷자락 밑단이 이 회전으로 쓸린다
-        rot('hips', T, wave.map((v) => v * roll), sideAxis),
-        // 몸통은 절반만 되돌린다. 다 되돌리면 상체가 굳어 보이고, 안 하면 머리까지 기운다
-        rot('chest', T, wave.map((v) => -v * roll * 0.45), sideAxis),
-        // 머리는 수평을 지킨다
-        rot('head', T, wave.map((v) => -v * roll * 0.35), sideAxis),
-        // 걸음마다 몸통이 조금 비틀린다
-        rot('hips', T, wave.map((v) => v * 0.05), [0, 1, 0]),
-        rot('chest', T, wave.map((v) => -v * 0.035), [0, 1, 0]),
-        // 걸음마다(주기당 두 번) 앞으로 실린다
-        rot('chest', T, lift.map((v) => v * pitch), swingAxis),
+        legTrack('legL', T, left, 0),
+        legTrack('legR', T, left.map(a => -a), 0),
+        // Dense contact keys preserve a planted hem/foot between both steps.
+        track('hips', Array.from({length: 33}, (_, i) => k(i / 32)), new Array(99).fill(0), 'translation'),
+        rot2('hips', T, wave.map(v => v * .025), sideAxis, wave.map(v => v * .035), [0, 1, 0]),
+        rot2('chest', T, wave.map(v => -v * .015), sideAxis, wave.map(v => -v * .025), [0, 1, 0]),
+        rot('head', T, wave.map(v => -v * .01), sideAxis),
       ],
     };
   };
@@ -2745,6 +2729,20 @@ export async function rig(
       }
     }
 
+    if (opts.robeGait) {
+      // Continuous left/right weights bend the closed robe instead of splitting it
+      // at the nearest-bone boundary. The belt and oversized sleeves stay rigid.
+      const heightRatio = (p[1] - stats.minY) / bodyHeight0;
+      if (heightRatio < .5) {
+        const fade = Math.max(0, Math.min(1, (heightRatio - .07) / .43));
+        const influence = .7 * (1 - fade * fade * (3 - 2 * fade));
+        const side = Math.max(0, Math.min(1, .5 + (p[0] - stats.bodyX) / (bodyHeight0 * .20)));
+        const right = side * side * (3 - 2 * side);
+        j.splice(0, 4, hipsIndex, bones.findIndex(b => b.name === 'legL'), bones.findIndex(b => b.name === 'legR'), hipsIndex);
+        w.splice(0, 4, 1 - influence, influence * (1 - right), influence * right, 0);
+      }
+    }
+
     for (let k = 0; k < 4; k++) {
       joints[i * 4 + k] = j[k];
       weights[i * 4 + k] = w[k];
@@ -2955,17 +2953,19 @@ export async function rig(
   const skinCtx = makeSkinContext(P, n, joints, weights, bones, staffMask);
   // 걷기는 지지발이 땅에 붙어 있어야 한다 (제자리·찌르기는 발을 옮기지 않으므로 그대로 둔다)
   const rootBone = mount ? 'body' : 'hips';
-  /*
-   * 발 고정은 **다리로 걷는 모델**의 것이다.
-   *
-   * 프레임마다 최저점을 한 높이로 맞춰서 지지발이 땅을 파거나 뜨지 않게 한다.
-   * 그런데 장포 걸음은 위아래 흔들림 자체가 걸음의 신호다 — 여기에 이 보정을
-   * 걸면 그 흔들림이 정확히 지워져서, 옷자락만 좌우로 쓸리는 미끄러짐이 된다
-   * (실측: 골반을 0.030 올렸는데 보정이 같은 만큼 도로 내렸다).
-   */
-  if (!opts.robeGait) {
-    for (const clip of clips) if (clip.name === 'walk') plantFeet(skinCtx, clip, rootBone);
+  // Robed characters also need continuous ground contact; vertical bob is not a step.
+  if (opts.robeGait) {
+    skinCtx.step = 1;
+    // Trailing robe panels are not soles. They must not lift both feet into the air.
+    const ignore = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      ignore[i] = Number(P[i * 3 + 1] > stats.minY + bodyHeight0 * .08
+        || Math.abs(P[i * 3] - stats.bodyX) > bodyHeight0 * .18
+        || P[i * 3 + 2] < stats.bodyZ || P[i * 3 + 2] > stats.bodyZ + bodyHeight0 * .18);
+    }
+    skinCtx.ignore = ignore;
   }
+  for (const clip of clips) if (clip.name === 'walk') plantFeet(skinCtx, clip, rootBone);
 
   // 접지 기준점은 오프셋 표현일 때 재야 한다 — 아래에서 절대 좌표로 바꾸기 전에.
   const lowest = lowestAnimatedY(skinCtx, clips);
