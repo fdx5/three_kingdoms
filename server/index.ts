@@ -522,8 +522,8 @@ function serveStatic(res: ServerResponse, pathname: string): void {
   }
   res.writeHead(200, {
     'content-type': MIME[extname(file)] ?? 'application/octet-stream',
-    // 모델·텍스처는 파일명이 바뀌지 않으면 내용도 안 바뀐다. 하루면 충분하다.
-    'cache-control': extname(file) === '.html' ? 'no-cache' : 'public, max-age=86400',
+    // 모델과 매니페스트는 같은 이름으로 교체된다. 다음 로드에서 서버 내용을 확인한다.
+    'cache-control': ['.html', '.json', '.glb'].includes(extname(file)) ? 'no-cache' : 'public, max-age=86400',
   });
   createReadStream(file).pipe(res);
 }

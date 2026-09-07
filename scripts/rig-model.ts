@@ -1219,6 +1219,31 @@ function analyze(
     if (an) cA = [ax / an, az / an];
     if (bn) cB = [bx / bn, bz / bn];
   }
+  /*
+   * 두 발 무리의 크기가 크게 다르면 한쪽은 발이 아니다.
+   *
+   * 방패병이 그랬다 — 방패 아래 모서리 4정점이 한 군집을 붙들어서, 진짜 두
+   * 발이 반대쪽 군집 하나에 몰렸다. 그러면 다리 뼈 하나가 두 다리를 다 들고
+   * 걷기에서 **두 발이 같은 위상으로 함께 흔들린다.** 로그도 클립도 멀쩡해
+   * 보이므로, 굽는 자리에서 이 한 줄이 없으면 화면을 봐야만 안다.
+   */
+  {
+    let an = 0;
+    let bn = 0;
+    for (const i of low) {
+      const dA = (P[i * 3] - cA[0]) ** 2 + (P[i * 3 + 2] - cA[1]) ** 2;
+      const dB = (P[i * 3] - cB[0]) ** 2 + (P[i * 3 + 2] - cB[1]) ** 2;
+      if (dA < dB) an++; else bn++;
+    }
+    const weak = Math.min(an, bn);
+    const strong = Math.max(an, bn) || 1;
+    if (weak / strong < 0.3) {
+      console.warn(
+        `[rig] ⚠ 두 발 무리가 ${an}:${bn} 로 심하게 기울었다 — 한쪽이 발이 아닐 수 있다` +
+          ` (방패·무기 끝이 발 대역에 들어온 경우다). footRadius 로 좁혀 보라.`,
+      );
+    }
+  }
   // 팔·창 — 가슴 높이 위에서 몸통 축으로부터 멀리 떨어진 정점들의 평균.
   // 창이 한쪽으로 길게 뻗어 있어 이 평균이 곧 "팔이 향한 쪽"이 된다.
   const bodyH = bodyTopY - minY;

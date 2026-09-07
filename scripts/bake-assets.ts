@@ -13,7 +13,8 @@ import { rigTower, type TowerKind } from './rig-tower';
 import { rigTrap } from './rig-trap';
 import { rigDragonTower } from './rig-dragon-tower';
 import { isolateFigure } from './isolate-figure';
-import { unlinkSync } from 'node:fs';
+import { unlinkSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 /** 사람 형상은 rig-model, 건물은 rig-tower 로 간다 */
 type RigKind = 'humanoid' | 'tower' | 'trap' | 'dragon';
@@ -121,6 +122,21 @@ const RECIPES: Record<string, Recipe> = {
     targetHeight: 34,
     armMode: 'split',
     attackStyle: 'swing',
+    /*
+     * 방패 아래 모서리가 발로 잡혔다.
+     *
+     * 발은 하단 20% 대역을 XZ 2-means 로 갈라 찾는데, 그 대역에 방패 끝
+     * 4정점(x -0.349, z 0.25 — 축에서 0.43H, 바닥에서 0.14 떠 있다)이 들어 있었다.
+     * 2-means 는 x 양 끝에서 시작하므로 그 4개가 한 군집을 통째로 붙들었고,
+     * 진짜 두 발은 반대쪽 군집 하나에 몰렸다.
+     *
+     * 결과: 왼발 뼈가 정점을 12개만 들고(오른발은 331), 두 다리가 전부 오른다리
+     * 뼈에 붙어 **같은 위상으로 함께 흔들렸다** — 허리에서 두 발이 공중에서
+     * 같이 움직이는 걸음이 그것이다.
+     *
+     * 발은 아무리 벌려도 축에서 0.22H 안쪽이다(다른 병사들 실측 0.06~0.09).
+     */
+    footRadius: 0.22,
     cadence: 1.05,
     walkStride: 0.88,
     kneeBend: 0.12,
@@ -720,6 +736,13 @@ async function bake(name: string): Promise<void> {
     });
   }
   unlinkSync(tmp);
+  if (r.kind === 'dragon') {
+    const version = createHash('sha256').update(readFileSync(r.output)).digest('hex').slice(0, 12);
+    const manifestPath = 'public/assets/manifest.json';
+    const manifest = readFileSync(manifestPath, 'utf8');
+    const next = manifest.replace(/("fire_tower"\s*:\s*\{\s*"url"\s*:\s*")[^"]+/, `$1models/fire_tower.glb?v=${version}`);
+    if (next !== manifest) writeFileSync(manifestPath, next);
+  }
 }
 
 const names = process.argv.slice(2).filter((a) => !a.startsWith('--'));

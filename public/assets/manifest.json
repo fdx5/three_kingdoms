@@ -15,7 +15,7 @@
     "archer_tower": { "url": "models/archer_tower.glb" },
     "catapult": { "url": "models/catapult.glb" },
     "cannon_tower": { "url": "models/cannon_tower.glb" },
-    "fire_tower": { "url": "models/fire_tower.glb" },
+    "fire_tower": { "url": "models/fire_tower.glb?v=b637cb920e44" },
     "caltrop_camp": { "url": "models/caltrop_camp.glb" },
     "wu_marine": { "url": "models/wu_marine.glb" },
     "wu_rattan": { "url": "models/wu_rattan.glb" },

@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { NodeIO } from '@gltf-transform/core';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { TowerView } from '../src/view/views/TowerView';
 import { Tower } from '../src/sim/Tower';
@@ -19,6 +21,12 @@ beforeAll(async () => {
 });
 
 describe('Dragon fire tower', () => {
+  it('uses a content version so cached cannon models cannot replace the dragon model', () => {
+    const manifest = JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'));
+    const version = createHash('sha256').update(readFileSync('public/assets/models/fire_tower.glb')).digest('hex').slice(0, 12);
+    expect(manifest.models.fire_tower.url).toBe(`models/fire_tower.glb?v=${version}`);
+    expect(manifest.models.fire_tower.url).not.toBe(manifest.models.cannon_tower.url);
+  });
   it('preserves mouth markers and animates exactly one additional head at each upgrade', () => {
     const assets = { getMesh: () => { const clone = model.scene.clone(true);clone.animations = model.animations;return clone; } } as unknown as AssetRegistry;
     const terrain = { heightAt: () => 0 } as unknown as Terrain;

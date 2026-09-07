@@ -32,7 +32,9 @@ describe('모델 매니페스트', () => {
     for (const { who, modelId } of refs()) {
       const entry = manifest.models[modelId];
       expect(entry, `${who} -> ${modelId} 이(가) manifest 에 없다`).toBeDefined();
-      expect(existsSync(`public/assets/${entry.url}`), `${who} -> ${entry.url} 파일이 없다`).toBe(true);
+      // url 에는 캐시 버스터가 붙을 수 있다 (models/x.glb?v=abc123) — 파일은 그 앞까지다
+      const file = entry.url.split('?')[0];
+      expect(existsSync(`public/assets/${file}`), `${who} -> ${file} 파일이 없다`).toBe(true);
     }
   });
 
