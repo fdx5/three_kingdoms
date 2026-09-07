@@ -1,0 +1,80 @@
+<!doctype html><meta charset="utf-8">
+<!-- 썸네일에 세울 장수 한 사람을 게임의 GLB 그대로 렌더한다. manual/portrait.html 과 같은 방식. -->
+<style>html,body{margin:0;background:#00000000}canvas{display:block}</style>
+<script type="module">
+import * as THREE from 'three';
+import { AssetRegistry } from '/src/view/AssetRegistry.ts';
+import { UNITS } from '/src/data/units.ts';
+
+
+const W = 560, H = 640;
+const assets = new AssetRegistry('/assets/');
+await assets.load();
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(W, H); renderer.setPixelRatio(2);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.append(renderer.domElement);
+
+const scene = new THREE.Scene();
+// 인물 사진용 3점 조명 — 게임 안의 태양광보다 부드럽고 윤곽이 산다.
+scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x4a4038, 1.6));
+const key = new THREE.DirectionalLight(0xfff0d8, 3.2); key.position.set(-160, 240, 200);
+key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -160, right: 160, top: 160, bottom: -160, near: 1, far: 900 });
+scene.add(key);
+const rim = new THREE.DirectionalLight(0xffd9a0, 2.0); rim.position.set(180, 120, -220); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xbcd4ff, 0.9); fill.position.set(200, 80, 160); scene.add(fill);
+
+// 바닥 그림자만 받는 판 — 인물이 공중에 뜨지 않게 한다.
+const floor = new THREE.Mesh(new THREE.CircleGeometry(300, 64).rotateX(-Math.PI / 2),
+  new THREE.ShadowMaterial({ opacity: 0.34 }));
+scene.add(floor);
+
+const cam = new THREE.PerspectiveCamera(28, W / H, 1, 4000);
+let current = null;
+
+function frame(obj, opts = {}) {
+  if (current) { scene.remove(current); }
+  current = obj; scene.add(obj);
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const mid = box.getCenter(new THREE.Vector3());
+  floor.position.y = box.min.y;
+  // 가장 긴 변이 화면을 가득 채우도록 카메라 거리를 잡는다 (세로 프레임 기준).
+  const reach = Math.max(size.y / (H / W), size.x, size.z) * (opts.pad ?? 1.05);
+  const dist = (reach / 2) / Math.tan((cam.fov * Math.PI / 180) / 2) + size.z;
+  const yaw = (opts.yaw ?? 28) * Math.PI / 180;
+  const pitch = (opts.pitch ?? 14) * Math.PI / 180;
+  cam.position.set(
+    mid.x + Math.sin(yaw) * Math.cos(pitch) * dist,
+    mid.y + Math.sin(pitch) * dist,
+    mid.z + Math.cos(yaw) * Math.cos(pitch) * dist);
+  cam.lookAt(mid.x, mid.y, mid.z);
+  Object.assign(key.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, far: dist * 3 });
+  key.shadow.camera.updateProjectionMatrix();
+  obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
+  renderer.render(scene, cam);
+}
+
+/** 리깅된 모델은 T포즈로 서 있다. 첫 클립의 한 지점을 물려 자세를 준다. */
+function pose(obj, time) {
+  const clips = obj.animations ?? [];
+  if (!clips.length) return;
+  const mixer = new THREE.AnimationMixer(obj);
+  const clip = clips.find((c) => /idle|stand|walk|run/i.test(c.name)) ?? clips[0];
+  mixer.clipAction(clip).play();
+  mixer.update(time ?? clip.duration * 0.35);
+}
+
+window.shotUnit = (id, opts = {}) => {
+  const u = UNITS[id];
+  const obj = assets.getMesh(u.view.modelId, u.view.primitive);
+  pose(obj, opts.t);
+  frame(obj, opts);
+  return true;
+};
+window.ready = true;
+</script>

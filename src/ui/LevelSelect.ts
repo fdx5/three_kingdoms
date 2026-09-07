@@ -9,6 +9,23 @@ export interface LevelSelectAccount {
   onLogout: () => void;
 }
 
+/** 메뉴에서 열 수 있는 함께 보는 화면들 */
+export interface LevelSelectCommunity {
+  onGuestbook: () => void;
+  onHistory: () => void;
+}
+
+/**
+ * 메뉴에서의 배경음 조작.
+ *
+ * 메뉴에도 그 장의 곡이 흐르는데 여기서는 끌 방법이 없었다 —
+ * 전투에 들어가야만 ♪ 버튼이 보였기 때문이다.
+ */
+export interface LevelSelectAudio {
+  isOn: () => boolean;
+  onToggle: (on: boolean) => void;
+}
+
 /**
  * 레벨 선택 화면.
  * 앞 레벨을 클리어해야 다음이 열린다. 별 등급은 계정에 기록으로 남는다.
@@ -16,6 +33,8 @@ export interface LevelSelectAccount {
 export class LevelSelect {
   private node: HTMLElement | null = null;
   private account: LevelSelectAccount | null = null;
+  private community: LevelSelectCommunity | null = null;
+  private audio: LevelSelectAudio | null = null;
 
   constructor(
     private readonly parent: HTMLElement,
@@ -25,6 +44,16 @@ export class LevelSelect {
   /** 접속한 계정을 알려준다. 로그아웃 버튼이 여기에 붙는다. */
   setAccount(account: LevelSelectAccount | null): void {
     this.account = account;
+  }
+
+  /** 방명록·이력 버튼을 붙인다. 없으면 두 버튼이 뜨지 않는다. */
+  setCommunity(community: LevelSelectCommunity | null): void {
+    this.community = community;
+  }
+
+  /** 배경음 버튼을 붙인다. 없으면 버튼이 뜨지 않는다. */
+  setAudio(audio: LevelSelectAudio | null): void {
+    this.audio = audio;
   }
 
   get isOpen(): boolean {
@@ -78,20 +107,51 @@ export class LevelSelect {
 
     // 접속한 계정과 로그아웃. 잠긴 장이 왜 잠겼는지는 "누구로 접속했는가"에 달려 있으므로
     // 이 줄이 카드 위에 있어야 한다.
-    if (this.account) {
-      const logout = el('button', { type: 'button', class: 'btn-ghost', text: '로그아웃' });
-      const { onLogout } = this.account;
-      onTap(logout, () => {
-        this.close();
-        onLogout();
-      });
+    if (this.account || this.community || this.audio) {
+      const actions: Node[] = [];
+      // 배경음부터. 메뉴에 들어오자마자 곡이 흐르므로 가장 먼저 찾게 되는 버튼이다.
+      if (this.audio) {
+        const audio = this.audio;
+        const bgm = el('button', { type: 'button', class: 'btn-ghost bgm-toggle' });
+        const paint = (): void => {
+          const on = audio.isOn();
+          bgm.textContent = on ? '♪' : '🔇';
+          bgm.setAttribute('aria-label', on ? '배경음 끄기' : '배경음 켜기');
+          bgm.setAttribute('title', on ? '배경음 끄기' : '배경음 켜기');
+          bgm.setAttribute('aria-pressed', on ? 'true' : 'false');
+        };
+        paint();
+        onTap(bgm, () => {
+          audio.onToggle(!audio.isOn());
+          paint();
+        });
+        actions.push(bgm);
+      }
+      // 방명록과 이력은 모두가 함께 보는 곳이라 화면을 닫지 않고 위에 겹쳐 띄운다 —
+      // 읽고 나면 고르던 자리로 그대로 돌아온다.
+      if (this.community) {
+        const { onGuestbook, onHistory } = this.community;
+        const guestbook = el('button', { type: 'button', class: 'btn-ghost', text: '방명록' });
+        const history = el('button', { type: 'button', class: 'btn-ghost', text: 'HISTORY' });
+        onTap(guestbook, () => onGuestbook());
+        onTap(history, () => onHistory());
+        actions.push(guestbook, history);
+      }
+      if (this.account) {
+        const logout = el('button', { type: 'button', class: 'btn-ghost', text: '로그아웃' });
+        const { onLogout } = this.account;
+        onTap(logout, () => {
+          this.close();
+          onLogout();
+        });
+        actions.push(logout);
+      }
       children.push(
         el('div', { class: 'accountbar' }, [
-          el('span', { class: 'accountbar__who' }, [
-            document.createTextNode('접속: '),
-            el('b', { text: this.account.displayName }),
-          ]),
-          logout,
+          el('span', { class: 'accountbar__who' }, this.account
+            ? [document.createTextNode('접속: '), el('b', { text: this.account.displayName })]
+            : [document.createTextNode('접속하지 않음')]),
+          el('div', { class: 'accountbar__actions' }, actions),
         ]),
       );
     }

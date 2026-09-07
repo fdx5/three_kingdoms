@@ -60,6 +60,19 @@ export interface GenerateWavesParams {
   countStep: number;
   /** 웨이브당 HP 성장률 (0.14 = x1.14 누적) */
   hpGrowth: number;
+  /**
+   * 체력 배율이 앞 웨이브보다 낮아지지 않게 한다.
+   *
+   * 성장률은 누적이라 원래 단조 증가지만, `patterns[n].hpMul`이 1보다 작으면
+   * 그 웨이브만 앞 웨이브보다 물러진다. 한 판을 통째로 보면 이게 눈에 띈다 —
+   * 특히 마지막 파가 그 앞 파보다 약하면 "끝이 쉬워졌다"로 읽힌다
+   * (실제로 3·5·6장의 15파가 14파보다 낮았다).
+   *
+   * 이 옵션을 켜면 체력 배율은 웨이브마다 최소한 `hpGrowth`만큼은 오른다.
+   * 변주는 그 위로 **더 어렵게만** 밀 수 있고, 아래로는 내리지 못한다.
+   * 물량을 줄이는 `countMul`이나 대형 변주는 그대로 듣는다.
+   */
+  hpRatchet?: boolean;
   /** 웨이브당 속도 성장률 */
   speedGrowth: number;
   /** n(1-base)을 받아 스폰 간격(초)을 돌려준다 */
@@ -131,11 +144,18 @@ export function generateWaves(params: GenerateWavesParams): WaveDef[] {
   const mix: MixEntry[] = params.mix ?? [{ unitId: params.unitId!, from: 1, weight: 1 }];
   if (!params.mix && !params.unitId) throw new Error('generateWaves needs unitId or mix');
 
+  /** 래칫이 켜져 있을 때 앞 웨이브가 가졌던 체력 배율 */
+  let prevHpMul = 0;
+
   for (let n = 1; n <= params.count; n++) {
     const pattern = params.patterns?.[n];
     const baseMinionCount = params.baseCount + params.countStep * (n - 1);
     const minionCount = Math.max(1, Math.round(baseMinionCount * (pattern?.countMul ?? 1)));
-    const hpMul = Math.pow(1 + params.hpGrowth, n - 1) * (pattern?.hpMul ?? 1);
+    const rawHpMul = Math.pow(1 + params.hpGrowth, n - 1) * (pattern?.hpMul ?? 1);
+    // 래칫: 앞 웨이브보다 최소 한 걸음(hpGrowth)은 올라간다. 같은 자리에 머무는 파가 없다.
+    const floor = prevHpMul * (1 + params.hpGrowth);
+    const hpMul = params.hpRatchet ? Math.max(rawHpMul, floor) : rawHpMul;
+    prevHpMul = hpMul;
     const speedMul = Math.pow(1 + params.speedGrowth, n - 1) * (pattern?.speedMul ?? 1);
     const interval = params.spawnInterval(n);
     const columns = Math.max(1, Math.floor(pattern?.columns ?? params.formationColumns ?? 1));

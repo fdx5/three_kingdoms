@@ -144,7 +144,13 @@
         "biome": "drylands",
         "bgmYoutubeId": "zYY4gbajgKY"
       },
-      "totalReward": 0
+      "totalReward": 0,
+      "killGold": 4420,
+      "debuts": [
+        "yt_infantry",
+        "yt_captain",
+        "zhangjiao"
+      ]
     },
     {
       "id": "level02",
@@ -313,7 +319,16 @@
         "biome": "highlands",
         "bgmYoutubeId": "9KxUmZ4v2HI"
       },
-      "totalReward": 200
+      "totalReward": 200,
+      "killGold": 8388,
+      "debuts": [
+        "xl_infantry",
+        "xl_cavalry",
+        "xl_shield",
+        "huaxiong",
+        "xl_healer",
+        "lubu"
+      ]
     },
     {
       "id": "level03",
@@ -476,7 +491,15 @@
         "biome": "woodland",
         "bgmYoutubeId": "Z-HHzu3rhj8"
       },
-      "totalReward": 0
+      "totalReward": 0,
+      "killGold": 5242,
+      "debuts": [
+        "ys_infantry",
+        "ys_spear",
+        "ys_banner",
+        "yanliang",
+        "yuanshao"
+      ]
     },
     {
       "id": "level04",
@@ -628,7 +651,16 @@
         "biome": "woodland",
         "bgmYoutubeId": "nzo4fB3uKi0"
       },
-      "totalReward": 0
+      "totalReward": 0,
+      "killGold": 11380,
+      "debuts": [
+        "wu_marine",
+        "wu_rattan",
+        "wu_cavalry",
+        "wu_raider",
+        "ganning",
+        "sunquan"
+      ]
     },
     {
       "id": "level05",
@@ -794,7 +826,16 @@
         "biome": "woodland",
         "bgmYoutubeId": "deyim16dRzE"
       },
-      "totalReward": 0
+      "totalReward": 0,
+      "killGold": 19049,
+      "debuts": [
+        "jz_marine",
+        "jz_halberd",
+        "jz_cavalry",
+        "jz_oxcart",
+        "guanping",
+        "guanyu"
+      ]
     },
     {
       "id": "level06",
@@ -970,7 +1011,16 @@
         "biome": "drylands",
         "bgmYoutubeId": "6Keux8E6GVw"
       },
-      "totalReward": 0
+      "totalReward": 0,
+      "killGold": 46948,
+      "debuts": [
+        "sh_repeater",
+        "sh_cavalry",
+        "sh_chainmail",
+        "sh_supply",
+        "jiangwei",
+        "zhugeliang"
+      ]
     }
   ],
   "units": [

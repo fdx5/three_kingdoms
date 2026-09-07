@@ -49,6 +49,24 @@ export const prefersReducedMotion = (): boolean =>
 export const isTouchDevice = (): boolean =>
   typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
+/**
+ * 지금 글을 쓰고 있는가.
+ *
+ * 전역 단축키를 다는 쪽은 반드시 이걸 먼저 물어야 한다. 안 그러면
+ * 방명록에 한 줄 쓰다가 스페이스를 누르면 글자 대신 게임이 멈춘다(실제로 그랬다).
+ * 체크박스·버튼처럼 글을 받지 않는 input 은 제외한다 — 거기서는 스페이스가
+ * 원래 그 컨트롤의 것이지 타이핑이 아니다.
+ */
+const TYPED_INPUT = /^(text|search|url|tel|email|password|number|date|time|month|week|datetime-local)$/;
+export function isTypingTarget(target: EventTarget | null): boolean {
+  const node = target as HTMLElement | null;
+  if (!node?.tagName) return false;
+  const tag = node.tagName.toLowerCase();
+  if (tag === 'textarea' || tag === 'select') return true;
+  if (tag === 'input') return TYPED_INPUT.test((node as HTMLInputElement).type || 'text');
+  return node.isContentEditable === true;
+}
+
 /** 0.4초 카운트업 (easeOutQuad) */
 export class CountUp {
   private current = 0;

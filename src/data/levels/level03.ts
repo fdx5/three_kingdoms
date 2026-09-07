@@ -99,7 +99,9 @@ export const LEVEL_03: LevelDef = {
     count: 15,
     baseCount: 13,
     countStep: 3,
-    hpGrowth: 0.1,
+    hpGrowth: 0.0882,
+    // 변주가 웨이브를 앞 웨이브보다 물러지게 만들지 않는다. [[hpRatchet]]
+    hpRatchet: true,
     speedGrowth: 0.012,
     spawnInterval: (n) => Math.max(0.3, 0.85 - 0.025 * n),
     formationColumns: 4,

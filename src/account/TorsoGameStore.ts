@@ -1,4 +1,4 @@
-import type { GameStore } from './GameStore';
+import type { GameStore, Page, PageQuery } from './GameStore';
 import type { Account, GameRecord, GuestbookEntry, LevelProgress } from './types';
 
 /**
@@ -18,9 +18,10 @@ import type { Account, GameRecord, GuestbookEntry, LevelProgress } from './types
  *   GET    /accounts/:id/progress   -> 200 {stars: {...}}
  *   PUT    /accounts/:id/progress   {stars}                 -> 204
  *   POST   /records                 GameRecord(id 없이)      -> 201 GameRecord
- *   GET    /records?accountId&limit -> 200 GameRecord[]
+ *   GET    /records?accountId&limit&offset
+ *                                   -> 200 {items: GameRecord[], total}
  *   POST   /guestbook               GuestbookEntry(id 없이)  -> 201 GuestbookEntry
- *   GET    /guestbook?limit         -> 200 GuestbookEntry[]
+ *   GET    /guestbook?limit&offset  -> 200 {items: GuestbookEntry[], total}
  *
  * 비밀번호는 이렇게 나뉜다
  * ----------------------
@@ -103,10 +104,10 @@ export class TorsoGameStore implements GameStore {
     return saved;
   }
 
-  async listRecords(accountId?: string, limit = 50): Promise<GameRecord[]> {
-    const q = new URLSearchParams({ limit: String(limit) });
-    if (accountId) q.set('accountId', accountId);
-    return (await this.req<GameRecord[]>(`/records?${q}`)) ?? [];
+  async listRecords(query?: PageQuery & { accountId?: string }): Promise<Page<GameRecord>> {
+    const q = pageQuery(query);
+    if (query?.accountId) q.set('accountId', query.accountId);
+    return (await this.req<Page<GameRecord>>(`/records?${q}`)) ?? { items: [], total: 0 };
   }
 
   async appendGuestbook(entry: Omit<GuestbookEntry, 'id'>): Promise<GuestbookEntry> {
@@ -118,7 +119,14 @@ export class TorsoGameStore implements GameStore {
     return saved;
   }
 
-  async listGuestbook(limit = 50): Promise<GuestbookEntry[]> {
-    return (await this.req<GuestbookEntry[]>(`/guestbook?limit=${limit}`)) ?? [];
+  async listGuestbook(query?: PageQuery): Promise<Page<GuestbookEntry>> {
+    return (await this.req<Page<GuestbookEntry>>(`/guestbook?${pageQuery(query)}`)) ?? { items: [], total: 0 };
   }
+}
+
+function pageQuery(query?: PageQuery): URLSearchParams {
+  return new URLSearchParams({
+    limit: String(query?.limit ?? 50),
+    offset: String(query?.offset ?? 0),
+  });
 }

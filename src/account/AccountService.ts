@@ -1,4 +1,4 @@
-import type { GameStore } from './GameStore';
+import type { GameStore, Page, PageQuery } from './GameStore';
 import { LocalGameStore } from './LocalGameStore';
 import { TorsoGameStore } from './TorsoGameStore';
 import { hashPassword, newSalt } from './password';
@@ -214,12 +214,20 @@ export class AccountService {
       .catch((err) => console.warn('[account] 전적 저장 실패:', err));
   }
 
-  listRecords(limit = 20): Promise<GameRecord[]> {
-    const id = this.account?.id;
-    return id ? this.store.listRecords(id, limit) : Promise.resolve([]);
+  /**
+   * 전적 목록 한 쪽.
+   *
+   * 기본이 **모두의 전적**인 것은 의도적이다 — 이력 화면은 게이머들이 함께 보는 곳이라
+   * 남의 기록도 보여야 한다. 내 것만 보려면 `mine: true` 를 준다.
+   */
+  listRecords(query: PageQuery & { mine?: boolean } = {}): Promise<Page<GameRecord>> {
+    const { mine, ...page } = query;
+    const accountId = mine ? this.account?.id : undefined;
+    if (mine && !accountId) return Promise.resolve({ items: [], total: 0 });
+    return this.store.listRecords({ ...page, accountId });
   }
 
-  /** 방명록 쓰기. UI는 아직 없고 창구만 열어 둔다. */
+  /** 방명록 쓰기. 로그인한 사람만, 빈 글은 남기지 않는다. */
   async postGuestbook(message: string): Promise<GuestbookEntry | null> {
     const acc = this.account;
     const text = message.trim();
@@ -237,8 +245,9 @@ export class AccountService {
       });
   }
 
-  listGuestbook(limit = 50): Promise<GuestbookEntry[]> {
-    return this.store.listGuestbook(limit);
+  /** 방명록 한 쪽. 모두가 함께 보는 목록이라 계정으로 거르지 않는다. */
+  listGuestbook(query: PageQuery = {}): Promise<Page<GuestbookEntry>> {
+    return this.store.listGuestbook(query);
   }
 
   // ── 내부 ────────────────────────────────────────────────────────────

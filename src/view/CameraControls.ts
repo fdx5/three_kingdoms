@@ -1,4 +1,5 @@
 import type { Stage } from './Stage';
+import { isTypingTarget } from '../ui/dom';
 
 /**
  * 부감 고정 뷰 + 팬/줌/회전.
@@ -186,7 +187,7 @@ export class CameraControls {
     this.onContextMenu = (e) => e.preventDefault();
 
     this.onKeyDown = (e) => {
-      if (isTyping(e.target)) return;
+      if (isTypingTarget(e.target)) return;
       const key = normalizeKey(e);
       if (!key) return;
       // 화살표는 페이지 스크롤을 부른다
@@ -341,14 +342,6 @@ function angleDelta(to: number, from: number): number {
   if (d > Math.PI) d -= Math.PI * 2;
   if (d < -Math.PI) d += Math.PI * 2;
   return d;
-}
-
-/** 입력창에 타이핑 중이면 카메라 키를 가로채면 안 된다 */
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el || !el.tagName) return false;
-  const tag = el.tagName.toLowerCase();
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
 }
 
 /** 키를 카메라 동작으로 번역. 게임 단축키(1~9, U, R, Space 등)는 건드리지 않는다. */

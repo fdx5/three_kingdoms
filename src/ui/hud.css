@@ -883,6 +883,8 @@ button:focus-visible {
   place-items: center;
   font-size: 2.4em;
   letter-spacing: 0.35em;
+  /* 자간이 마지막 글자 뒤에도 붙어 글자들이 왼쪽으로 밀린다. 그만큼 되민다. */
+  padding-left: 0.35em;
   color: rgba(240, 192, 74, 0.55);
 }
 
@@ -1166,6 +1168,8 @@ body.debug .leveltitle {
 .accountbar__who { color: var(--ink); letter-spacing: 0.04em; }
 .accountbar__who b { color: var(--gold); font-weight: 600; }
 .accountbar button { min-height: 36px; padding: 6px 12px; font-size: 0.9em; }
+/* 방명록·이력·로그아웃이 한 줄에 선다. 좁아지면 줄바꿈해서 눌리는 크기를 지킨다. */
+.accountbar__actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* Responsive HUD: reserve the measured bars instead of guessing their height. */
 #hud-root {

@@ -117,7 +117,9 @@ export const LEVEL_05: LevelDef = {
      * 예전에는 "안 올려도 이길 수는 있지만 성이 3분의 1로 깎인다"였는데,
      * 0.155 만 넘어도 안 올리면 진다. 조이면 그 여유가 먼저 사라진다.
      */
-    hpGrowth: 0.180,
+    hpGrowth: 0.1649,
+    // 변주가 웨이브를 앞 웨이브보다 물러지게 만들지 않는다. [[hpRatchet]]
+    hpRatchet: true,
     speedGrowth: 0.012,
     spawnInterval: (n) => Math.max(0.34, 0.92 - 0.026 * n),
     formationColumns: 4,

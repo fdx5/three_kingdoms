@@ -17,11 +17,12 @@ import { trackViewport } from './ui/viewport';
 import { TowerPanel } from './ui/TowerPanel';
 import { ScreenFx } from './ui/ScreenFx';
 import { LevelSelect } from './ui/LevelSelect';
-import { recordClear, suggestedLevelId, bindProgress, claimLegacyProgress } from './ui/progress';
+import { Community } from './ui/Community';
+import { recordClear, suggestedLevelId, bindProgress, claimLegacyProgress, isLevelCleared } from './ui/progress';
 import { AccountService } from './account/AccountService';
 import { LoginScreen } from './ui/LoginScreen';
 import type { RunStats } from './types/events';
-import { el } from './ui/dom';
+import { el, isTypingTarget } from './ui/dom';
 import type { TargetingMode, TowerDef } from './types/towers';
 
 const PRESET_KEY = 'samtd.preset';
@@ -52,6 +53,7 @@ class Game {
   private renderFailed = false;
 
   private levelSelect!: LevelSelect;
+  private community!: Community;
   /** 계정·진행도·전적의 창구. 저장소는 브라우저 또는 토르소 DB다. */
   private accounts = new AccountService();
   private loginScreen!: LoginScreen;
@@ -148,6 +150,20 @@ class Game {
     if (this.debug) setTimeout(() => this.dumpDiagnostics(), 2500);
 
     this.levelSelect = new LevelSelect(this.hudRoot, (id) => this.switchLevel(id));
+    // 방명록과 전적 이력. 메뉴를 덮고 뜨며, 닫으면 고르던 자리로 그대로 돌아온다.
+    this.community = new Community(this.hudRoot, this.accounts);
+    this.levelSelect.setCommunity({
+      onGuestbook: () => this.community.open('guestbook'),
+      onHistory: () => this.community.open('history'),
+    });
+    // 메뉴에도 그 장의 곡이 흐른다. 여기서도 끌 수 있어야 한다.
+    this.levelSelect.setAudio({
+      isOn: () => this.audio.isBgmEnabled(),
+      onToggle: (on) => {
+        this.audio.setBgmEnabled(on);
+        this.hud.setBgmOn(on);
+      },
+    });
 
     if (this.forcedLevelId) {
       // URL이 레벨을 직접 지목했으면 로그인·잠금·선택 화면을 건너뛴다
@@ -206,6 +222,7 @@ class Game {
    * 진행도 캐시도 함께 비워야 다음 사람이 앞사람의 잠금 해제를 물려받지 않는다.
    */
   private async logout(): Promise<void> {
+    this.community?.close();
     this.accounts.logout();
     this.audio.stopBgm();
     this.audio.stopAllLoops();
@@ -243,7 +260,7 @@ class Game {
     const fill = el('div', { class: 'loading__fill' });
     const label = el('div', { class: 'loading__label', text: '전장을 준비하는 중…' });
     const node = el('div', { id: 'loading' }, [
-      el('div', { class: 'loading__art', text: '三國' }),
+      el('div', { class: 'loading__art', text: '三國志' }),
       el('div', { class: 'loading__bar' }, [fill]),
       label,
     ]);
@@ -272,6 +289,7 @@ class Game {
       this.hudRoot,
       {
         onSpeed: (s) => {
+          if (!this.fastForwardAllowed() && s > 1) return;
           this.loop.setSpeed(s);
           this.hud.setSpeed(s);
           void this.audio.unlock();
@@ -439,11 +457,14 @@ class Game {
     // 배경음은 이 레벨이 끝날 때까지 반복 재생된다. 곡은 숨긴 유튜브 플레이어에서
     // 스트리밍되고, 자동재생이 막혀 있으면 첫 터치/클릭에서 알아서 시작한다.
     this.hud.setBgmOn(this.audio.isBgmEnabled());
+    // 배속은 이미 깬 장에서만 열린다. 레벨이 바뀔 때마다 다시 판단해야 한다.
+    this.syncFastForward();
     void this.audio.playBgm(this.level.environment.bgmYoutubeId);
   }
 
   /** 레벨 전환 — 씬을 통째로 새로 만든다 */
   private switchLevel(levelId: string): void {
+    this.community?.close();
     this.level = getLevel(levelId);
     this.panel.setBuildable(this.buildableTowers());
     this.restart();
@@ -544,6 +565,8 @@ class Game {
       this.audio.stopBgm();
       this.audio.stopAllLoops();
       recordClear(this.level.id, stats.stars);
+      // 방금 깼으니 이 장의 배속이 열린다 — 다시하기를 눌렀을 때 바로 쓸 수 있어야 한다.
+      this.syncFastForward();
       this.saveRecord(stats, true);
       const next = nextLevelId(this.level.id);
       this.hud.showResult(true, stats, next ? getLevel(next).title : null);
@@ -617,6 +640,9 @@ class Game {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    // 방명록에 글을 쓰는 중이라면 이 키들은 그 사람의 글자다.
+    // 특히 스페이스 — 이 가드가 없으면 띄어쓰기가 일시정지가 된다.
+    if (isTypingTarget(e.target)) return;
     const slots = this.world.level.buildSlots;
     // 슬롯 수는 레벨마다 다르다 (레벨 1은 5개, 레벨 2는 6개). 있는 만큼만 잡힌다.
     if (e.key >= '1' && e.key <= '9') {
@@ -660,12 +686,40 @@ class Game {
     }
   };
 
+  /**
+   * 이 장에서 배속을 쓸 수 있는가 — 한 번이라도 깬 장에서만 열린다.
+   *
+   * URL이 레벨을 직접 지목한 개발 경로(?level=N)는 진행도를 보지 않으므로 늘 열어 둔다.
+   * 그 경로에는 애초에 진행도가 남지 않는다.
+   */
+  private fastForwardAllowed(): boolean {
+    return this.forcedLevelId !== null || isLevelCleared(this.level.id);
+  }
+
   private changeSpeed(delta: number): void {
     const options = BALANCE.speedOptions;
     const i = options.indexOf(this.loop.getSpeed() as 1 | 2 | 3);
-    const next = options[Math.max(0, Math.min(options.length - 1, i + delta))];
+    const wanted = options[Math.max(0, Math.min(options.length - 1, i + delta))];
+    const next = this.fastForwardAllowed() ? wanted : 1;
     this.loop.setSpeed(next);
     this.hud.setSpeed(next);
+  }
+
+  /**
+   * 배속 버튼의 잠금을 지금 레벨에 맞춘다.
+   * 잠긴 장에 배속인 채로 들어오지 않도록 속도도 1배로 되돌린다.
+   */
+  private syncFastForward(): void {
+    const allowed = this.fastForwardAllowed();
+    this.hud.setFastForwardAllowed(allowed);
+    /*
+     * 부팅 중에는 루프가 아직 없다 — start()가 buildWorld()를 setupLoop()보다 먼저 부른다.
+     * 그때는 속도가 기본값(1배)이므로 되돌릴 것도 없다.
+     */
+    if (!allowed && this.loop && this.loop.getSpeed() !== 1) {
+      this.loop.setSpeed(1);
+      this.hud.setSpeed(1);
+    }
   }
 
   private setPaused(paused: boolean, showOverlay = true): void {

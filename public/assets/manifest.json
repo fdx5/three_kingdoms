@@ -1,36 +1,104 @@
 {
   "_readme": "모델/텍스처/음원을 넣고 여기에 한 줄 추가하면 즉시 교체된다. 지우면 프리미티브·무음으로 돌아온다. 규약은 docs/ASSETS.md 참고.",
-
   "models": {
-    "yt_infantry": { "url": "models/soldier.glb" },
-    "yt_captain": { "url": "models/captain.glb" },
-    "xl_shield": { "url": "models/shield_soldier.glb" },
-    "xl_healer": { "url": "models/healer.glb" },
-    "zhangjiao": { "url": "models/zhangjiao.glb" },
-    "yuanshao": { "url": "models/yuanshao.glb" },
-    "ys_spear": { "url": "models/ys_spear.glb" },
-    "yanliang": { "url": "models/yanliang.glb", "scale": 15 },
-    "guanyu": { "url": "models/guanyu.glb" },
-    "zhugeliang": { "url": "models/zhugeliang.glb" },
-    "archer_tower": { "url": "models/archer_tower.glb" },
-    "catapult": { "url": "models/catapult.glb" },
-    "cannon_tower": { "url": "models/cannon_tower.glb" },
-    "fire_tower": { "url": "models/fire_tower.glb?v=b637cb920e44" },
-    "caltrop_camp": { "url": "models/caltrop_camp.glb" },
-    "wu_marine": { "url": "models/wu_marine.glb" },
-    "wu_rattan": { "url": "models/wu_rattan.glb" },
-    "wu_raider": { "url": "models/wu_raider.glb" },
-    "ganning": { "url": "models/ganning.glb" },
-    "sunquan": { "url": "models/sunquan.glb" },
-    "cavalry": { "url": "models/cavalry.glb" },
-    "lubu": { "url": "models/lubu.glb" },
-    "hulao_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
-    "guandu_camp": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
-    "hefei_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
-    "fancheng_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 },
-    "wuzhangyuan_gate": { "url": "models/castle.glb", "scale": 180, "yOffset": 76, "rotY": -1.5707963267948966 }
+    "yt_infantry": {
+      "url": "models/soldier.glb"
+    },
+    "yt_captain": {
+      "url": "models/captain.glb"
+    },
+    "xl_shield": {
+      "url": "models/shield_soldier.glb"
+    },
+    "xl_healer": {
+      "url": "models/healer.glb"
+    },
+    "zhangjiao": {
+      "url": "models/zhangjiao.glb"
+    },
+    "yuanshao": {
+      "url": "models/yuanshao.glb"
+    },
+    "ys_spear": {
+      "url": "models/ys_spear.glb"
+    },
+    "yanliang": {
+      "url": "models/yanliang.glb",
+      "scale": 15
+    },
+    "guanyu": {
+      "url": "models/guanyu.glb"
+    },
+    "zhugeliang": {
+      "url": "models/zhugeliang.glb"
+    },
+    "archer_tower": {
+      "url": "models/archer_tower.glb"
+    },
+    "catapult": {
+      "url": "models/catapult.glb"
+    },
+    "cannon_tower": {
+      "url": "models/cannon_tower.glb"
+    },
+    "fire_tower": {
+      "url": "models/fire_tower.glb?v=b637cb920e44"
+    },
+    "caltrop_camp": {
+      "url": "models/caltrop_camp.glb"
+    },
+    "wu_marine": {
+      "url": "models/wu_marine.glb"
+    },
+    "wu_rattan": {
+      "url": "models/wu_rattan.glb"
+    },
+    "wu_raider": {
+      "url": "models/wu_raider.glb"
+    },
+    "ganning": {
+      "url": "models/ganning.glb"
+    },
+    "sunquan": {
+      "url": "models/sunquan.glb"
+    },
+    "cavalry": {
+      "url": "models/cavalry.glb"
+    },
+    "lubu": {
+      "url": "models/lubu.glb"
+    },
+    "hulao_gate": {
+      "url": "models/castle.glb",
+      "scale": 180,
+      "yOffset": 76,
+      "rotY": -1.5707963267948966
+    },
+    "guandu_camp": {
+      "url": "models/castle.glb",
+      "scale": 180,
+      "yOffset": 76,
+      "rotY": -1.5707963267948966
+    },
+    "hefei_gate": {
+      "url": "models/castle.glb",
+      "scale": 180,
+      "yOffset": 76,
+      "rotY": -1.5707963267948966
+    },
+    "fancheng_gate": {
+      "url": "models/castle.glb",
+      "scale": 180,
+      "yOffset": 76,
+      "rotY": -1.5707963267948966
+    },
+    "wuzhangyuan_gate": {
+      "url": "models/castle.glb",
+      "scale": 180,
+      "yOffset": 76,
+      "rotY": -1.5707963267948966
+    }
   },
-
   "textures": {
     "ground_dry": "textures/forest_ground_04_diff_1k.jpg",
     "ground_dry_normal": "textures/forest_ground_04_nor_gl_1k.jpg",
@@ -45,7 +113,6 @@
     "path_dirt_normal": "textures/forest_ground_04_nor_gl_1k.jpg",
     "path_dirt_roughness": "textures/forest_ground_04_rough_1k.jpg"
   },
-
   "audio": {
     "sfx_fire_attack": "audio/fire.mp3",
     "sfx_ice_storm": "audio/cold.mp3",
@@ -55,6 +122,7 @@
     "sfx_castle_strike_boss": "audio/middle_boss.mp3",
     "sfx_cannon": "audio/cannon.mp3",
     "sfx_fire_burn": "audio/fire_burn.mp3",
-    "sfx_victory": "audio/victory.mp3"
+    "sfx_victory": "audio/victory.mp3",
+    "sfx_defeat": "audio/game_over.mp3"
   }
 }

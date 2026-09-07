@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { SOUND_MAP, SOUND_CLIPS, type SoundMapping } from '../src/audio/soundMap';
 import { UNIT_LIST } from '../src/data/units';
 import { TOWERS } from '../src/data/towers';
@@ -19,6 +19,30 @@ describe('사운드 매핑', () => {
     for (const [id, url] of Object.entries(manifest.audio)) {
       expect(url, id).toMatch(/^audio\/.+\.mp3$/);
     }
+  });
+
+  /*
+   * 음원이 없는 것은 에러가 아니다 — 그 소리는 무음으로 넘어간다(AssetRegistry의 규칙).
+   * 그래서 정말 놓치기 쉬운 것은 반대쪽이다: **파일은 받아 두고 배선을 잊은 경우**.
+   * 실제로 'level:lost' -> 'sfx_defeat' 매핑이 있는데 game over.mp3 가 매니페스트에
+   * 없어서 게임오버가 무음이었고, 판이 끝날 때 한 번뿐인 소리라 아무도 눈치채지 못했다.
+   *
+   * 레벨 배경음(level*.mp3/mp4)은 유튜브로 스트리밍하므로 여기서 뺀다.
+   */
+  it('sound/ 에 받아 둔 음원은 빠짐없이 매니페스트에 배선돼 있다', () => {
+    const used = new Set(Object.values(manifest.audio).map((u) => u.replace(/^audio\//, '')));
+    const orphans = readdirSync('sound')
+      .filter((f) => f.endsWith('.mp3') && !/^level\d/.test(f))
+      .filter((f) => !used.has(f) && !used.has(f.replace(/ /g, '_')));
+    expect(orphans, '받아 두고 아직 쓰지 않는 음원').toEqual([]);
+  });
+
+  it('게임오버에 소리가 난다', () => {
+    expect(SOUND_MAP['level:lost']).toBe('sfx_defeat');
+    expect(manifest.audio.sfx_defeat).toBe('audio/game_over.mp3');
+    // 매니페스트의 파일이 sound/ 의 원본과 같은 파일인지까지 본다.
+    expect(readFileSync(`public/assets/${manifest.audio.sfx_defeat}`))
+      .toEqual(readFileSync('sound/game over.mp3'));
   });
 
   it('클립 설정은 매니페스트에 있는 음원에만 붙는다', () => {

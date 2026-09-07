@@ -1,10 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#1f1a14"/>
-  <!-- 성벽 -->
-  <path d="M12 44h40v10H12z" fill="#8a8578"/>
-  <path d="M12 38h6v6h-6zm10 0h6v6h-6zm10 0h6v6h-6zm10 0h6v6h-6z" fill="#8a8578"/>
-  <!-- 지붕 -->
-  <path d="M32 8 52 28H12z" fill="#7a2e2e"/>
-  <!-- 황색 두건 색 포인트 -->
-  <circle cx="32" cy="34" r="4" fill="#d4a017"/>
+<!--
+  낙관(落款) 안의 성문.
+
+  메뉴 왼쪽 위에 찍히는 붉은 인장이 이 게임의 마크다. 탭에서도 같은 것이 보여야
+  "그 게임"으로 읽힌다. 다만 인장의 세 글자(三國志)는 16px에서 뭉개지므로,
+  글자 대신 지켜야 할 것 하나 — 성문 — 을 새긴다.
+  총안(성가퀴)과 아치문만 남겨 가장 작은 크기에서도 형태가 유지되게 했다.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="삼국지 Last Stand">
+  <rect width="64" height="64" rx="9" fill="#852e22"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="7" fill="none" stroke="#e8b48f" stroke-opacity=".45" stroke-width="2"/>
+  <g fill="#f3ddc9">
+    <!-- 총안 -->
+    <path d="M13 17h6v7h-6zm11 0h6v7h-6zm11 0h6v7h-6zm11 0h6v7h-6z"/>
+    <!-- 성벽 -->
+    <path d="M13 24h38v27H13z"/>
+  </g>
+  <!-- 성문 아치 -->
+  <path d="M32 31c4.4 0 8 3.6 8 8v12H24V39c0-4.4 3.6-8 8-8z" fill="#852e22"/>
 </svg>

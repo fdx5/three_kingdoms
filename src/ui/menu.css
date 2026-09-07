@@ -21,8 +21,13 @@
 .menu-header, .menu-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-shrink: 0; }
 .menu-header { width: 100%; max-width: 1440px; margin: 0 auto; }
 .menu-signature { display: flex; align-items: center; gap: 15px; font: 12px Georgia, serif; letter-spacing: .28em; color: #d3c4a5; }
-.menu-seal { display: grid; place-items: center; width: 36px; height: 44px; background: #852e22;
-  color: #efcbb4; font: 17px 'KaiTi', 'Gungsuh', serif; letter-spacing: 0; border: 1px solid #c475554d; }
+/*
+ * 낙관(落款). 세 글자를 세로로 새긴다 — 가로로 늘어놓으면 도장이 아니라 딱지가 된다.
+ * 폭은 그대로 두고 높이만 세 글자만큼 준다.
+ */
+.menu-seal { display: grid; place-items: center; width: 36px; height: 62px; background: #852e22;
+  color: #efcbb4; font: 16px/1.15 'KaiTi', 'Gungsuh', serif; letter-spacing: 0;
+  writing-mode: vertical-rl; text-orientation: upright; border: 1px solid #c475554d; }
 .menu-edition { font-size: 9px; letter-spacing: .23em; color: #a8aaa0; }
 .menu-layout { flex: 1; display: grid; grid-template-columns: 1fr 1.05fr; align-items: center;
   gap: clamp(30px, 7vw, 120px); width: 100%; max-width: 1320px; margin: 40px auto; }
@@ -58,6 +63,8 @@
 .main-menu .accountbar { background: none; border: 0; border-top: 1px solid #c2a87524; border-bottom: 1px solid #c2a87524;
   padding: 8px 0; margin: 0 0 18px; border-radius: 0; font-size: 11px; }
 .main-menu .accountbar button { border: 0; background: none; color: #bcb6a7; box-shadow: none; }
+/* 방명록·이력은 "다른 곳으로 가는 문"이라 로그아웃보다 눈에 띄어야 한다 */
+.main-menu .accountbar__actions button:not(:last-child) { color: #d8bd82; }
 .main-menu .levelgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
 .main-menu .levelcard { position: relative; min-height: 140px; padding: 16px; border-radius: 2px;
   border: 1px solid #a69a7736; background: linear-gradient(125deg, #25352e9c, #141d1d);

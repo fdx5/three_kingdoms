@@ -1,4 +1,4 @@
-import type { GameStore } from './GameStore';
+import type { GameStore, Page, PageQuery } from './GameStore';
 import { newId } from './GameStore';
 import { constantTimeEqual } from './password';
 import type { Account, GameRecord, GuestbookEntry, LevelProgress } from './types';
@@ -51,12 +51,20 @@ function write(key: string, value: unknown): void {
  * 최신순을 기대하고 읽는 쪽에서는 순서가 거꾸로 보인다(실제로 방명록에서 그랬다).
  * 배열 순서가 곧 입력 순서이므로 같은 시각이면 뒤에 넣은 쪽을 앞세운다.
  */
-function newestFirst<T>(rows: readonly T[], at: (row: T) => number, limit: number): T[] {
-  return rows
+/**
+ * 최신순 한 쪽을 잘라 낸다.
+ *
+ * 같은 시각이면 나중에 들어온 것이 위로 온다 — 한 판이 끝나고 곧바로 방명록을
+ * 남기면 밀리초가 겹칠 수 있는데, 그때 순서가 뒤집히면 "방금 쓴 글이 아래에 있다"가 된다.
+ */
+function newestPage<T>(rows: readonly T[], at: (row: T) => number, query?: PageQuery): Page<T> {
+  const sorted = rows
     .map((row, index) => ({ row, index }))
     .sort((a, b) => at(b.row) - at(a.row) || b.index - a.index)
-    .slice(0, limit)
     .map((x) => x.row);
+  const offset = Math.max(0, query?.offset ?? 0);
+  const limit = Math.max(1, query?.limit ?? 50);
+  return { items: sorted.slice(offset, offset + limit), total: sorted.length };
 }
 
 export class LocalGameStore implements GameStore {
@@ -114,9 +122,10 @@ export class LocalGameStore implements GameStore {
     return saved;
   }
 
-  async listRecords(accountId?: string, limit = 50): Promise<GameRecord[]> {
+  async listRecords(query?: PageQuery & { accountId?: string }): Promise<Page<GameRecord>> {
     const all = read<GameRecord[]>(KEY.records, []);
-    return newestFirst(all.filter((r) => !accountId || r.accountId === accountId), (r) => r.playedAt, limit);
+    const mine = query?.accountId ? all.filter((r) => r.accountId === query.accountId) : all;
+    return newestPage(mine, (r) => r.playedAt, query);
   }
 
   async appendGuestbook(entry: Omit<GuestbookEntry, 'id'>): Promise<GuestbookEntry> {
@@ -127,7 +136,7 @@ export class LocalGameStore implements GameStore {
     return saved;
   }
 
-  async listGuestbook(limit = 50): Promise<GuestbookEntry[]> {
-    return newestFirst(read<GuestbookEntry[]>(KEY.guestbook, []), (e) => e.createdAt, limit);
+  async listGuestbook(query?: PageQuery): Promise<Page<GuestbookEntry>> {
+    return newestPage(read<GuestbookEntry[]>(KEY.guestbook, []), (e) => e.createdAt, query);
   }
 }

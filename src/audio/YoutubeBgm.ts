@@ -93,8 +93,16 @@ export class YoutubeBgm {
 
   /** 지금 틀어야 하는 곡 */
   private wantedId: string | null = null;
-  /** 플레이어에 실제로 올라간 곡 */
+  /** 플레이어에 실제로 올라간 곡. onReady 전에는 신뢰할 수 없다. */
   private loadedId: string | null = null;
+  /**
+   * onReady가 왔는가.
+   *
+   * IFrame API의 메서드는 준비 전에 부르면 **조용히 사라진다** — 던지지도, 큐에 쌓이지도 않는다.
+   * 그래서 준비 전의 loadVideoById·playVideo·pauseVideo는 전부 없던 일이 되고,
+   * 플레이어는 생성 시점의 videoId를 autoplay로 틀어 버린다. 이 플래그가 그 창을 닫는다.
+   */
+  private ready = false;
   /** 재생 의사 (일시적으로 막혀 있어도 true일 수 있다) */
   private wantPlaying = false;
   private volume = 0.5;
@@ -116,26 +124,44 @@ export class YoutubeBgm {
     await this.ensurePlayer();
     const player = this.player;
     if (!player || this.disposed || this.wantedId !== videoId) return;
+    // 아직 준비 전이면 아무것도 부르지 않는다. onReady가 wantedId를 보고 맞춘다.
+    if (!this.ready) return;
 
     this.applyVolume();
-    if (this.loadedId !== videoId) {
-      this.loadedId = videoId;
-      player.loadVideoById?.(videoId);
+    this.applyWanted();
+    this.armGestureRetry();
+  }
+
+  /**
+   * 지금 틀려던 곡과 실제로 올라간 곡을 맞춘다.
+   * 준비된 플레이어에서만 부른다 — 준비 전에는 어떤 호출도 효과가 없기 때문이다.
+   */
+  private applyWanted(): void {
+    const player = this.player;
+    if (!player || !this.ready) return;
+    if (!this.wantPlaying) {
+      // 생성 시 autoplay로 이미 소리가 나기 시작했을 수 있다. 여기서 확실히 끈다.
+      try {
+        player.pauseVideo();
+      } catch {
+        /* 무시 */
+      }
+      return;
+    }
+    if (this.wantedId && this.loadedId !== this.wantedId) {
+      this.loadedId = this.wantedId;
+      player.loadVideoById?.(this.wantedId);
     } else {
       player.playVideo?.();
     }
-    this.armGestureRetry();
   }
 
   /** 멈춘다. 어떤 곡이었는지는 호출자(AudioManager)가 기억한다. */
   stop(): void {
     this.wantPlaying = false;
     this.disarmGestureRetry();
-    try {
-      this.player?.pauseVideo();
-    } catch {
-      /* 아직 준비되지 않은 플레이어 — 무시 */
-    }
+    // 준비 전이라면 여기서 멈춰도 소용없다 — onReady가 wantPlaying을 보고 멈춘다.
+    this.applyWanted();
   }
 
   /** 0~1 */
@@ -221,6 +247,8 @@ export class YoutubeBgm {
       document.body.append(host);
       this.host = host;
 
+      // 생성 시점의 곡은 "지금 알고 있는 최선"일 뿐이다. 준비되기까지 몇 초가 걸리고
+      // 그 사이 장이 바뀔 수 있으므로, 실제로 올라간 곡은 onReady에서 다시 맞춘다.
       const videoId = this.wantedId ?? '';
       this.loadedId = videoId;
       try {
@@ -235,17 +263,23 @@ export class YoutubeBgm {
             modestbranding: 1,
             playsinline: 1,
             rel: 0,
-            // loop는 playlist가 같이 있어야 단일 영상에 적용된다.
-            loop: 1,
-            playlist: videoId,
+            /*
+             * loop/playlist 는 쓰지 않는다.
+             *
+             * 단일 영상 반복은 playlist에 그 id를 적어야 도는데, 그 값은 플레이어를
+             * **만들 때** 박히고 loadVideoById 로는 바뀌지 않는다. 그래서 다음 장으로
+             * 넘어가 곡을 바꿔도 그 곡이 끝나면 유튜브가 playlist에 적힌 첫 장의 곡으로
+             * 되돌아갔다. 반복은 아래 ENDED 처리가 직접 한다.
+             */
           },
           events: {
             onReady: () => {
+              // 여기가 상태를 맞추는 유일한 지점이다. 준비되기 전에 들어온 곡 변경과
+              // 정지 요청은 전부 흘러갔으므로, 지금 wantedId/wantPlaying 을 다시 반영한다.
+              this.ready = true;
               this.applyVolume();
-              if (this.wantPlaying) {
-                this.player?.playVideo?.();
-                this.armGestureRetry();
-              }
+              this.applyWanted();
+              if (this.wantPlaying) this.armGestureRetry();
             },
             onStateChange: (e) => {
               // playerVars의 loop만 믿지 않는다. 끝나면 직접 처음으로 돌린다.
@@ -279,6 +313,7 @@ export class YoutubeBgm {
       /* 이미 사라진 플레이어 — 무시 */
     }
     this.player = null;
+    this.ready = false;
     this.host?.remove();
     this.host = null;
   }

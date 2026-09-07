@@ -9,8 +9,9 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ['manual/*.mjs'],
-    languageOptions: { globals: { process: 'readonly', console: 'readonly', window: 'readonly', document: 'readonly' } },
+    // 설명서·공유 이미지 파이프라인 — 노드에서 돌지만 page.evaluate 안에서는 브라우저다
+    files: ['manual/*.mjs', 'scripts/share-art/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly', window: 'readonly', document: 'readonly', getComputedStyle: 'readonly' } },
   },
   {
     files: ['scripts/ensure-deps.mjs', 'scripts/postbuild-serve.mjs'],

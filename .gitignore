@@ -17,3 +17,14 @@ img/
 .vite-dev.*.log
 artifacts/
 scripts/_tmp-*.ts
+
+# 설명서의 생성물. 파이프라인(manual/*.mjs)이 다시 만들 수 있고,
+# 렌더 원본만 64MB라 저장소에 둘 것이 아니다.
+manual/img/
+manual/print/
+manual/preview/
+manual/manual.html
+manual/*.pdf
+
+# 로컬에서 서버를 띄울 때 남는 로그
+.server.log

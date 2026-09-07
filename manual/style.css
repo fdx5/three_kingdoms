@@ -1,0 +1,204 @@
+/* 삼국지 Last Stand — 사용 설명서 조판 */
+@page { size: A4; margin: 0; }
+
+:root {
+  --paper: #f6f1e6;
+  --paper-2: #efe7d6;
+  --ink: #23201b;
+  --ink-2: #554c3d;
+  --ink-3: #8b7d67;
+  --gold: #a8802f;
+  --gold-lt: #d8bd82;
+  --seal: #8f2b20;
+  --jade: #2f5d4f;
+  --rule: #cdbe9f;
+  --dark: #14100b;
+  /* 도판 뒤 종이색 — manual/optimize.mjs 의 FIGURE_BG 와 같은 값이다 */
+  --fig-bg: #faf6ec;
+}
+
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html { font-size: 9.6pt; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: 'Noto Serif KR', 'Batang', serif;
+  line-height: 1.62; word-break: keep-all; overflow-wrap: anywhere;
+}
+
+.page {
+  position: relative; width: 210mm; height: 297mm; overflow: hidden;
+  padding: 19mm 18mm 17mm; background: var(--paper);
+  page-break-after: always; break-after: page;
+}
+.page:last-child { page-break-after: auto; }
+.page--dark { background: var(--dark); color: #e8dfcc; padding: 0; }
+
+/* ── 반복되는 머리·꼬리 ─────────────────────────────── */
+.folio {
+  position: absolute; left: 18mm; right: 18mm; bottom: 9mm;
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-family: 'Noto Sans KR', sans-serif; font-size: 7.4pt; letter-spacing: .12em;
+  color: var(--ink-3); border-top: .4pt solid var(--rule); padding-top: 2.6mm;
+}
+.folio__no { font-weight: 600; color: var(--ink-2); }
+.runhead {
+  position: absolute; left: 18mm; right: 18mm; top: 10mm;
+  font-family: 'Noto Sans KR', sans-serif; font-size: 7.4pt; letter-spacing: .24em;
+  color: var(--gold);
+}
+
+/* ── 표지 ──────────────────────────────────────────── */
+/* 전장 사진은 바탕의 결로만 쓰고, 인물 하나를 세워 표지의 주인공으로 삼는다. */
+.cover__art { position: absolute; inset: 0; }
+.cover__art img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.6) contrast(1.08) brightness(.62); }
+.cover__veil {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, #0c0a06e6 0%, #0c0a0655 28%, #0c0a06b0 62%, #0c0a06fa 100%),
+    linear-gradient(100deg, #0c0a06f2 0%, #0c0a06b8 42%, #0c0a0630 72%, #0c0a0688 100%);
+}
+.cover__hero {
+  position: absolute; right: 8mm; bottom: 26mm; height: 168mm;
+  filter: drop-shadow(0 6mm 12mm #00000099);
+}
+.cover__inner { position: relative; padding: 26mm 22mm 18mm; display: flex; flex-direction: column; height: 100%; }
+.cover__seal {
+  width: 16mm; height: 20mm; display: grid; place-items: center; background: var(--seal);
+  color: #f4dcc8; font-family: 'Ma Shan Zheng', 'KaiTi', serif; font-size: 15pt; line-height: 1.15;
+  border: .6pt solid #d8907a55; box-shadow: 0 2mm 6mm #0009;
+}
+.cover__eyebrow { margin: 10mm 0 0; font-family: 'Noto Sans KR', sans-serif; font-size: 8pt; letter-spacing: .42em; color: var(--gold-lt); }
+.cover__title { margin: 4mm 0 0; font-size: 48pt; font-weight: 900; letter-spacing: .1em; color: #f6ecd6;
+  line-height: 1.12; text-shadow: 0 3mm 10mm #000000b0; }
+.cover__title small { display: block; font-size: 21pt; font-weight: 400; letter-spacing: .06em;
+  color: var(--gold-lt); font-family: Georgia, serif; margin-top: 2mm; text-shadow: 0 2mm 6mm #000000b0; }
+.cover__rule { width: 44mm; height: .9pt; background: linear-gradient(90deg, var(--gold-lt), #0000); margin: 7mm 0 5mm; }
+.cover__motto { font-size: 12.5pt; line-height: 1.85; color: #e6dbc2; margin: 0; text-shadow: 0 1mm 5mm #000000c0; }
+.cover__foot { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end;
+  font-family: 'Noto Sans KR', sans-serif; font-size: 8pt; letter-spacing: .18em; color: #a89d86; }
+.cover__hanzi {
+  position: absolute; left: 22mm; bottom: 34mm; font-family: 'Ma Shan Zheng', 'KaiTi', serif;
+  font-size: 40pt; line-height: 1.25; color: #d8bd8230; writing-mode: vertical-rl;
+}
+
+/* ── 표제 ──────────────────────────────────────────── */
+h1, h2, h3, h4 { font-weight: 700; line-height: 1.3; }
+.h-sec { margin: 0 0 5.5mm; }
+.h-sec__no { font-family: 'Noto Sans KR', sans-serif; font-size: 8pt; letter-spacing: .34em; color: var(--seal); }
+.h-sec__t { margin: 1.5mm 0 0; font-size: 21pt; font-weight: 900; letter-spacing: .02em; }
+.h-sec__t::after { content: ''; display: block; width: 20mm; height: 1.6pt; background: var(--gold); margin-top: 3mm; }
+.h-sec__sub { margin: 3mm 0 0; color: var(--ink-2); font-size: 10pt; }
+
+h3.h-sub { margin: 6mm 0 2.5mm; font-size: 12.5pt; letter-spacing: .01em;
+  padding-left: 3.4mm; border-left: 2.2pt solid var(--seal); }
+h4.h-min { margin: 4mm 0 1.4mm; font-size: 10.5pt; color: var(--jade); font-family: 'Noto Sans KR', sans-serif; letter-spacing: .04em; }
+p { margin: 0 0 2.8mm; }
+.lead { font-size: 11.5pt; color: var(--ink-2); line-height: 1.85; }
+.note { font-size: 9pt; color: var(--ink-3); line-height: 1.7; }
+
+/* ── 조판 도구 ─────────────────────────────────────── */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+
+.callout {
+  background: var(--paper-2); border-left: 2.4pt solid var(--gold);
+  padding: 3.2mm 4.2mm; margin: 4mm 0; font-size: 9.4pt; line-height: 1.66;
+}
+.callout__t { font-family: 'Noto Sans KR', sans-serif; font-weight: 700; font-size: 8.6pt;
+  letter-spacing: .16em; color: var(--gold); display: block; margin-bottom: 1.6mm; }
+.callout--seal { border-left-color: var(--seal); }
+.callout--seal .callout__t { color: var(--seal); }
+.callout p:last-child { margin-bottom: 0; }
+
+table { width: 100%; border-collapse: collapse; font-family: 'Noto Sans KR', sans-serif; font-size: 8.8pt; }
+caption { caption-side: top; text-align: left; font-size: 8.4pt; letter-spacing: .1em;
+  color: var(--ink-3); padding-bottom: 1.6mm; font-family: 'Noto Sans KR', sans-serif; }
+th, td { padding: 1.5mm 2.2mm; border-bottom: .4pt solid var(--rule); text-align: left; vertical-align: top; }
+thead th { background: #e6dcc6; font-size: 8pt; letter-spacing: .1em; color: var(--ink-2);
+  border-bottom: 1pt solid var(--gold); font-weight: 700; }
+tbody tr:nth-child(even) { background: #00000006; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tfoot td { font-weight: 700; border-top: 1pt solid var(--gold); border-bottom: none; }
+.t-tight th, .t-tight td { padding: 1.4mm 2mm; font-size: 8.2pt; }
+
+.chip {
+  display: inline-block; font-family: 'Noto Sans KR', sans-serif; font-size: 7.4pt;
+  letter-spacing: .06em; padding: .5mm 2mm; border-radius: 1mm; border: .5pt solid currentColor;
+  margin: 0 1.2mm 1.2mm 0; white-space: nowrap;
+}
+.chip--ranged { color: #3c6083; } .chip--siege { color: #6a4a24; } .chip--fire { color: #9c3b18; }
+.chip--slow { color: #2f5d4f; } .chip--heal { color: #2f6b3d; } .chip--speed { color: #7a5a12; }
+.chip--immune { color: #5b4b7a; } .chip--charge { color: var(--seal); } .chip--flame { color: #9c3b18; }
+.chip--boss { color: #f6f1e6; background: var(--seal); border-color: var(--seal); }
+.chip--elite { color: #f6f1e6; background: #6a4a24; border-color: #6a4a24; }
+.chip--minion { color: var(--ink-2); }
+
+/* ── 장 표지 ───────────────────────────────────────── */
+.opener { position: relative; height: 100%; color: #efe6d2; }
+.opener img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.opener__veil { position: absolute; inset: 0;
+  background: linear-gradient(180deg, #0c0a06e8 0%, #0c0a0640 40%, #0c0a06f5 100%); }
+.opener__body { position: relative; height: 100%; padding: 26mm 22mm 22mm; display: flex; flex-direction: column; }
+.opener__no { font-family: 'Ma Shan Zheng', 'KaiTi', serif; font-size: 52pt; color: var(--gold-lt); line-height: 1; }
+.opener__t { margin: 4mm 0 0; font-size: 27pt; font-weight: 900; letter-spacing: .03em; color: #f4ecd8; }
+.opener__lead { margin: 5mm 0 0; max-width: 118mm; font-size: 11pt; line-height: 1.9; color: #d9cfb6; }
+.opener__facts { margin-top: auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm;
+  border-top: .5pt solid #ffffff2e; padding-top: 5mm; font-family: 'Noto Sans KR', sans-serif; }
+.opener__facts dt { font-size: 7.4pt; letter-spacing: .2em; color: #a99e86; }
+.opener__facts dd { margin: 1.2mm 0 0; font-size: 15pt; font-weight: 700; color: var(--gold-lt); }
+.opener__facts dd small { font-size: 8.4pt; font-weight: 400; color: #cbc0a6; letter-spacing: 0; }
+
+/* ── 도감 카드 ─────────────────────────────────────── */
+.card { border: .5pt solid var(--rule); background: var(--fig-bg); padding: 3.2mm; display: flex; flex-direction: column; }
+.card__fig { height: 29mm; display: grid; place-items: end center; margin-bottom: 3mm; }
+.card__fig img { max-height: 29mm; max-width: 100%; object-fit: contain; }
+.card__name { font-size: 12pt; font-weight: 700; margin: 0; }
+.card__meta { font-family: 'Noto Sans KR', sans-serif; font-size: 7.6pt; letter-spacing: .1em; color: var(--ink-3); margin: .6mm 0 2.4mm; }
+.card__stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1mm; margin: 2mm 0;
+  font-family: 'Noto Sans KR', sans-serif; border-top: .4pt solid var(--rule); padding-top: 2mm; }
+.card__stats dt { font-size: 6.8pt; letter-spacing: .08em; color: var(--ink-3); text-align: center; }
+.card__stats dd { margin: .4mm 0 0; font-size: 10pt; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; }
+.card__traits { margin-top: auto; padding-top: 2mm; }
+.card__note { font-size: 8.4pt; line-height: 1.66; color: var(--ink-2); margin: 1.5mm 0 0; }
+
+/* ── 망루 지면 ─────────────────────────────────────── */
+.tower { display: grid; grid-template-columns: 58mm 1fr; gap: 7mm; align-items: start;
+  border-top: 1.2pt solid var(--gold); padding-top: 5mm; margin-bottom: 6mm; }
+.tower__fig { height: 46mm; display: grid; place-items: center; background: var(--fig-bg); }
+.tower__fig img { max-height: 46mm; max-width: 100%; object-fit: contain; }
+.tower__name { margin: 0; font-size: 16pt; font-weight: 900; }
+.tower__cost { font-family: 'Noto Sans KR', sans-serif; font-size: 8.6pt; letter-spacing: .1em; color: var(--seal); }
+.bars { width: 34mm; height: 13mm; display: block; }
+
+/* ── 지도 ─────────────────────────────────────────── */
+.map { width: 100%; max-height: 74mm; display: block; border: .5pt solid var(--rule); }
+.map-key { display: flex; gap: 6mm; flex-wrap: wrap; margin-top: 2.5mm;
+  font-family: 'Noto Sans KR', sans-serif; font-size: 7.6pt; color: var(--ink-2); }
+.map-key b { color: var(--seal); }
+
+/* ── 목차 ─────────────────────────────────────────── */
+.toc { font-family: 'Noto Sans KR', sans-serif; }
+.toc__row { display: flex; align-items: baseline; gap: 2.5mm; padding: 1.7mm 0; border-bottom: .4pt dotted var(--rule); }
+.toc__no { width: 9mm; color: var(--seal); font-size: 8.4pt; font-weight: 700; letter-spacing: .1em; }
+.toc__t { font-size: 10.5pt; }
+.toc__t small { display: block; font-size: 8pt; color: var(--ink-3); letter-spacing: .02em; }
+.toc__dots { flex: 1; border-bottom: .4pt dotted var(--rule); transform: translateY(-1mm); }
+.toc__p { font-size: 9.5pt; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ── 화면 안내 ─────────────────────────────────────── */
+.shot { position: relative; border: .5pt solid var(--rule); }
+.shot img { width: 100%; display: block; }
+.pin { position: absolute; width: 6.2mm; height: 6.2mm; border-radius: 50%; background: var(--seal);
+  color: #fff; display: grid; place-items: center; font-family: 'Noto Sans KR', sans-serif;
+  font-size: 8pt; font-weight: 700; box-shadow: 0 0 0 1.2pt #f6f1e6; transform: translate(-50%, -50%); }
+.legend { font-family: 'Noto Sans KR', sans-serif; font-size: 8.8pt; padding-left: 5mm; }
+.legend li { margin-bottom: 1.4mm; }
+.legend b { color: var(--seal); }
+
+/* ── 장마다 처음 나오는 적 ─────────────────────────── */
+.debuts { display: flex; gap: 5mm; align-items: flex-end; margin-top: 4mm; }
+.debut { flex: 1; margin: 0; text-align: center; }
+.debut img { display: block; height: 42mm; background: var(--fig-bg); max-width: 100%; object-fit: contain; margin: 0 auto 1.5mm; }
+.debut figcaption { font-family: 'Noto Sans KR', sans-serif; font-size: 8.4pt; line-height: 1.35;
+  color: var(--ink-2); border-top: .4pt solid var(--rule); padding-top: 1.4mm; }
+.debut figcaption small { display: block; font-size: 6.8pt; color: var(--ink-3); letter-spacing: .02em; }

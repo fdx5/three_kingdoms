@@ -9,7 +9,31 @@
     <meta name="description" content="삼국지 Last Stand — 망루와 계략으로 지켜내는 최후의 방어선. 삼국지 전략 타워 디펜스." />
     <meta name="theme-color" content="#101511" />
     <title>삼국지 Last Stand</title>
+
+    <!--
+      링크를 붙여 넣었을 때 뜨는 미리보기.
+
+      og:image 는 절대 URL 이어야 한다 — 카카오톡·슬랙 같은 곳은 우리 페이지를
+      브라우저로 열지 않고 서버에서 HTML 만 긁어 가므로, 상대 경로를 스스로
+      합쳐 주지 않는다. 그림은 scripts/share-art/make.mjs 가 실제 게임 화면으로 굽는다.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="삼국지 Last Stand" />
+    <meta property="og:title" content="삼국지 Last Stand — 삼국지 타워 디펜스" />
+    <meta property="og:description" content="망루를 세우고 계략을 펼쳐 성문 하나를 끝까지 지켜낸다. 전 6장 · 망루 5종 · 적 32종." />
+    <meta property="og:url" content="https://three-kingdoms-cmus.onrender.com/" />
+    <meta property="og:image" content="https://three-kingdoms-cmus.onrender.com/og-cover.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="굽이치는 길가에 망루가 늘어선 전장과 청룡언월도를 든 관우" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="삼국지 Last Stand — 삼국지 타워 디펜스" />
+    <meta name="twitter:description" content="망루를 세우고 계략을 펼쳐 성문 하나를 끝까지 지켜낸다." />
+    <meta name="twitter:image" content="https://three-kingdoms-cmus.onrender.com/og-cover.jpg" />
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/src/ui/hud.css" />
   </head>
   <body>

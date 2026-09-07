@@ -157,6 +157,18 @@ function toGuestbook(row: Row): Record<string, unknown> {
 }
 
 /** 저장소가 부여하는 id. 시간 접두사가 있어 정렬해도 대충 시간순이 된다. */
+/**
+ * 페이징 인자.
+ *
+ * limit 에 상한을 두는 이유는 한 번의 요청으로 테이블 전체를 긁어가지 못하게 하기 위함이고,
+ * 하한을 두는 이유는 limit=0 이 오면 SQLite 가 빈 결과를 돌려줘 화면이 영영 비기 때문이다.
+ */
+function pageArgs(url: URL): { limit: number; offset: number } {
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') ?? 50) || 50));
+  const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
+  return { limit, offset };
+}
+
 function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -421,19 +433,26 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     return true;
   }
 
+  /*
+   * 전적 목록. accountId 가 없으면 **모든 사람의 전적**이다 —
+   * 이력 화면은 모두가 함께 보는 곳이라 그쪽이 기본이다.
+   *
+   * total 을 함께 돌려주는 것은 페이징 때문이다. 이 수가 없으면 클라이언트가
+   * 몇 쪽인지 알 수 없고, 알아내려면 전부 받아 세는 수밖에 없다.
+   */
   if (path === '/records' && method === 'GET') {
-    const accountId = url.searchParams.get('accountId');
-    const limit = Math.min(200, Number(url.searchParams.get('limit') ?? 50));
-    const r = accountId
-      ? await client().execute({
-          sql: 'SELECT * FROM records WHERE account_id = ? ORDER BY played_at DESC LIMIT ?',
-          args: [accountId.toLowerCase(), limit],
-        })
-      : await client().execute({
-          sql: 'SELECT * FROM records ORDER BY played_at DESC LIMIT ?',
-          args: [limit],
-        });
-    send(res, 200, r.rows.map(toRecord));
+    const accountId = url.searchParams.get('accountId')?.toLowerCase();
+    const { limit, offset } = pageArgs(url);
+    const where = accountId ? 'WHERE account_id = ?' : '';
+    const scope = accountId ? [accountId] : [];
+    const [rows, count] = await Promise.all([
+      client().execute({
+        sql: `SELECT * FROM records ${where} ORDER BY played_at DESC LIMIT ? OFFSET ?`,
+        args: [...scope, limit, offset],
+      }),
+      client().execute({ sql: `SELECT COUNT(*) AS n FROM records ${where}`, args: scope }),
+    ]);
+    send(res, 200, { items: rows.rows.map(toRecord), total: Number(count.rows[0].n ?? 0) });
     return true;
   }
 
@@ -463,12 +482,15 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
   }
 
   if (path === '/guestbook' && method === 'GET') {
-    const limit = Math.min(200, Number(url.searchParams.get('limit') ?? 50));
-    const r = await client().execute({
-      sql: 'SELECT * FROM guestbook ORDER BY created_at DESC LIMIT ?',
-      args: [limit],
-    });
-    send(res, 200, r.rows.map(toGuestbook));
+    const { limit, offset } = pageArgs(url);
+    const [rows, count] = await Promise.all([
+      client().execute({
+        sql: 'SELECT * FROM guestbook ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        args: [limit, offset],
+      }),
+      client().execute({ sql: 'SELECT COUNT(*) AS n FROM guestbook' }),
+    ]);
+    send(res, 200, { items: rows.rows.map(toGuestbook), total: Number(count.rows[0].n ?? 0) });
     return true;
   }
 

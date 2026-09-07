@@ -491,6 +491,23 @@ export class Hud {
     BALANCE.speedOptions.forEach((s, i) => setPressed(this.speedButtons[i], s === speed));
   }
 
+  /**
+   * 배속을 쓸 수 있는가.
+   *
+   * 처음 도전하는 장은 1배로만 돈다 — 그 판이 무엇을 요구하는지 눈으로 봐야
+   * 다음 수를 고를 수 있기 때문이다. 한 번이라도 깬 장은 이미 아는 판이므로
+   * 재도전할 때 빨리 넘길 수 있게 열어 준다.
+   */
+  setFastForwardAllowed(allowed: boolean): void {
+    BALANCE.speedOptions.forEach((s, i) => {
+      const button = this.speedButtons[i] as HTMLButtonElement;
+      if (s === 1) return; // 1배는 늘 열려 있다
+      button.disabled = !allowed;
+      button.title = allowed ? '' : '이 장을 한 번 클리어하면 열립니다';
+      button.setAttribute('aria-label', `속도 ${s}배${allowed ? '' : ' (이 장을 클리어하면 열립니다)'}`);
+    });
+  }
+
   /** 배경음 버튼 표시 갱신 (설정을 불러왔거나 다른 곳에서 껐을 때) */
   setBgmOn(on: boolean): void {
     this.bgmButton.textContent = on ? '♪' : '🔇';

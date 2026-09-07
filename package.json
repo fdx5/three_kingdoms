@@ -22,6 +22,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke.ts",
+    "share:art": "node scripts/share-art/make.mjs",
     "asset:optimize": "tsx scripts/optimize-model.ts",
     "asset:rig": "tsx scripts/rig-model.ts",
     "asset:soldier": "tsx scripts/bake-assets.ts soldier",

@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<!--
+  링크 공유 카드(og:image)의 판. 1200x630.
+
+  이 카드는 두 가지를 동시에 해야 한다.
+    1) 진짜 게임 화면일 것 — 그리려는 그림이 아니라 방금 돌아간 판의 사진이어야 한다.
+    2) 엄지손톱만 해도 읽힐 것 — 대화창 미리보기는 폭 300px 안팎이다.
+  그래서 실제 전장 사진을 바탕에 깔되 왼쪽 절반을 어둡게 덮고, 그 위에 제목과
+  장수 하나를 세운다. 작게 줄여도 "붉은 인장 · 큰 제목 · 사람 실루엣"이 남는다.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700;900&family=Noto+Sans+KR:wght@400;500;700&display=block" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; }
+  body { position: relative; overflow: hidden; background: #0c0a06; color: #f2e7d1;
+         font-family: 'Noto Serif KR', serif; }
+
+  .field { position: absolute; inset: 0; }
+  .field img { width: 100%; height: 100%; object-fit: cover;
+               filter: saturate(.92) brightness(1.02) contrast(1.06); }
+  /*
+   * 오른쪽은 거의 덮지 않는다 — 이 카드가 팔아야 하는 것은 제목이 아니라
+   * "길가에 망루가 서 있고 적이 줄지어 온다"는 그림이다.
+   */
+  .veil { position: absolute; inset: 0;
+    background:
+      linear-gradient(96deg, #080704f6 0%, #080704e2 34%, #0807046e 56%, #08070400 78%),
+      linear-gradient(0deg, #080704ab, #08070400 34%); }
+
+  .hero { position: absolute; right: 18px; bottom: -10px; height: 560px;
+          filter: drop-shadow(-14px 22px 40px #000000b0); }
+
+  .plate { position: absolute; left: 64px; top: 62px; width: 660px; }
+
+  .seal { display: grid; place-items: center; width: 46px; height: 78px;
+    background: #852e22; border: 1px solid #d8907a66; box-shadow: 0 6px 20px #0009;
+    color: #f4dcc8; font: 20px/1.15 'KaiTi', 'Gungsuh', serif;
+    writing-mode: vertical-rl; text-orientation: upright; }
+
+  .eyebrow { margin-top: 26px; font-family: 'Noto Sans KR', sans-serif;
+    font-size: 15px; font-weight: 500; letter-spacing: .42em; color: #d8bd82; }
+
+  .title { margin-top: 12px; font-size: 112px; font-weight: 900; letter-spacing: .09em;
+    line-height: 1.02; color: #f7edd7; text-shadow: 0 10px 34px #000000c0; }
+  .title small { display: block; margin-top: 6px; font-family: Georgia, 'Times New Roman', serif;
+    font-size: 46px; font-weight: 400; letter-spacing: .05em; color: #dcbf85; text-shadow: 0 6px 22px #000000c0; }
+
+  .rule { width: 132px; height: 2px; margin: 26px 0 20px;
+    background: linear-gradient(90deg, #d8bd82, #d8bd8200); }
+
+  .hook { font-size: 27px; line-height: 1.62; color: #e3d8bf; text-shadow: 0 4px 18px #000000b0; }
+  .hook b { color: #f0d69b; font-weight: 700; }
+
+  .facts { position: absolute; left: 64px; bottom: 46px; display: flex; gap: 40px;
+    font-family: 'Noto Sans KR', sans-serif; }
+  .facts div { border-left: 2px solid #d8bd8266; padding-left: 14px; }
+  .facts dt { font-size: 13px; letter-spacing: .22em; color: #a89d84; }
+  .facts dd { margin-top: 5px; font-size: 25px; font-weight: 700; color: #e9cf95; }
+
+  /* 카드 가장자리의 얇은 금테 — 미리보기에서 잘려도 "판"으로 읽히게 한다 */
+  .frame { position: absolute; inset: 16px; border: 1px solid #d8bd8226; pointer-events: none; }
+</style>
+
+<div class="field"><img id="field" alt=""></div>
+<div class="veil"></div>
+<img class="hero" id="hero" alt="">
+<div class="frame"></div>
+
+<div class="plate">
+  <div class="seal">三國志</div>
+  <p class="eyebrow">THREE KINGDOMS · TOWER DEFENSE</p>
+  <h1 class="title">삼국지<small>Last Stand</small></h1>
+  <div class="rule"></div>
+  <p class="hook">망루를 세우고 계략을 펼쳐<br><b>성문 하나</b>를 끝까지 지켜낸다.</p>
+</div>
+
+<dl class="facts">
+  <div><dt>전장</dt><dd id="f-levels">6 장</dd></div>
+  <div><dt>망루</dt><dd id="f-towers">5 종</dd></div>
+  <div><dt>적</dt><dd id="f-units">32 종</dd></div>
+  <div><dt>최종전</dt><dd>오장원</dd></div>
+</dl>
+
+<script>
+  // 스크린샷 스크립트가 채워 넣는다.
+  window.fill = ({ field, hero, levels, towers, units }) => {
+    document.getElementById('field').src = field;
+    document.getElementById('hero').src = hero;
+    document.getElementById('f-levels').textContent = `${levels} 장`;
+    document.getElementById('f-towers').textContent = `${towers} 종`;
+    document.getElementById('f-units').textContent = `${units} 종`;
+    return Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+  };
+</script>

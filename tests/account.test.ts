@@ -226,15 +226,16 @@ describe('전적과 방명록 (향후 토르소 DB)', () => {
     // saveRecord는 기다리지 않는다(게임을 막지 않으려고) — 저장소에서 직접 확인한다
     await Promise.resolve();
 
-    const rows = await store.listRecords('recorder');
-    expect(rows).toHaveLength(2);
-    expect(rows[0].levelId).toBe('level05');
-    expect(rows[0].accountId).toBe('recorder');
-    expect(rows[0].id).toMatch(/^rec_/);
-    expect(rows.every((r) => r.playedAt > 0)).toBe(true);
+    const { items, total } = await store.listRecords({ accountId: 'recorder' });
+    expect(total).toBe(2);
+    expect(items).toHaveLength(2);
+    expect(items[0].levelId).toBe('level05');
+    expect(items[0].accountId).toBe('recorder');
+    expect(items[0].id).toMatch(/^rec_/);
+    expect(items.every((r) => r.playedAt > 0)).toBe(true);
   });
 
-  it('전적은 계정별로 나뉜다', async () => {
+  it('내 전적만 볼 수도, 모두의 전적을 볼 수도 있다', async () => {
     const store = new LocalGameStore();
     const a = new AccountService(store);
     await a.signIn('alpha', 'pw1234');
@@ -243,15 +244,37 @@ describe('전적과 방명록 (향후 토르소 DB)', () => {
 
     const b = new AccountService(store);
     await b.signIn('beta', 'pw1234');
-    expect(await b.listRecords()).toHaveLength(0);
-    expect(await a.listRecords()).toHaveLength(1);
+    // mine: true 는 그 계정의 것만
+    expect((await b.listRecords({ mine: true })).items).toHaveLength(0);
+    expect((await a.listRecords({ mine: true })).items).toHaveLength(1);
+    // 기본은 모두의 것 — 이력 화면은 함께 보는 곳이다
+    expect((await b.listRecords()).items).toHaveLength(1);
+    expect((await b.listRecords()).items[0].accountId).toBe('alpha');
+  });
+
+  it('전적은 열 줄씩 끊어 읽을 수 있다', async () => {
+    const store = new LocalGameStore();
+    const a = new AccountService(store);
+    await a.signIn('pager', 'pw1234');
+    for (let i = 0; i < 23; i++) a.saveRecord({ ...record, kills: i });
+    await Promise.resolve();
+
+    const first = await a.listRecords({ limit: 10 });
+    expect(first.total).toBe(23);
+    expect(first.items).toHaveLength(10);
+
+    const last = await a.listRecords({ limit: 10, offset: 20 });
+    expect(last.items).toHaveLength(3);
+    // 쪽이 겹치지 않는다 — 같은 판이 두 쪽에 나오면 페이징이 깨진 것이다
+    const ids = new Set([...first.items, ...last.items].map((r) => r.id));
+    expect(ids.size).toBe(13);
   });
 
   it('로그인 전에는 아무것도 남기지 않는다', async () => {
     const store = new LocalGameStore();
     new AccountService(store).saveRecord(record);
     await Promise.resolve();
-    expect(await store.listRecords()).toHaveLength(0);
+    expect((await store.listRecords()).items).toHaveLength(0);
   });
 
   it('방명록은 계정 이름과 함께 남고 최신순으로 읽힌다', async () => {
@@ -261,9 +284,16 @@ describe('전적과 방명록 (향후 토르소 DB)', () => {
     await a.postGuestbook('첫 글');
     await a.postGuestbook('둘째 글');
 
-    const rows = await a.listGuestbook();
-    expect(rows.map((r) => r.message)).toEqual(['둘째 글', '첫 글']);
-    expect(rows[0].displayName).toBe('Writer');
-    expect(rows[0].accountId).toBe('writer');
+    const { items, total } = await a.listGuestbook();
+    expect(total).toBe(2);
+    expect(items.map((r) => r.message)).toEqual(['둘째 글', '첫 글']);
+    expect(items[0].displayName).toBe('Writer');
+    expect(items[0].accountId).toBe('writer');
+
+    // 방명록도 모두가 함께 본다 — 다른 계정으로 들어와도 같은 글이 보인다
+    const other = new AccountService(new LocalGameStore());
+    await other.signIn('reader', 'pw1234');
+    expect((await other.listGuestbook({ limit: 1 })).items[0].message).toBe('둘째 글');
+    expect((await other.listGuestbook({ limit: 1, offset: 1 })).items[0].message).toBe('첫 글');
   });
 });

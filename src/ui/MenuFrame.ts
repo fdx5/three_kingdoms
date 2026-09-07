@@ -17,7 +17,7 @@ export function menuFrame(id: string, panel: HTMLElement, actions: Node[] = []):
   return el('div', { class: 'overlay main-menu', id }, [
     el('div', { class: 'menu-atmosphere', 'aria-hidden': 'true' }),
     el('header', { class: 'menu-header' }, [
-      el('div', { class: 'menu-signature' }, [el('span', { class: 'menu-seal', text: '三國' }), el('span', { text: 'LAST STAND' })]),
+      el('div', { class: 'menu-signature' }, [el('span', { class: 'menu-seal', text: '三國志' }), el('span', { text: 'LAST STAND' })]),
       el('span', { class: 'menu-edition', text: 'THE THREE KINGDOMS CHRONICLES' }),
     ]),
     el('div', { class: 'menu-layout' }, [brand, panel]),

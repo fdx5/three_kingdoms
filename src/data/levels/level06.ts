@@ -117,7 +117,9 @@ export const LEVEL_06: LevelDef = {
      * (바꾸기 전에는 1330/1360, 누수 26 이었다). 손대려면 0.005 씩 움직이고
      * tests/level0456.test.ts 의 출력으로 확인할 것.
      */
-    hpGrowth: 0.140,
+    hpGrowth: 0.1180,
+    // 변주가 웨이브를 앞 웨이브보다 물러지게 만들지 않는다. [[hpRatchet]]
+    hpRatchet: true,
     speedGrowth: 0.014,
     spawnInterval: (n) => Math.max(0.28, 0.85 - 0.026 * n),
     formationColumns: 5,

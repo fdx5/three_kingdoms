@@ -111,7 +111,9 @@ export const LEVEL_04: LevelDef = {
      * 실측: 승리하되 성 1004/1160, 누수 157. 0.250 이면 성문을 6단계까지
      * 못 사고 성이 절반으로 깎인다 — 거기까지가 이 장의 상한이다.
      */
-    hpGrowth: 0.230,
+    hpGrowth: 0.2159,
+    // 변주가 웨이브를 앞 웨이브보다 물러지게 만들지 않는다. [[hpRatchet]]
+    hpRatchet: true,
     speedGrowth: 0.013,
     spawnInterval: (n) => Math.max(0.32, 0.9 - 0.026 * n),
     formationColumns: 4,

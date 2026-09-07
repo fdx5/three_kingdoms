@@ -1,0 +1,116 @@
+/* 방명록 · 전적 이력 — 메뉴 위에 겹쳐 뜨는 두 화면 */
+
+.community {
+  position: absolute; inset: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center;
+  padding: clamp(14px, 3vw, 44px);
+  background: #070b0af2;
+  overflow-y: auto; overscroll-behavior: contain;
+}
+
+.community__panel {
+  position: relative;
+  width: min(920px, 100%);
+  max-height: 100%;
+  display: flex; flex-direction: column;
+  padding: clamp(18px, 2.4vw, 32px);
+  background: #131c19;
+  border: 1px solid #c2a87538;
+  color: #e6e0d2;
+}
+/* 메뉴 패널과 같은 금박 모서리 — 같은 세계의 화면으로 읽히게 한다 */
+.community__panel::before, .community__panel::after {
+  content: ''; position: absolute; width: 28px; height: 28px; pointer-events: none; border-color: #bda26b;
+}
+.community__panel::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+.community__panel::after { right: -1px; bottom: -1px; border-right: 2px solid; border-bottom: 2px solid; }
+
+.community__head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  padding-bottom: 14px; border-bottom: 1px solid #c2a87524; flex-shrink: 0;
+}
+.community__headright { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.community__title { margin: 0; font: 400 clamp(19px, 2vw, 26px)/1.4 'Batang', serif; letter-spacing: .04em; }
+.community__sub { margin: 6px 0 0; font-size: 11px; line-height: 1.7; color: #9ea89e; }
+
+.community__tabs { display: flex; border: 1px solid #c2a87538; }
+.community__tab {
+  padding: 7px 14px; border: 0; background: none; cursor: pointer;
+  color: #9aa79c; font: 500 10px/1 system-ui, sans-serif; letter-spacing: .16em;
+}
+.community__tab + .community__tab { border-left: 1px solid #c2a87526; }
+.community__tab.is-active { background: #d8bd8218; color: #e6c98e; }
+.community__close { flex-shrink: 0; }
+
+/* ── 한 줄 남기기 ──────────────────────────────────────────────────── */
+.community__composer {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 0; border-bottom: 1px solid #c2a87524; flex-shrink: 0;
+}
+.community__author { font-size: 11px; color: #b9ab88; letter-spacing: .04em; white-space: nowrap; }
+.community__author b { color: #e6c98e; }
+.community__input {
+  flex: 1 1 220px; min-width: 0; min-height: 42px; padding: 0 12px;
+  background: #090f10a8; border: 1px solid #bfa36b40; border-radius: 2px;
+  color: #ece5d4; font: 400 14px/1.5 'Batang', serif;
+}
+.community__input:focus-visible { outline: 2px solid #ddc18a; outline-offset: 1px; border-color: #ddc18a; }
+.community__send { flex-shrink: 0; }
+.community__status { flex-basis: 100%; font-size: 11px; color: #d9a08f; }
+.community__note { margin: 14px 0 0; font-size: 11px; color: #9ea89e; }
+
+/* ── 목록 ──────────────────────────────────────────────────────────── */
+.community__body { flex: 1 1 auto; min-height: 190px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; }
+.community__empty { margin: 34px 0; text-align: center; font-size: 12px; color: #8d978d; }
+
+.gb { list-style: none; margin: 0; padding: 0; }
+.gb__row { padding: 13px 2px; border-bottom: 1px solid #c2a8751c; }
+.gb__meta { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.gb__who { font-size: 12px; color: #e6c98e; letter-spacing: .04em; }
+.gb__when { font-size: 10px; color: #7f8a80; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gb__msg { margin: 5px 0 0; font: 400 14px/1.7 'Batang', serif; color: #ddd7c8; word-break: break-word; overflow-wrap: anywhere; }
+
+.hist__scroll { overflow-x: auto; }
+.hist { width: 100%; border-collapse: collapse; font-size: 12px; }
+.hist th, .hist td { padding: 9px 8px; text-align: left; border-bottom: 1px solid #c2a8751c; white-space: nowrap; }
+.hist th { font: 500 10px/1 system-ui, sans-serif; letter-spacing: .13em; color: #9c9a86; }
+.hist th.num, .hist td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.hist__who { color: #e6c98e; }
+.hist__chapter { display: inline-block; min-width: 46px; margin-right: 8px; color: #b9ab88; }
+.hist__title { color: #b6bdb4; }
+.hist__stars { color: #d8bd82; letter-spacing: .12em; }
+/* 승패는 한 글자다. 색으로만 두면 색을 못 보는 눈에는 아무 정보가 없다. */
+.hist__result {
+  display: inline-grid; place-items: center; min-width: 22px; padding: 2px 0;
+  border: 1px solid currentColor; font-size: 11px; line-height: 1.2;
+}
+.hist__result--won { color: #8fc79b; }
+.hist__result--lost { color: #c78f8f; }
+.hist__when { color: #8d978d; }
+/* 진 판은 한 톤 죽여 둔다 — 목록을 훑을 때 이긴 판이 먼저 눈에 들어온다 */
+.hist--lost td { color: #8c9188; }
+.hist--lost .hist__who { color: #b0a488; }
+
+/* ── 페이징 ────────────────────────────────────────────────────────── */
+.community__pager {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding-top: 12px; border-top: 1px solid #c2a87524; flex-shrink: 0;
+}
+.community__page {
+  min-width: 32px; min-height: 32px; padding: 0 9px;
+  background: none; border: 1px solid #c2a87530; color: #c3bda9;
+  font: 500 11px/1 system-ui, sans-serif; cursor: pointer;
+}
+.community__page:hover:not(:disabled) { border-color: #d2b57a; color: #e6c98e; }
+.community__page:disabled { opacity: .35; cursor: default; }
+.community__page.is-current { background: #d8bd8220; border-color: #d2b57a; color: #e6c98e; }
+.community__count { margin-left: auto; font-size: 10px; color: #8d978d; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 720px), (pointer: coarse) {
+  .community { padding: 0; }
+  .community__panel { width: 100%; height: 100%; max-height: none; border: 0; }
+  .community__panel::before, .community__panel::after { display: none; }
+  .community__head { flex-wrap: wrap; }
+  .hist th, .hist td { padding: 8px 6px; }
+  .hist__title { display: none; } /* 좁은 화면에서는 "제 3 장"만으로 충분하다 */
+}

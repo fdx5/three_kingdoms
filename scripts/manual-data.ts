@@ -38,6 +38,17 @@ const levels = LEVEL_ORDER.map((l) => {
     buildSlots: l.buildSlots,
     environment: l.environment,
     totalReward: l.waves.reduce((s, w) => s + (w.reward ?? 0), 0),
+    /* 이 장에서 적을 전부 잡으면 들어오는 골드. 웨이브 보상이 대부분 0이라
+       실제 수입은 이쪽과 조기 소집이 만든다 — 설명서에는 이 값이 더 쓸모 있다. */
+    killGold: [...roster.entries()].reduce((s, [id, c]) => s + (UNITS[id]?.goldOnKill ?? 0) * c, 0),
+    /* 이 장에서 처음 나오는 적 */
+    debuts: [...roster.keys()].filter((id) => {
+      for (const prev of LEVEL_ORDER) {
+        if (prev.id === l.id) break;
+        if (prev.waves.some((w) => w.spawns.some((sp) => sp.unitId === id))) return false;
+      }
+      return true;
+    }),
   };
 });
 

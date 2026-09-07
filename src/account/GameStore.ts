@@ -1,6 +1,24 @@
 import type { Account, GameRecord, GuestbookEntry, LevelProgress } from './types';
 
 /**
+ * 한 쪽 분량의 목록.
+ *
+ * `total`이 함께 오는 이유는 페이징 때문이다 — "몇 쪽인지"를 알려면 전체 수가 필요하고,
+ * 그 수를 세는 일은 저장소가 해야 한다. 클라이언트가 전부 받아 세면
+ * 전적이 만 줄이 되는 순간 방명록 한 쪽을 보려고 만 줄을 내려받게 된다.
+ */
+export interface Page<T> {
+  items: T[];
+  total: number;
+}
+
+/** 목록 조회 옵션. offset은 0부터. */
+export interface PageQuery {
+  limit?: number;
+  offset?: number;
+}
+
+/**
  * 저장소 포트(port).
  *
  * 게임이 "무엇을 저장하는가"만 알고 "어디에 저장하는가"는 모르게 하는 경계다.
@@ -50,14 +68,17 @@ export interface GameStore {
 
   /** id 없이 넣으면 저장소가 부여한다. 저장된 레코드를 돌려준다. */
   appendRecord(record: Omit<GameRecord, 'id'>): Promise<GameRecord>;
-  /** 최신순. accountId가 없으면 전체(랭킹·통계용). */
-  listRecords(accountId?: string, limit?: number): Promise<GameRecord[]>;
+  /**
+   * 최신순 한 쪽. accountId를 주면 그 사람 것만, 없으면 **모든 사람의 전적**이다 —
+   * 이력 화면은 모두가 함께 보는 곳이라 후자가 기본이다.
+   */
+  listRecords(query?: PageQuery & { accountId?: string }): Promise<Page<GameRecord>>;
 
   // ── 방명록 ──────────────────────────────────────────────────────────
 
   appendGuestbook(entry: Omit<GuestbookEntry, 'id'>): Promise<GuestbookEntry>;
-  /** 최신순 */
-  listGuestbook(limit?: number): Promise<GuestbookEntry[]>;
+  /** 최신순 한 쪽 */
+  listGuestbook(query?: PageQuery): Promise<Page<GuestbookEntry>>;
 }
 
 /** 저장소가 부여하는 id. 시간 접두사가 있어 정렬해도 대충 시간순이 된다. */

@@ -34,6 +34,16 @@ export function recordClear(levelId: string, stars: Stars): LevelProgress {
 }
 
 /**
+ * 이 장을 한 번이라도 클리어했는가.
+ *
+ * 별은 클리어해야만 붙으므로 별의 유무가 곧 클리어 여부다.
+ * 배속 해금이 이 값을 본다 — 처음 보는 판은 1배로만 돌게 하려는 것이다.
+ */
+export function isLevelCleared(levelId: string, p: LevelProgress = loadProgress()): boolean {
+  return (p.stars[levelId] ?? 0) > 0;
+}
+
+/**
  * 그 레벨이 열려 있는가.
  * 첫 레벨은 항상 열려 있고, 나머지는 바로 앞 레벨을 클리어해야 열린다.
  * 즉 1장을 깬 계정은 다음 접속에서 2장부터, 2장까지 깼으면 3장부터 시작할 수 있다.
