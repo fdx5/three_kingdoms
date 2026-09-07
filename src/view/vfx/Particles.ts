@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { BALANCE, type PerformancePreset } from '../../data/balance';
 
+const DYNAMIC_ATTRIBUTES = ['position', 'particleSize', 'particleAlpha', 'color'] as const;
+
 export type ParticlePreset =
   | 'hit_spark'
   | 'death_dust'
@@ -116,6 +118,7 @@ export class ParticleSystem {
   private alphas: Float32Array;
   private smoke: Uint8Array;
   private activeCount = 0;
+  private limit = 0;
   private color = new THREE.Color();
 
   private velX: Float32Array;
@@ -126,13 +129,15 @@ export class ParticleSystem {
   private gravity: Float32Array;
   private baseSize: Float32Array;
 
+  private scalarData: (Float32Array | Uint8Array)[];
   private cursor = 0;
   private scale = 1;
   private rngState = 0x1a2b3c;
 
   constructor(preset: PerformancePreset) {
     this.scale = preset.particleScale;
-    this.capacity = Math.max(32, Math.round(BALANCE.maxParticles * this.scale));
+    this.capacity = BALANCE.maxParticles;
+    this.limit = Math.max(32, Math.round(this.capacity * this.scale));
 
     this.positions = new Float32Array(this.capacity * 3);
     this.colors = new Float32Array(this.capacity * 3);
@@ -146,14 +151,17 @@ export class ParticleSystem {
     this.maxLife = new Float32Array(this.capacity);
     this.gravity = new Float32Array(this.capacity);
     this.baseSize = new Float32Array(this.capacity);
+    this.scalarData = [this.sizes, this.alphas, this.smoke, this.velX, this.velY, this.velZ,
+      this.life, this.maxLife, this.gravity, this.baseSize];
 
-    // 죽은 입자는 화면 밖으로 치운다 (개별 draw 제어가 없는 Points의 관례적 처리)
+    // Reserve the high budget once; drawRange excludes all unused slots.
     for (let i = 0; i < this.capacity; i++) this.positions[i * 3 + 1] = -9999;
 
     this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
     this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3).setUsage(THREE.DynamicDrawUsage));
     this.geometry.setAttribute('particleSize', new THREE.BufferAttribute(this.sizes, 1).setUsage(THREE.DynamicDrawUsage));
     this.geometry.setAttribute('particleAlpha', new THREE.BufferAttribute(this.alphas, 1).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setDrawRange(0, 0);
     this.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(600, 0, 350), 3000);
 
     this.sprite = softSprite();
@@ -198,9 +206,7 @@ export class ParticleSystem {
     const color = this.color.set(spec.color);
 
     for (let i = 0; i < count; i++) {
-      const idx = this.cursor;
-      this.cursor = (this.cursor + 1) % this.capacity;
-      if (this.life[idx] <= 0) this.activeCount++;
+      const idx = this.activeCount < this.limit ? this.activeCount++ : this.cursor++ % this.limit;
 
       const theta = this.rand() * Math.PI * 2;
       const upBias = spec.up;
@@ -230,29 +236,34 @@ export class ParticleSystem {
       this.smoke[idx] = Number(preset === 'muzzle_smoke' || preset === 'ground_smoke' || preset === 'blood_mist' || preset === 'death_dust');
     }
     this.points.visible = true;
-    this.geometry.attributes.position.needsUpdate = true;
-    this.geometry.attributes.color.needsUpdate = true;
-    this.geometry.attributes.particleSize.needsUpdate = true;
-    this.geometry.attributes.particleAlpha.needsUpdate = true;
+    this.upload(true);
   }
 
   update(dt: number): void {
     if (this.activeCount === 0 || dt <= 0) return;
-    let anyAlive = false;
-    for (let i = 0; i < this.capacity; i++) {
-      if (this.life[i] <= 0) continue;
-      anyAlive = true;
+    let moved = false;
+    const drag = Math.exp(-1.8 * dt);
+    const friction = Math.exp(-21.4 * dt);
+    for (let i = 0; i < this.activeCount; i++) {
       this.life[i] -= dt;
       if (this.life[i] <= 0) {
-        this.positions[i * 3 + 1] = -9999;
-        this.sizes[i] = 0;
-        this.alphas[i] = 0;
-        this.activeCount--;
+        // Keep live slots contiguous: only live particles are simulated and drawn.
+        const last = --this.activeCount;
+        if (i !== last) {
+          for (const data of this.scalarData) data[i] = data[last];
+          this.positions.copyWithin(i * 3, last * 3, last * 3 + 3);
+          this.colors.copyWithin(i * 3, last * 3, last * 3 + 3);
+          moved = true;
+        }
+        this.life[last] = 0;
+        this.positions[last * 3 + 1] = -9999;
+        this.sizes[last] = 0;
+        this.alphas[last] = 0;
+        i--;
         continue;
       }
       this.velY[i] += this.gravity[i] * dt;
       if (this.smoke[i]) {
-        const drag = Math.exp(-1.8 * dt);
         this.velX[i] *= drag;
         this.velZ[i] *= drag;
       }
@@ -263,7 +274,6 @@ export class ParticleSystem {
       if (this.positions[i * 3 + 1] < 0.5) {
         this.positions[i * 3 + 1] = 0.5;
         this.velY[i] = 0;
-        const friction = Math.exp(-21.4 * dt);
         this.velX[i] *= friction;
         this.velZ[i] *= friction;
       }
@@ -271,16 +281,33 @@ export class ParticleSystem {
       this.sizes[i] = this.baseSize[i] * (this.smoke[i] ? 1 + (1 - t) * 1.4 : 0.35 + t * 0.65);
       this.alphas[i] = t * t * (3 - 2 * t);
     }
-    if (anyAlive) {
-      this.geometry.attributes.position.needsUpdate = true;
-      this.geometry.attributes.particleSize.needsUpdate = true;
-      this.geometry.attributes.particleAlpha.needsUpdate = true;
-    }
+    this.upload(moved);
     this.points.visible = this.activeCount > 0;
+  }
+
+  private upload(colors: boolean): void {
+    this.geometry.setDrawRange(0, this.activeCount);
+    for (const name of DYNAMIC_ATTRIBUTES) {
+      if (name === 'color' && !colors) continue;
+      const attribute = this.geometry.getAttribute(name) as THREE.BufferAttribute;
+      attribute.clearUpdateRanges();
+      if (this.activeCount > 0) {
+        attribute.addUpdateRange(0, this.activeCount * attribute.itemSize);
+        attribute.needsUpdate = true;
+      }
+    }
   }
 
   setPreset(preset: PerformancePreset): void {
     this.scale = preset.particleScale;
+    this.limit = Math.max(32, Math.round(this.capacity * this.scale));
+    for (let i = this.limit; i < this.activeCount; i++) {
+      this.life[i] = 0;
+      this.positions[i * 3 + 1] = -9999;
+    }
+    this.activeCount = Math.min(this.activeCount, this.limit);
+    this.upload(true);
+    this.points.visible = this.activeCount > 0;
   }
 
   dispose(): void {

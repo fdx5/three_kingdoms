@@ -134,6 +134,8 @@ export class ProjectileView implements EntityView<Projectile> {
     this.launch = origin ? origin.clone() : null;
   }
 
+  get projectileKind(): ProjectileKind { return this.kind; }
+
   get isFlame(): boolean { return this.kind === 'flame'; }
 
   setFlameSource(assets: GroundFireAssets, mouth: THREE.Object3D | null): void {

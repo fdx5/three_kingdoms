@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { BattlePostFx } from './BattlePostFx';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BALANCE, type PerformancePresetName } from '../data/balance';
 
 export type RendererBackend = 'webgpu' | 'webgl2' | 'webgl';
@@ -8,6 +10,7 @@ export interface RendererHandle {
   backend: RendererBackend;
   domElement: HTMLCanvasElement;
   setPixelRatio: (maxDpr: number) => void;
+  render: (scene: THREE.Scene, camera: THREE.Camera, dt: number, postFx: boolean) => void;
   dispose: () => void;
 }
 
@@ -110,12 +113,41 @@ export async function createRenderer(container: HTMLElement): Promise<RendererHa
 
   console.log(`renderer: ${backend}`);
 
+  let post: BattlePostFx | null = null;
+  const supportsPostFx = renderer instanceof THREE.WebGLRenderer;
+  // A shared, prefiltered light probe restores detail on dark metal and armor.
+  // Generate once; changing chapters reuses the same GPU texture.
+  let environment: THREE.WebGLRenderTarget | null = null;
+  if (supportsPostFx) {
+    const room = new RoomEnvironment();
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    environment = pmrem.fromScene(room, 0.04);
+    room.dispose();
+    pmrem.dispose();
+  }
+  renderer.info.autoReset = false;
   return {
     renderer,
     backend,
     domElement: canvas,
     setPixelRatio,
+    render: (scene, camera, dt, postFx) => {
+      if (environment && !scene.environment) {
+        scene.environment = environment.texture;
+        scene.environmentIntensity = 0.28;
+      }
+      if (postFx && supportsPostFx) {
+        post ??= new BattlePostFx(renderer!);
+        post.render(scene, camera, dt);
+      } else {
+        post?.dispose();
+        post = null;
+        renderer!.render(scene, camera);
+      }
+    },
     dispose: () => {
+      post?.dispose();
+      environment?.dispose();
       renderer!.dispose();
       canvas.remove();
     },

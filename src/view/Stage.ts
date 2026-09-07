@@ -113,9 +113,9 @@ export class Stage {
   applyPreset(preset: PerformancePreset, renderer: THREE.WebGLRenderer): void {
     renderer.shadowMap.enabled = preset.shadows;
     this.sun.castShadow = preset.shadows;
-    if (preset.shadows) {
+    if (!preset.shadows || this.sun.shadow.mapSize.x !== preset.shadowMapSize) {
       this.sun.shadow.mapSize.set(preset.shadowMapSize, preset.shadowMapSize);
-      // 맵 크기가 바뀌었으면 그림자 맵을 버려 재생성시킨다.
+      // Free disabled/resized maps, but keep an unchanged map on repeated settings.
       this.sun.shadow.map?.dispose();
       this.sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;
     }

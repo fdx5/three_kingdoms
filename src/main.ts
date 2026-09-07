@@ -67,6 +67,8 @@ class Game {
   /** 초기 3초 fps 측정으로 프리셋을 자동 보정한다 */
   private autoTuneTime = 0;
   private autoTuned = false;
+  private slowFrameTime = 0;
+  private qualityCooldown = 12;
   private resizeObserver: ResizeObserver | null = null;
   private ambientVignette!: HTMLElement;
 
@@ -792,7 +794,7 @@ class Game {
     // (수천 단위로 불어난다) 성능 판단에 못 쓴다. 그리기 직전에 직접 턴다.
     this.handle.renderer.info.reset();
     try {
-      this.handle.renderer.render(this.scene.stage.scene, this.scene.stage.camera);
+      this.handle.render(this.scene.stage.scene, this.scene.stage.camera, dt, BALANCE.presets[this.preset].postFx);
     } catch (err) {
       // 백엔드가 무너지면 매 프레임 같은 에러가 터진다. 한 번만 남기고 삼킨다.
       // (WebGPU 파이프라인 생성 실패 때 콘솔에 수천 줄이 쌓여 브라우저가 멎었다.)
@@ -811,6 +813,15 @@ class Game {
   }
 
   private updateFps(dt: number): void {
+    // Background tabs, pause and resume stalls are not useful performance samples.
+    if (document.hidden || this.loop.isPaused() || dt <= 0 || dt >= 0.25) return;
+    this.qualityCooldown = Math.max(0, this.qualityCooldown - dt);
+    if (this.autoTuned && this.qualityCooldown === 0 && this.world.liveEnemyCount > 0) {
+      this.slowFrameTime = dt > 1 / 38 ? this.slowFrameTime + dt : Math.max(0, this.slowFrameTime - dt * 2);
+      if (this.slowFrameTime >= 5 && this.preset !== 'low') {
+        this.applyPreset(this.preset === 'high' ? 'medium' : 'low');
+      }
+    }
     this.frames++;
     this.fpsAccum += dt;
     if (this.fpsAccum >= 0.5) {
@@ -830,6 +841,8 @@ class Game {
   }
 
   private applyPreset(name: PerformancePresetName): void {
+    this.slowFrameTime = 0;
+    this.qualityCooldown = 15;
     this.preset = name;
     this.settings.preset = name;
     const p = BALANCE.presets[name];

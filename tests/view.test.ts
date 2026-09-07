@@ -159,10 +159,14 @@ describe('PathRibbon', () => {
 });
 
 describe('ParticleSystem', () => {
-  it('프리셋 비율만큼만 용량을 잡는다', () => {
+  it('프리셋 비율만큼만 입자를 그린다', () => {
     const high = new ParticleSystem(BALANCE.presets.high);
     const low = new ParticleSystem(BALANCE.presets.low);
-    const cap = (p: ParticleSystem) => (p.points.geometry.attributes.position as THREE.BufferAttribute).count;
+    for (let i = 0; i < 100; i++) {
+      high.emit('weapon_spark', 100, 10, 100);
+      low.emit('weapon_spark', 100, 10, 100);
+    }
+    const cap = (p: ParticleSystem) => p.points.geometry.drawRange.count;
     expect(cap(high)).toBe(BALANCE.maxParticles);
     expect(cap(low)).toBeLessThan(cap(high));
     high.dispose();

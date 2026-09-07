@@ -22,6 +22,7 @@ import { RangeRing } from './views/RangeRing';
 import { ProjectileView, createProjectileAssets, heatOf } from './views/ProjectileView';
 import { GroundFireView, createGroundFireAssets } from './views/GroundFireView';
 import { ParticleSystem } from './vfx/Particles';
+import { ImpactWaves } from './vfx/ImpactWaves';
 import { BloodDecals } from './vfx/BloodDecals';
 
 export interface GameSceneCallbacks {
@@ -69,6 +70,7 @@ export class GameScene {
   readonly ribbon: PathRibbon;
   readonly particles: ParticleSystem;
   readonly blood: BloodDecals;
+  readonly impacts: ImpactWaves;
 
   private castleView: CastleView;
   private slotMarkers = new Map<string, SlotMarker>();
@@ -146,6 +148,8 @@ export class GameScene {
     this.castleView = new CastleView(cpos.x, cpos.z, this.terrain, assets, world.level.castle.id, approach);
     this.castleView.mount(this.stage.root);
 
+    this.impacts = new ImpactWaves(preset);
+    this.stage.root.add(this.impacts.mesh);
     this.particles = new ParticleSystem(preset);
     this.stage.root.add(this.particles.points);
 
@@ -438,6 +442,8 @@ export class GameScene {
       bus.on('projectile:hit', ({ projectileId, worldPos, hit, splashRadius, fire }) => {
         const view = this.projectileViews.get(projectileId);
         const breath = view?.isFlame;
+        const shell = view?.projectileKind === 'shell';
+        const groundY = this.terrain.heightAt(worldPos.x, worldPos.z);
         if (view) {
           this.projectileViews.delete(projectileId);
           this.projectilePool.release(view);
@@ -448,10 +454,12 @@ export class GameScene {
         }
         // 범위 피해는 빗나가도 터진다 — 착탄 지점 기준이기 때문이다.
         if (splashRadius && splashRadius > 0) {
-          this.particles.emit('splash_burst', worldPos.x, 6, worldPos.z, splashRadius / 62);
-          if (fire) this.particles.emit('fire_burst', worldPos.x, 8, worldPos.z, 1.5);
+          this.impacts.emit(worldPos.x, groundY + 1.8, worldPos.z, splashRadius, shell || fire);
+          this.particles.emit('splash_burst', worldPos.x, groundY + 6, worldPos.z, splashRadius / 62);
+          if (shell) this.particles.emit('weapon_spark', worldPos.x, groundY + 8, worldPos.z, 0.75);
+          if (fire) this.particles.emit('fire_burst', worldPos.x, groundY + 8, worldPos.z, 1.5);
           // 흙먼지가 가라앉은 자리에 연기가 피어오른다 — 폭발의 뒷맛이다.
-          this.particles.emit('ground_smoke', worldPos.x, 5, worldPos.z, splashRadius / 70);
+          this.particles.emit('ground_smoke', worldPos.x, groundY + 5, worldPos.z, splashRadius / 70);
         } else if (fire) {
           this.particles.emit('fire_burst', worldPos.x, 6, worldPos.z, 0.9);
         } else if (hit) {
@@ -743,6 +751,7 @@ export class GameScene {
     }
 
     this.particles.update(dt);
+    this.impacts.update(dt);
     this.blood.update(dt);
     this.flushHitFits();
   }
@@ -934,6 +943,7 @@ export class GameScene {
     this.terrain.buildDecor(preset);
     this.storm.applyPreset(preset);
     this.particles.setPreset(preset);
+    this.impacts.setPreset(preset);
     this.blood.setPreset(preset);
   }
 
@@ -979,6 +989,7 @@ export class GameScene {
 
     this.castleView.dispose();
     this.particles.dispose();
+    this.impacts.dispose();
     this.ribbon.dispose();
     this.terrain.dispose();
     this.stage.dispose();
