@@ -41,7 +41,8 @@
     "asset:healer": "tsx scripts/bake-assets.ts healer",
     "asset:lubu": "tsx scripts/bake-assets.ts lubu",
     "asset:yuanshao": "tsx scripts/bake-assets.ts yuanshao",
-    "asset:all": "tsx scripts/bake-assets.ts"
+    "asset:all": "tsx scripts/bake-assets.ts",
+    "deploy:check": "node scripts/deploy-check.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

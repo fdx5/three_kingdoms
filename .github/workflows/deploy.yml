@@ -1,0 +1,69 @@
+# main 에 올라간 것을 실제로 배포하고, **배포됐는지 확인한다.**
+#
+# 왜 이게 필요한가
+# ---------------
+# render.com 의 GitHub 연동만 믿었더니 하루치 커밋이 통째로 배포되지 않았다.
+# 밖에서는 그것을 알 방법도 없었다 — 사이트는 200 을 주고 있었고, 다만 어제
+# 빌드였을 뿐이다(라이브 매니페스트에 모델이 18개뿐인 것을 보고서야 알았다).
+#
+# 그래서 두 가지를 여기서 한다.
+#   1) Deploy Hook 을 직접 두드린다. Render 의 GitHub 웹훅이 끊겨 있거나
+#      Auto-Deploy 가 꺼져 있어도 배포가 걸린다.
+#   2) /api/health 의 commit 이 이 커밋으로 바뀔 때까지 기다린다.
+#      안 바뀌면 이 워크플로가 **빨갛게 실패한다** — 그게 알림이다.
+#
+# 준비물 (한 번만)
+#   Render 대시보드 > 서비스 > Settings > Deploy Hook 의 URL 을 복사해서
+#   GitHub 저장소 > Settings > Secrets and variables > Actions 에
+#   RENDER_DEPLOY_HOOK 이라는 이름으로 넣는다.
+#   넣지 않아도 이 워크플로는 실패하지 않는다 — 확인만 건너뛴다.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Hook 을 두드린다
+        id: hook
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "${HOOK:-}" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK 시크릿이 없다 — Render 자체 연동에만 기댄다"
+            echo "armed=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          code=$(curl -sS -X POST -o /dev/null -w '%{http_code}' --max-time 60 "$HOOK")
+          echo "Deploy Hook -> HTTP $code"
+          [ "$code" = "200" ] || [ "$code" = "201" ] || { echo "::error::Deploy Hook 이 $code 를 줬다"; exit 1; }
+          echo "armed=yes" >> "$GITHUB_OUTPUT"
+
+      - name: 이 커밋이 실제로 뜰 때까지 기다린다
+        if: steps.hook.outputs.armed == 'yes'
+        env:
+          # 다른 주소로 옮기면 저장소 Variables 에 DEPLOY_URL 을 넣으면 된다.
+          BASE: ${{ vars.DEPLOY_URL || 'https://three-kingdoms-cmus.onrender.com' }}
+          WANT: ${{ github.sha }}
+        run: |
+          want=$(echo "$WANT" | cut -c1-12)
+          echo "기다리는 커밋: $want"
+          for i in $(seq 1 60); do
+            live=$(curl -sS --max-time 90 "$BASE/api/health" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+            echo "  [$i] 배포본 커밋: ${live:-(모름)}"
+            if [ "$live" = "$want" ]; then echo "배포 확인"; exit 0; fi
+            sleep 20
+          done
+          echo "::error::20분을 기다려도 $want 가 뜨지 않았다 — Render 의 Events 에서 빌드 로그를 보라"
+          exit 1

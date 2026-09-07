@@ -67,6 +67,25 @@ const DIST = resolve(process.cwd(), 'dist');
  * 이제는 서버가 뜬 채로 정적 파일을 계속 서빙하고, API 는 503 과 함께 무엇이
  * 없는지 말해 준다. /api/health 를 열어 보면 원인이 한 줄로 나온다.
  */
+/**
+ * 지금 살아 있는 것이 **어느 커밋인가.**
+ *
+ * 이게 없어서 한나절을 헤맸다. 푸시는 됐는데 화면이 안 바뀌면 원인이 셋이다 —
+ * 배포가 안 걸렸거나, 빌드가 깨졌거나, 브라우저가 캐시를 보고 있거나.
+ * 밖에서는 셋을 구분할 방법이 없었다(에셋 파일을 하나씩 받아 크기를 재 봤다).
+ *
+ * RENDER_GIT_COMMIT 은 render.com 이 빌드마다 자동으로 넣어 준다. 로컬에서는
+ * 없으므로 'local' 이다. 이제 `curl .../api/health` 한 번이면 답이 나온다.
+ */
+const STARTED_AT = Date.now();
+function buildInfo(): { commit: string; startedAt: number; uptimeSec: number } {
+  return {
+    commit: (process.env.RENDER_GIT_COMMIT ?? 'local').slice(0, 12),
+    startedAt: STARTED_AT,
+    uptimeSec: Math.round((Date.now() - STARTED_AT) / 1000),
+  };
+}
+
 let dbError: string | null = null;
 let cached: ReturnType<typeof db> | null = null;
 
@@ -215,18 +234,19 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
    */
   if (path === '/health') {
     if (dbError) {
-      send(res, 200, { ok: false, db: 'unavailable', error: dbError, now: Date.now() });
+      send(res, 200, { ok: false, db: 'unavailable', error: dbError, ...buildInfo(), now: Date.now() });
       return true;
     }
     try {
       const r = await client().execute('SELECT COUNT(*) AS n FROM levels');
-      send(res, 200, { ok: true, db: 'ok', levels: num(r.rows[0]?.n), now: Date.now() });
+      send(res, 200, { ok: true, db: 'ok', levels: num(r.rows[0]?.n), ...buildInfo(), now: Date.now() });
     } catch (err) {
       // 접속 정보는 있는데 실제로 못 붙는 경우 — 토큰 만료·DB 삭제 같은 것들
       send(res, 200, {
         ok: false,
         db: 'unreachable',
         error: err instanceof Error ? err.message : String(err),
+        ...buildInfo(),
         now: Date.now(),
       });
     }

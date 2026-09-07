@@ -252,7 +252,30 @@ Web Service 를 손으로 만들었다면 Settings 에 같은 값을 넣는다.
 함께 무엇이 없는지 말해 준다 — `/api/health` 를 열어 보면 한 줄로 나온다.
 (헬스체크는 실패하므로 배포는 "unhealthy" 로 남는다. 환경변수를 넣고 다시 배포하면 된다.)
 
-배포 주소: **https://three-kingdoms-cmus.onrender.com** (`/api/health` 로 상태 확인)
+배포 주소: **https://three-kingdoms-cmus.onrender.com**
+
+#### 배포가 됐는지 확인하는 법
+
+```
+npm run deploy:check          지금 살아 있는 커밋과 로컬 HEAD 를 비교한다
+npm run deploy:check -- --wait  바뀔 때까지 기다린다
+```
+
+`/api/health` 가 `commit` 을 알려 준다(`RENDER_GIT_COMMIT`). **이게 없어서 한나절을
+헤맸다** — 푸시는 됐는데 화면이 안 바뀌면 원인이 셋인데(배포가 안 걸림 / 빌드 실패 /
+브라우저 캐시) 밖에서는 구분할 방법이 없었다. 사이트는 200 을 주고 있었고 다만 하루 전
+빌드였을 뿐이라, 에셋 파일을 하나씩 받아 크기를 재 보고서야 알았다.
+
+푸시하면 `.github/workflows/deploy.yml` 이 두 가지를 한다.
+1. **Deploy Hook 을 직접 두드린다** — Render 의 GitHub 웹훅이 끊겨 있거나 Auto-Deploy 가
+   꺼져 있어도 배포가 걸린다. Render > Settings > Deploy Hook 의 URL 을 저장소 시크릿
+   `RENDER_DEPLOY_HOOK` 에 넣어야 켜진다.
+2. 그 커밋이 실제로 뜰 때까지 기다리고, 안 뜨면 **워크플로가 실패한다.** 그게 알림이다.
+
+배포가 안 걸릴 때 대시보드에서 볼 곳은 순서대로 **Events**(배포 시도 자체가 있었나 /
+빌드가 실패했나), **Settings > Auto-Deploy**(On 인가), **Settings > Branch**(main 인가).
+손으로 만든 Web Service 는 `render.yaml` 을 **읽지 않는다** — 그 경우 Build/Start 명령을
+Settings 에 직접 넣어야 한다.
 
 #### 15분마다 서버가 죽는 것처럼 보일 때 — 스핀다운
 
