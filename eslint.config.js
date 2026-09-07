@@ -9,6 +9,10 @@ export default [
   },
   js.configs.recommended,
   {
+    files: ['manual/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly', window: 'readonly', document: 'readonly' } },
+  },
+  {
     files: ['scripts/ensure-deps.mjs', 'scripts/postbuild-serve.mjs'],
     languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
   },

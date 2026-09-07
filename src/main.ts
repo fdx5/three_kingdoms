@@ -13,6 +13,7 @@ import { GameScene } from './view/GameScene';
 import { CameraControls } from './view/CameraControls';
 import { AudioManager } from './audio/AudioManager';
 import { Hud, type HudSettings } from './ui/Hud';
+import { trackViewport } from './ui/viewport';
 import { TowerPanel } from './ui/TowerPanel';
 import { ScreenFx } from './ui/ScreenFx';
 import { LevelSelect } from './ui/LevelSelect';
@@ -143,8 +144,6 @@ class Game {
     this.setupInput();
     this.setupLoop();
 
-    loading.done();
-
     // 디버그 모드면 씬이 자리를 잡은 뒤 진단 한 줄을 자동으로 찍는다.
     if (this.debug) setTimeout(() => this.dumpDiagnostics(), 2500);
 
@@ -154,12 +153,18 @@ class Game {
       // URL이 레벨을 직접 지목했으면 로그인·잠금·선택 화면을 건너뛴다
       // (개발·스모크 테스트 경로). 그 판의 진행도는 어디에도 남지 않는다.
       this.hud.showBanner(this.level.title, false);
+      loading.done();
       return;
     }
 
     // 로그인이 끝나기 전에는 게임이 돌지 않는다 — 진행도가 계정에 붙기 때문이다.
     this.setPaused(true, false);
-    await this.signIn();
+    /*
+     * 로딩 막은 여기서 걷지 않는다. 세션 복원은 서버를 한 번 다녀오는 일이라
+     * 막을 먼저 걷으면 그 왕복 동안 1장 전장이 그대로 드러난다.
+     * 첫 화면(로그인 또는 장 선택)이 실제로 덮은 뒤에 걷는다.
+     */
+    await this.signIn(loading.done);
 
     // 그 계정이 어디까지 깼는지에 맞춰 시작 지점을 다시 정한다.
     // 1장을 깼으면 2장이, 2장까지 깼으면 3장이 열려 있다.
@@ -168,18 +173,23 @@ class Game {
     this.restart();
     this.setPaused(true, false);
     this.levelSelect.open();
+    loading.done();
   }
 
   /**
    * 첫 화면. 새로고침이면 저장된 세션을 되살리고, 아니면 아이디·비밀번호를 받는다.
    * 이 브라우저에서 처음 만드는 계정에는 계정 기능 이전의 진행도를 물려준다.
    */
-  private async signIn(): Promise<void> {
+  private async signIn(onScreenUp: () => void = () => {}): Promise<void> {
     bindProgress(this.accounts);
     this.loginScreen = new LoginScreen(this.hudRoot, this.accounts);
 
     if (!(await this.accounts.restore())) {
-      const account = await this.loginScreen.open();
+      // open()은 화면을 먼저 세우고 로그인이 끝나기를 기다린다.
+      // 그 사이에 로딩 막을 걷어야 아래 전장이 새어 보이지 않는다.
+      const signedIn = this.loginScreen.open();
+      onScreenUp();
+      const account = await signedIn;
       const legacy = claimLegacyProgress();
       if (legacy) this.accounts.adoptProgress(legacy);
       this.hud.announce(`${account.displayName} 님으로 접속했습니다`);
@@ -238,12 +248,16 @@ class Game {
       label,
     ]);
     document.getElementById('app')!.append(node);
+    // 첫 화면이 로그인이냐 장 선택이냐에 따라 걷는 자리가 달라서 두 번 불릴 수 있다.
+    let dismissed = false;
     return {
       progress: (r, l) => {
         fill.style.width = `${Math.round(r * 100)}%`;
         if (l) label.textContent = `불러오는 중: ${l}`;
       },
       done: () => {
+        if (dismissed) return;
+        dismissed = true;
         fill.style.width = '100%';
         node.classList.add('done');
         setTimeout(() => node.remove(), 450);
@@ -884,6 +898,8 @@ class Game {
 }
 
 // 부트스트랩
+const stopViewportTracking = trackViewport();
+if (import.meta.hot) import.meta.hot.dispose(stopViewportTracking);
 const game = new Game();
 void game.start().catch((err) => {
   console.error('[boot] 시작 실패:', err);

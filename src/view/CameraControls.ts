@@ -4,7 +4,8 @@ import type { Stage } from './Stage';
  * 부감 고정 뷰 + 팬/줌/회전.
  *
  * 마우스: 좌드래그 = 팬, 우(또는 휠 버튼/Shift+좌) 드래그 = 회전, 휠 = 커서 기준 줌.
- * 터치: 한 손가락 드래그 = 팬, 두 손가락 = 핀치 줌 + 두 손가락 팬.
+ * 터치: 한 손가락 드래그 = 팬, 두 손가락 = 핀치 줌 + 팬 + 비틀어 좌우 회전,
+ *       두 손가락을 나란히 위아래로 = 부감 각도(터치에는 우클릭도 Q/E도 없어서 이 둘이 그 몫이다).
  * 키보드: WASD/화살표 = 팬, Q/E = 회전, +/- 또는 PageUp/Down = 줌.
  *
  * 캔버스 위 제스처는 브라우저에 넘기지 않는다(touch-action: none).
@@ -26,6 +27,27 @@ const TAP_TIME_THRESHOLD = 1200; // ms
 
 /** 회전 감도 (px → 라디안) */
 const ROTATE_SPEED = { yaw: 0.006, pitch: 0.005 };
+/**
+ * 두 손가락 제스처 판정.
+ *
+ * 두 손가락은 팬·줌·회전·부감을 모두 뜻할 수 있어서, 손가락이 처음 `DECIDE_PX` 만큼
+ * 움직인 모양을 보고 한 번만 갈래를 정한다. 매 프레임 다시 정하면 손이 조금 흔들릴 때마다
+ * 팬과 부감을 오가며 화면이 요동친다.
+ *
+ * 나란히·세로로만 움직였으면 부감(tilt), 아니면 팬 + 줌 + 비틀기(move)다.
+ * TWIST_ARM 은 비틀기가 붙기 시작하는 각도 — 이게 없으면 순수한 두 손가락 팬에도
+ * 손목의 미세한 비틀림이 회전으로 새어 들어간다.
+ */
+const TWO_FINGER = {
+  DECIDE_PX: 22,
+  /** 부감으로 보려면 세로 이동이 가로의 이만큼을 넘어야 한다 */
+  TILT_RATIO: 2,
+  /** 그 사이 벌어짐·비틀림이 이보다 작아야 부감이다 (비율, 라디안) */
+  TILT_SPREAD: 0.12,
+  TILT_TWIST: 0.12,
+  TWIST_ARM: 0.09,
+};
+
 /** 키보드 팬 속도 (초당 화면 픽셀). 화면 크기와 무관하게 같은 속도로 느껴진다. */
 const KEY_PAN_PX_PER_SEC = 900;
 const KEY_ROTATE_PER_SEC = 1.2;
@@ -48,6 +70,12 @@ export class CameraControls {
   private pinchStartDist = 0;
   private pinchStartZoom = 1;
   private pinchMid = { x: 0, y: 0 };
+  /** 두 손가락 제스처의 시작 모양 — 갈래를 정하는 기준점 */
+  private pinchStartMid = { x: 0, y: 0 };
+  private pinchStartAngle = 0;
+  private pinchAngle = 0;
+  private twoFinger: 'undecided' | 'tilt' | 'move' = 'undecided';
+  private twistArmed = false;
   private keys = new Set<string>();
   private disposed = false;
 
@@ -109,12 +137,7 @@ export class CameraControls {
       const rect = this.el.getBoundingClientRect();
 
       if (this.pointers.size >= 2) {
-        // 두 손가락: 벌리면 줌, 같이 움직이면 팬. 둘 다 동시에 된다.
-        const d = this.pinchDistance();
-        const mid = this.pinchMidpoint();
-        if (this.pinchStartDist > 0) this.stage.setZoom(this.pinchStartZoom * (this.pinchStartDist / d));
-        this.stage.panByScreen(mid.x - this.pinchMid.x, mid.y - this.pinchMid.y, rect.height);
-        this.pinchMid = mid;
+        this.pinchMove(rect.height);
         return;
       }
 
@@ -224,6 +247,65 @@ export class CameraControls {
     this.pinchStartDist = this.pinchDistance();
     this.pinchStartZoom = this.stage.getZoom();
     this.pinchMid = this.pinchMidpoint();
+    this.pinchStartMid = { ...this.pinchMid };
+    this.pinchAngle = this.pinchAngleNow();
+    this.pinchStartAngle = this.pinchAngle;
+    this.twoFinger = 'undecided';
+    this.twistArmed = false;
+  }
+
+  /**
+   * 두 손가락이 움직였다. 갈래가 정해지기 전에는 줌만 따라간다 —
+   * 줌은 손가락 사이 거리라 어느 갈래에서도 뜻이 같기 때문이다.
+   */
+  private pinchMove(viewportHeight: number): void {
+    const dist = this.pinchDistance();
+    const mid = this.pinchMidpoint();
+    const angle = this.pinchAngleNow();
+
+    if (this.twoFinger === 'undecided') {
+      const dx = mid.x - this.pinchStartMid.x;
+      const dy = mid.y - this.pinchStartMid.y;
+      const spread = Math.abs(dist - this.pinchStartDist) / Math.max(1, this.pinchStartDist);
+      const twist = Math.abs(angleDelta(angle, this.pinchStartAngle));
+      if (Math.hypot(dx, dy) >= TWO_FINGER.DECIDE_PX) {
+        const upright = Math.abs(dy) > Math.abs(dx) * TWO_FINGER.TILT_RATIO;
+        this.twoFinger =
+          upright && spread < TWO_FINGER.TILT_SPREAD && twist < TWO_FINGER.TILT_TWIST ? 'tilt' : 'move';
+      } else if (spread >= TWO_FINGER.TILT_SPREAD || twist >= TWO_FINGER.TWIST_ARM) {
+        // 중점은 가만둔 채 벌리거나 비틀기만 한 손. 부감일 수는 없으니 갈래는 정해졌다.
+        // (이 갈래가 없으면 제자리 비틀기는 중점이 안 움직여 영영 판정이 안 난다.)
+        this.twoFinger = 'move';
+      }
+    }
+
+    if (this.pinchStartDist > 0) this.stage.setZoom(this.pinchStartZoom * (this.pinchStartDist / dist));
+
+    if (this.twoFinger === 'tilt') {
+      // PC의 우드래그와 같은 방향으로 — 아래로 끌면 더 내려다본다.
+      this.stage.rotate(0, (mid.y - this.pinchMid.y) * ROTATE_SPEED.pitch);
+    } else if (this.twoFinger === 'move') {
+      // 지도를 비틀듯이 — 손가락을 시계 방향으로 돌리면 전장도 시계 방향으로 돈다.
+      if (!this.twistArmed && Math.abs(angleDelta(angle, this.pinchStartAngle)) > TWO_FINGER.TWIST_ARM) {
+        this.twistArmed = true;
+      }
+      if (this.twistArmed) this.stage.rotate(angleDelta(angle, this.pinchAngle), 0);
+      this.stage.panByScreen(mid.x - this.pinchMid.x, mid.y - this.pinchMid.y, viewportHeight);
+    }
+
+    // 갈래가 정해지기 전의 움직임은 흘려보내지 않고 남겨 둔다.
+    // 여기서 기준점을 옮겨 버리면 판정에 쓴 22px이 그대로 사라져,
+    // 두 손가락 팬을 시작할 때마다 첫 마디가 씹힌다.
+    if (this.twoFinger !== 'undecided') {
+      this.pinchMid = mid;
+      this.pinchAngle = angle;
+    }
+  }
+
+  /** 두 손가락을 잇는 선의 화면 각도. y가 아래로 커지므로 시계 방향이 +다. */
+  private pinchAngleNow(): number {
+    const [a, b] = [...this.pointers.values()];
+    return Math.atan2(b.y - a.y, b.x - a.x);
   }
 
   private pinchDistance(): number {
@@ -251,6 +333,14 @@ export class CameraControls {
     this.pointers.clear();
     this.keys.clear();
   }
+}
+
+/** 두 각의 차이를 -π~π로 접는다. 손가락이 한 바퀴 넘어가도 튀지 않게. */
+function angleDelta(to: number, from: number): number {
+  let d = (to - from) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
 }
 
 /** 입력창에 타이핑 중이면 카메라 키를 가로채면 안 된다 */

@@ -227,7 +227,7 @@ export class Hud {
       el('div', { class: 'overlay__card', style: 'text-align:center' }, [
         el('div', { class: 'rotate-icon', text: '📱' }),
         el('h2', { class: 'overlay__title', text: '가로로 돌려주세요' }),
-        el('p', { class: 'overlay__sub', text: '가로 화면을 권장합니다. 세로 화면에서는 전장을 드래그하고 두 손가락으로 확대할 수 있습니다.' }),
+        el('p', { class: 'overlay__sub', text: '가로 화면을 권장합니다. 전장은 드래그로 옮기고, 두 손가락으로 확대·비틀어 회전·나란히 위아래로 부감을 바꿉니다.' }),
         continuePortrait,
       ]),
     ]);

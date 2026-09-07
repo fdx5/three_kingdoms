@@ -336,19 +336,6 @@ export class GameScene {
     // 포문·화룡구 단계에서 성벽 위가 번쩍인다.
     this.subs.add(
       bus.on('castle:fired', ({ kind }) => {
-        this.castleView.flashMuzzle();
-        if (kind === 'arrow') return;
-        const count = this.world.castle.level === 5 ? 4 : 2;
-        for (let i = 0; i < count; i++) {
-          const muzzle = this.castleView.muzzle(i, this.muzzleBuf);
-          this.particles.emit(
-            kind === 'flame' ? 'fire_burst' : 'weapon_spark',
-            muzzle.x,
-            muzzle.y,
-            muzzle.z,
-            kind === 'flame' ? 1.1 : 0.8,
-          );
-        }
         if (kind === 'cannon' && this.shakeEnabled) this.stage.addShake(BALANCE.fx.cameraShakeOnLeak * 0.3);
       }),
     );
@@ -408,7 +395,8 @@ export class GameScene {
             ? this.castleView.muzzle(bowIndex, this.muzzleBuf)
             : towerView?.muzzle(bowIndex, this.muzzleBuf) ?? null;
         view.setLaunch(launch);
-        view.setFlameSource(this.groundFireAssets, towerView?.muzzleNode(bowIndex) ?? null);
+        view.setFlameSource(this.groundFireAssets, towerSlotId === '__castle__'
+          ? this.castleView.muzzleNode(bowIndex) : towerView?.muzzleNode(bowIndex) ?? null);
 
         /*
          * 포구 화염과 화약 연기.
@@ -418,7 +406,8 @@ export class GameScene {
          * 연기를 섬광보다 조금 낮게 두는 것은 화약 연기가 포신을 타고
          * 아래로 깔렸다가 떠오르기 때문이다.
          */
-        const blast = tower?.def.muzzleBlast;
+        const blast = towerSlotId === '__castle__' && kind === 'shell'
+          ? { flash: .8, smoke: .7 } : tower?.def.muzzleBlast;
         if (kind === 'flame' && launch) {
           this.particles.emit('weapon_spark', launch.x, launch.y, launch.z, .18);
           this.particles.emit('muzzle_smoke', launch.x, launch.y, launch.z, .15);
