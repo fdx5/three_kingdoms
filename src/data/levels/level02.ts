@@ -103,7 +103,12 @@ export const LEVEL_02: LevelDef = {
     count: 14,
     baseCount: 11,
     countStep: 3,
-    hpGrowth: 0.1,
+    /*
+     * 0.10 -> 0.115. 전역 난이도(BALANCE.difficulty)만으로는 이 장의 성적이
+     * 592/600 에서 거의 움직이지 않았다 — 누수는 늘었는데 수리가 전부 되돌렸다.
+     * 0.115 에서 502/600, 누수 25 로 끝난다. 0.13 은 11파에서 무너진다.
+     */
+    hpGrowth: 0.115,
     speedGrowth: 0.015,
     spawnInterval: (n) => Math.max(0.38, 1.05 - 0.03 * n),
     formationColumns: 4,

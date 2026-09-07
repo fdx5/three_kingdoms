@@ -3,6 +3,7 @@ import { UNIT_LIST, UNITS } from '../src/data/units';
 import { TOWER_LIST, TOWERS, towerDps, totalInvestedFor } from '../src/data/towers';
 import { LEVEL_01 } from '../src/data/levels/level01';
 import { generateWaves } from '../src/data/waves';
+import { BALANCE } from '../src/data/balance';
 import { Path } from '../src/sim/Path';
 
 describe('데이터 무결성', () => {
@@ -28,7 +29,12 @@ describe('데이터 무결성', () => {
   it('레벨 표가 전제 블록의 확정 수치와 일치한다', () => {
     const lv = TOWERS.archer_tower.levels;
     expect(lv.map((l) => l.arrows)).toEqual([1, 2, 3, 4, 5]);
-    expect(lv.map((l) => l.damagePerArrow)).toEqual([10, 13, 17, 22, 28]);
+    // 표에 적힌 값은 그대로고, 난이도 손잡이(towerDamageMul)가 곱해져서 나온다.
+    const table = [10, 13, 17, 22, 28];
+    const mul = BALANCE.difficulty.towerDamageMul;
+    expect(lv.map((l) => l.damagePerArrow)).toEqual(
+      table.map((d) => Math.max(1, Math.round(d * mul))),
+    );
     expect(lv.map((l) => l.fireInterval)).toEqual([1.0, 0.95, 0.9, 0.85, 0.8]);
     expect(lv.map((l) => l.range)).toEqual([100, 100, 100, 100, 100]);
     expect(lv.map((l) => l.upgradeCost)).toEqual([null, 100, 150, 200, 250]);
@@ -99,12 +105,20 @@ describe('웨이브 생성기', () => {
     }
   });
 
-  it('레벨 웨이브는 같은 행에 3열 이상으로 겹치지 않게 배치된다', () => {
-    const firstRow = LEVEL_01.waves[0].spawns.slice(0, 3);
+  it('레벨 웨이브는 한 행이 동시에, 서로 겹치지 않는 간격으로 나온다', () => {
+    const rank = BALANCE.difficulty.rank;
+    // 레벨 1은 3열을 적었고 rank.columnsMul 이 그것을 넓힌다 — 한 행이 통째로 같이 나온다.
+    const columns = Math.min(rank.maxColumns, 3 * rank.columnsMul);
+    const firstRow = LEVEL_01.waves[0].spawns.slice(0, columns);
+    expect(firstRow).toHaveLength(columns);
     expect(new Set(firstRow.map((s) => s.at)).size).toBe(1);
     const lanes = firstRow.map((s) => s.laneOffset!).sort((a, b) => a - b);
-    expect(lanes[1] - lanes[0]).toBeGreaterThan(18);
-    expect(lanes[2] - lanes[1]).toBeGreaterThan(18);
+    for (let i = 1; i < lanes.length; i++) {
+      // 흔들림(±2)을 빼고도 최소 간격은 지킨다 — 이 아래로 좁아지면 대열이 뭉개진다
+      expect(lanes[i] - lanes[i - 1]).toBeGreaterThan(rank.minSpacing - 4);
+    }
+    // 길(88u = 반폭 44u) 밖으로 나가지 않는다. 흔들림이 붙으므로 여유를 둔다.
+    for (const lane of lanes) expect(Math.abs(lane)).toBeLessThanOrEqual(rank.maxHalfWidth + 4);
   });
 
   it('묶음 스폰은 부대 안에서 빠르게 나오고 부대 사이에 숨을 둔다', () => {
@@ -118,8 +132,16 @@ describe('웨이브 생성기', () => {
       spawnInterval: () => 1,
       patterns: { 1: { groupSize: 3, intraInterval: 0.1, groupGap: 2 } },
     });
+    // 열을 지정하지 않은(1열) 웨이브는 넓히지 않는다. 간격만 난이도 손잡이가 줄인다.
+    const si = BALANCE.difficulty.spawnIntervalMul;
+    const gg = BALANCE.difficulty.groupGapMul;
+    const intra = 0.1 * si;
+    const gap = 2 * gg;
     const times = wave.spawns.map((s) => s.at);
-    [0, 0.1, 0.2, 2.2, 2.3, 2.4].forEach((expected, i) => expect(times[i]).toBeCloseTo(expected));
+    const span = 2 * intra + gap;
+    [0, intra, 2 * intra, span, span + intra, span + 2 * intra].forEach((expected, i) =>
+      expect(times[i]).toBeCloseTo(expected),
+    );
   });
 });
 

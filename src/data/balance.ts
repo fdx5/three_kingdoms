@@ -14,6 +14,46 @@ export const BALANCE = {
   /** 게임 속도 배율 옵션 */
   speedOptions: [1, 2, 3] as const,
 
+  /**
+   * 난이도 손잡이 — 여섯 장의 표를 다시 쓰지 않고 여기 세 값으로 조인다.
+   *
+   * 각 장의 수치표(타워 피해·유닛 체력·웨이브 간격)에는 "왜 이 값인가"가
+   * 주석으로 붙어 있다. 난이도를 올리자고 그 표를 하나씩 고치면 그 근거가
+   * 전부 거짓말이 되므로, 표는 그대로 두고 곱하는 값만 여기서 정한다.
+   *
+   *   towerDamageMul   타워 한 발의 피해 (towers.ts 의 표에 곱해진다)
+   *   enemyHpMul       모든 적의 최대 체력 (Enemy.init 에서 곱해진다)
+   *   spawnIntervalMul 적과 적 사이 간격. 1보다 작으면 한 웨이브가 짧은 시간에
+   *                    통째로 쏟아진다 — "길게 늘어져 오는" 대열이 "왕창 몰려오는"
+   *                    대열로 바뀐다. 웨이브 사이 간격(waveInterval)은 그대로라
+   *                    밀려오는 순간의 밀도만 오른다.
+   *   groupGapMul      부대와 부대 사이의 숨. 같은 이유로 줄인다.
+   *   rank             한 번에 나란히 서는 횡대 — 아래 주석 참조.
+   *
+   * 배율이 전부 1이고 rank.columnsMul 이 1이면 조정 이전의 밸런스다.
+   */
+  difficulty: {
+    towerDamageMul: 0.95,
+    enemyHpMul: 1.15,
+    spawnIntervalMul: 0.95,
+    groupGapMul: 0.95,
+
+    /**
+     * 횡대 — "한 줄로 늘어져 온다"를 "한 무리가 통째로 온다"로 바꾸는 값.
+     *
+     * 각 장이 정한 열 수(formationColumns)에 columnsMul 을 곱한다. 한 행은 동시에
+     * 스폰되고 행 사이 간격은 열 수만큼 늘어나므로, 웨이브의 총 길이는 그대로인 채
+     * **같은 순간 길 위에 서 있는 적의 수만** 늘어난다. spawnIntervalMul 이 웨이브를
+     * 앞뒤로 압축한다면 이쪽은 좌우로 벌린다.
+     *
+     * 폭은 길(PathRibbon 88u = 반폭 44u) 밖으로 나가면 안 되고 적끼리 파고들어도 안 된다.
+     * 그래서 열이 늘면 간격을 좁히고(반폭 42u 안에), 그래도 minSpacing 아래로는
+     * 내려가지 않는다. maxColumns 는 그 위에 덧씌운 상한이다 — 일곱을 넘기면
+     * 가장 큰 유닛(목우유마, 폭 16u)이 옆 줄과 겹쳐 대열이 뭉개진다.
+     */
+    rank: { columnsMul: 2, maxColumns: 7, maxHalfWidth: 38, minSpacing: 12 },
+  },
+
   /** 웨이브 사이 대기 시간 (초) */
   waveInterval: 12,
   /** 첫 웨이브 시작 전 준비 시간 (초) — 타워 1기를 지을 여유 */

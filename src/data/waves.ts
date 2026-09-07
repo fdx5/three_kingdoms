@@ -1,4 +1,5 @@
 import type { WaveDef, WaveSpawn } from '../types/level';
+import { BALANCE } from './balance';
 
 export interface WaveInsert {
   unitId: string;
@@ -157,16 +158,38 @@ export function generateWaves(params: GenerateWavesParams): WaveDef[] {
     const hpMul = params.hpRatchet ? Math.max(rawHpMul, floor) : rawHpMul;
     prevHpMul = hpMul;
     const speedMul = Math.pow(1 + params.speedGrowth, n - 1) * (pattern?.speedMul ?? 1);
-    const interval = params.spawnInterval(n);
-    const columns = Math.max(1, Math.floor(pattern?.columns ?? params.formationColumns ?? 1));
-    const laneSpacing = pattern?.laneSpacing ?? params.laneSpacing ?? 14;
+    /*
+     * 스폰 간격에 전역 배율을 곱한다 — 웨이브가 길게 늘어지지 않고 한꺼번에 쏟아진다.
+     * 웨이브 사이 간격(waveInterval)은 그대로이므로, 늘어나는 것은 총 시간이 아니라
+     * "동시에 경로 위에 서 있는 적의 수"다. 타워가 한 기씩 처리하던 대열이
+     * 한 덩어리로 밀려오면 같은 화력으로도 앞줄만 깎다가 뒷줄을 통과시킨다.
+     */
+    const interval = params.spawnInterval(n) * BALANCE.difficulty.spawnIntervalMul;
+    // 횡대를 넓힌다. 열이 늘어난 만큼 간격을 좁혀 길 폭(±maxHalfWidth) 안에 넣되,
+    // minSpacing 아래로는 좁히지 않는다 — 그보다 좁으면 적끼리 겹쳐 대열로 읽히지 않는다.
+    const rank = BALANCE.difficulty.rank;
+    const baseColumns = Math.max(1, Math.floor(pattern?.columns ?? params.formationColumns ?? 1));
+    const rawSpacing = pattern?.laneSpacing ?? params.laneSpacing ?? 14;
+    const fitColumns = Math.floor((rank.maxHalfWidth * 2) / rank.minSpacing) + 1;
+    const maxColumns = Math.max(1, Math.min(rank.maxColumns, fitColumns));
+    // 한 줄(1열)을 지정한 웨이브는 그대로 둔다 — 일부러 외줄로 세운 대열까지 벌리지 않는다.
+    const columns = baseColumns === 1
+      ? 1
+      : Math.min(maxColumns, Math.max(1, Math.round(baseColumns * rank.columnsMul)));
+    const laneSpacing = columns > 1
+      ? Math.min(rawSpacing, Math.max(rank.minSpacing, (rank.maxHalfWidth * 2) / (columns - 1)))
+      : rawSpacing;
 
     const spawnAt = (i: number): number => {
       const groupSize = pattern?.groupSize
         ? Math.max(1, Math.floor(pattern.groupSize))
         : minionCount;
-      const intra = pattern?.intraInterval ?? interval;
-      const gap = pattern?.groupGap ?? interval;
+      const intra = pattern?.intraInterval !== undefined
+        ? pattern.intraInterval * BALANCE.difficulty.spawnIntervalMul
+        : interval;
+      const gap = pattern?.groupGap !== undefined
+        ? pattern.groupGap * BALANCE.difficulty.groupGapMul
+        : interval;
       const group = Math.floor(i / groupSize);
       const within = i % groupSize;
       const row = Math.floor(within / columns);
@@ -174,7 +197,16 @@ export function generateWaves(params: GenerateWavesParams): WaveDef[] {
       // A rank spawns at once; advance by the equivalent old per-unit cadence
       // so formations improve readability without silently tripling DPS pressure.
       const rowInterval = intra * columns;
-      return group * ((rowsPerGroup - 1) * rowInterval + gap) + row * rowInterval;
+      /*
+       * 횡대를 넓히면 한 부대의 행 수가 줄어 부대가 그만큼 빨리 끝난다.
+       * 그 줄어든 시간을 부대 사이 숨에 돌려주어 **웨이브의 총 길이를 넓히기 전과 같게**
+       * 유지한다. 넓힌 횡대는 대열의 모양만 바꾸고, 밀도를 정하는 것은
+       * spawnIntervalMul / groupGapMul 두 값 하나뿐이어야 하기 때문이다 —
+       * 안 그러면 열 수를 바꿀 때마다 웨이브가 몰래 짧아진다(실측: 6장이 그래서 13파에서 무너졌다).
+       */
+      const baseRows = Math.ceil(groupSize / baseColumns);
+      const gapAdjust = Math.max(0, (baseRows - 1) * baseColumns - (rowsPerGroup - 1) * columns) * intra;
+      return group * ((rowsPerGroup - 1) * rowInterval + gap + gapAdjust) + row * rowInterval;
     };
 
     const laneAt = (i: number): number => {

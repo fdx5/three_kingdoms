@@ -2,6 +2,22 @@ import type { TowerDef, TowerLevelDef } from '../types/towers';
 import type { PrimitiveSpec } from '../types/primitives';
 import { BALANCE } from './balance';
 
+/**
+ * 표에 적힌 피해에 BALANCE.difficulty.towerDamageMul 을 곱한다.
+ *
+ * 아래 다섯 표의 수치에는 "왜 이 값인가"가 주석으로 붙어 있다(벽력거가 1발인 이유,
+ * 화공 망루가 2·2·2·3·3 인 이유). 난이도를 조이자고 그 숫자를 하나씩 고치면
+ * 근거가 전부 거짓말이 되므로, 표는 그대로 두고 곱하는 값 하나만 밖에서 정한다.
+ * 철질려처럼 피해가 0인 타워는 0으로 남는다 — 감속 타워를 실수로 공격 타워로 만들지 않는다.
+ */
+function scaled(levels: TowerLevelDef[]): TowerLevelDef[] {
+  const mul = BALANCE.difficulty.towerDamageMul;
+  return levels.map((lv) => ({
+    ...lv,
+    damagePerArrow: lv.damagePerArrow === 0 ? 0 : Math.max(1, Math.round(lv.damagePerArrow * mul)),
+  }));
+}
+
 const WOOD = '#6b4f32';
 const WOOD_DARK = '#4a3622';
 const STONE = '#8a8578';
@@ -68,13 +84,13 @@ function towerPrimitive(level: number): PrimitiveSpec {
  */
 const ARCHER_MODEL = 'archer_tower';
 
-const ARCHER_LEVELS: TowerLevelDef[] = [
+const ARCHER_LEVELS: TowerLevelDef[] = scaled([
   { arrows: 1, damagePerArrow: 10, fireInterval: 1.0, range: 100, upgradeCost: null, view: { primitive: towerPrimitive(1), modelId: ARCHER_MODEL } },
   { arrows: 2, damagePerArrow: 13, fireInterval: 0.95, range: 100, upgradeCost: 100, view: { primitive: towerPrimitive(2), modelId: ARCHER_MODEL } },
   { arrows: 3, damagePerArrow: 17, fireInterval: 0.9, range: 100, upgradeCost: 150, view: { primitive: towerPrimitive(3), modelId: ARCHER_MODEL } },
   { arrows: 4, damagePerArrow: 22, fireInterval: 0.85, range: 100, upgradeCost: 200, view: { primitive: towerPrimitive(4), modelId: ARCHER_MODEL } },
   { arrows: 5, damagePerArrow: 28, fireInterval: 0.8, range: 100, upgradeCost: 250, view: { primitive: towerPrimitive(5), modelId: ARCHER_MODEL } },
-];
+]);
 
 /**
  * 투석기(벽력거) — 범위 피해, 느린 발사.
@@ -121,13 +137,13 @@ function catapultPrimitive(level: number): PrimitiveSpec {
 /** 벽력거도 레벨마다 모델을 바꾸지 않는다 — 팔 하나가 돌아가는 투석기 하나다. */
 const CATAPULT_MODEL = 'catapult';
 
-const CATAPULT_LEVELS: TowerLevelDef[] = [
+const CATAPULT_LEVELS: TowerLevelDef[] = scaled([
   { arrows: 1, damagePerArrow: 40, fireInterval: 2.4, range: 150, upgradeCost: null, view: { primitive: catapultPrimitive(1), modelId: CATAPULT_MODEL } },
   { arrows: 1, damagePerArrow: 62, fireInterval: 2.3, range: 150, upgradeCost: 160, view: { primitive: catapultPrimitive(2), modelId: CATAPULT_MODEL } },
   { arrows: 1, damagePerArrow: 95, fireInterval: 2.2, range: 150, upgradeCost: 220, view: { primitive: catapultPrimitive(3), modelId: CATAPULT_MODEL } },
   { arrows: 1, damagePerArrow: 145, fireInterval: 2.1, range: 150, upgradeCost: 300, view: { primitive: catapultPrimitive(4), modelId: CATAPULT_MODEL } },
   { arrows: 1, damagePerArrow: 230, fireInterval: 2.0, range: 150, upgradeCost: 380, view: { primitive: catapultPrimitive(5), modelId: CATAPULT_MODEL } },
-];
+]);
 
 /**
  * 철질려 진지 — 투사체 없이 사거리 안 적을 감속시킨다.
@@ -170,13 +186,13 @@ const CALTROP_MODEL = 'caltrop_camp';
  * arrows = 한 번에 감속을 거는 대상 수. 후반 웨이브는 40기가 한꺼번에 지나가므로
  * 레벨이 오르면 사실상 전원을 잡아야 값을 한다.
  */
-const CALTROP_LEVELS: TowerLevelDef[] = [
+const CALTROP_LEVELS: TowerLevelDef[] = scaled([
   { arrows: 5, damagePerArrow: 0, fireInterval: 0.5, range: 115, upgradeCost: null, view: { primitive: caltropPrimitive(1), modelId: CALTROP_MODEL } },
   { arrows: 9, damagePerArrow: 0, fireInterval: 0.5, range: 120, upgradeCost: 90, view: { primitive: caltropPrimitive(2), modelId: CALTROP_MODEL } },
   { arrows: 15, damagePerArrow: 0, fireInterval: 0.5, range: 130, upgradeCost: 130, view: { primitive: caltropPrimitive(3), modelId: CALTROP_MODEL } },
   { arrows: 24, damagePerArrow: 0, fireInterval: 0.5, range: 140, upgradeCost: 180, view: { primitive: caltropPrimitive(4), modelId: CALTROP_MODEL } },
   { arrows: 999, damagePerArrow: 0, fireInterval: 0.5, range: 150, upgradeCost: 240, view: { primitive: caltropPrimitive(5), modelId: CALTROP_MODEL } },
-];
+]);
 
 /**
  * 화공 망루 — 데크에 대포를 둘러 세우고 소이탄을 쏜다.
@@ -253,13 +269,13 @@ function fireTowerPrimitive(level: number): PrimitiveSpec {
  * 5장 화포와 실루엣이 겹쳤다(같은 데크, 같은 포문 링). 포대는 화포 진지로 넘기고
  * 화공 망루는 불을 다루는 망루로 새로 디자인한다.
  */
-const FIRE_TOWER_LEVELS: TowerLevelDef[] = [
+const FIRE_TOWER_LEVELS: TowerLevelDef[] = scaled([
   { arrows: 2, damagePerArrow: 9, fireInterval: 1.5, range: 105, upgradeCost: null, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(1) } },
   { arrows: 2, damagePerArrow: 12, fireInterval: 1.45, range: 110, upgradeCost: 130, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(2) } },
   { arrows: 2, damagePerArrow: 16, fireInterval: 1.4, range: 115, upgradeCost: 190, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(3) } },
   { arrows: 3, damagePerArrow: 20, fireInterval: 1.35, range: 120, upgradeCost: 260, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(4) } },
   { arrows: 3, damagePerArrow: 26, fireInterval: 1.3, range: 125, upgradeCost: 330, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(5) } },
-];
+]);
 
 /**
  * 화포 진지 — 포탄을 곧게 쏘아 지면을 강타한다.
@@ -333,13 +349,13 @@ const CANNON_MODEL = 'cannon_tower';
  * 화포는 레벨이 오르면 발수가 는다 — 궁노와 달리 한 발 한 발이 폭발이라
  * 2발이 되는 3레벨에서 체감이 크게 꺾인다. 그 지점이 이 타워의 값이다.
  */
-const CANNON_LEVELS: TowerLevelDef[] = [
+const CANNON_LEVELS: TowerLevelDef[] = scaled([
   { arrows: 1, damagePerArrow: 58, fireInterval: 2.6, range: 175, upgradeCost: null, view: { primitive: cannonPrimitive(1), modelId: CANNON_MODEL } },
   { arrows: 1, damagePerArrow: 88, fireInterval: 2.5, range: 180, upgradeCost: 200, view: { primitive: cannonPrimitive(2), modelId: CANNON_MODEL } },
   { arrows: 2, damagePerArrow: 78, fireInterval: 2.4, range: 190, upgradeCost: 280, view: { primitive: cannonPrimitive(3), modelId: CANNON_MODEL } },
   { arrows: 2, damagePerArrow: 112, fireInterval: 2.3, range: 200, upgradeCost: 360, view: { primitive: cannonPrimitive(4), modelId: CANNON_MODEL } },
   { arrows: 3, damagePerArrow: 138, fireInterval: 2.2, range: 210, upgradeCost: 450, view: { primitive: cannonPrimitive(5), modelId: CANNON_MODEL } },
-];
+]);
 
 export const TOWERS: Record<string, TowerDef> = {
   archer_tower: {

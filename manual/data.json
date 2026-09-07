@@ -334,7 +334,7 @@
       "id": "level03",
       "title": "관도대전 — 관도 나루",
       "castleHp": 500,
-      "startGold": 400,
+      "startGold": 500,
       "allowRepair": true,
       "castleUpgrade": false,
       "stratagems": [
@@ -666,7 +666,7 @@
       "id": "level05",
       "title": "번성 공방전 — 한수 범람",
       "castleHp": 800,
-      "startGold": 700,
+      "startGold": 1000,
       "allowRepair": true,
       "castleUpgrade": true,
       "stratagems": [
@@ -1612,41 +1612,41 @@
         {
           "level": 2,
           "arrows": 2,
-          "damagePerArrow": 13,
+          "damagePerArrow": 12,
           "fireInterval": 0.95,
           "range": 100,
           "upgradeCost": 100,
-          "dps": 27.4,
+          "dps": 25.3,
           "modelId": "archer_tower"
         },
         {
           "level": 3,
           "arrows": 3,
-          "damagePerArrow": 17,
+          "damagePerArrow": 16,
           "fireInterval": 0.9,
           "range": 100,
           "upgradeCost": 150,
-          "dps": 56.7,
+          "dps": 53.3,
           "modelId": "archer_tower"
         },
         {
           "level": 4,
           "arrows": 4,
-          "damagePerArrow": 22,
+          "damagePerArrow": 21,
           "fireInterval": 0.85,
           "range": 100,
           "upgradeCost": 200,
-          "dps": 103.5,
+          "dps": 98.8,
           "modelId": "archer_tower"
         },
         {
           "level": 5,
           "arrows": 5,
-          "damagePerArrow": 28,
+          "damagePerArrow": 27,
           "fireInterval": 0.8,
           "range": 100,
           "upgradeCost": 250,
-          "dps": 175,
+          "dps": 168.8,
           "modelId": "archer_tower"
         }
       ],
@@ -1675,51 +1675,51 @@
         {
           "level": 1,
           "arrows": 1,
-          "damagePerArrow": 40,
+          "damagePerArrow": 38,
           "fireInterval": 2.4,
           "range": 150,
           "upgradeCost": null,
-          "dps": 16.7,
+          "dps": 15.8,
           "modelId": "catapult"
         },
         {
           "level": 2,
           "arrows": 1,
-          "damagePerArrow": 62,
+          "damagePerArrow": 59,
           "fireInterval": 2.3,
           "range": 150,
           "upgradeCost": 160,
-          "dps": 27,
+          "dps": 25.7,
           "modelId": "catapult"
         },
         {
           "level": 3,
           "arrows": 1,
-          "damagePerArrow": 95,
+          "damagePerArrow": 90,
           "fireInterval": 2.2,
           "range": 150,
           "upgradeCost": 220,
-          "dps": 43.2,
+          "dps": 40.9,
           "modelId": "catapult"
         },
         {
           "level": 4,
           "arrows": 1,
-          "damagePerArrow": 145,
+          "damagePerArrow": 138,
           "fireInterval": 2.1,
           "range": 150,
           "upgradeCost": 300,
-          "dps": 69,
+          "dps": 65.7,
           "modelId": "catapult"
         },
         {
           "level": 5,
           "arrows": 1,
-          "damagePerArrow": 230,
+          "damagePerArrow": 219,
           "fireInterval": 2,
           "range": 150,
           "upgradeCost": 380,
-          "dps": 115,
+          "dps": 109.5,
           "modelId": "catapult"
         }
       ],
@@ -1765,41 +1765,41 @@
         {
           "level": 2,
           "arrows": 2,
-          "damagePerArrow": 12,
+          "damagePerArrow": 11,
           "fireInterval": 1.45,
           "range": 110,
           "upgradeCost": 130,
-          "dps": 16.6,
+          "dps": 15.2,
           "modelId": "fire_tower"
         },
         {
           "level": 3,
           "arrows": 2,
-          "damagePerArrow": 16,
+          "damagePerArrow": 15,
           "fireInterval": 1.4,
           "range": 115,
           "upgradeCost": 190,
-          "dps": 22.9,
+          "dps": 21.4,
           "modelId": "fire_tower"
         },
         {
           "level": 4,
           "arrows": 3,
-          "damagePerArrow": 20,
+          "damagePerArrow": 19,
           "fireInterval": 1.35,
           "range": 120,
           "upgradeCost": 260,
-          "dps": 44.4,
+          "dps": 42.2,
           "modelId": "fire_tower"
         },
         {
           "level": 5,
           "arrows": 3,
-          "damagePerArrow": 26,
+          "damagePerArrow": 25,
           "fireInterval": 1.3,
           "range": 125,
           "upgradeCost": 330,
-          "dps": 60,
+          "dps": 57.7,
           "modelId": "fire_tower"
         }
       ],
@@ -1835,51 +1835,51 @@
         {
           "level": 1,
           "arrows": 1,
-          "damagePerArrow": 58,
+          "damagePerArrow": 55,
           "fireInterval": 2.6,
           "range": 175,
           "upgradeCost": null,
-          "dps": 22.3,
+          "dps": 21.2,
           "modelId": "cannon_tower"
         },
         {
           "level": 2,
           "arrows": 1,
-          "damagePerArrow": 88,
+          "damagePerArrow": 84,
           "fireInterval": 2.5,
           "range": 180,
           "upgradeCost": 200,
-          "dps": 35.2,
+          "dps": 33.6,
           "modelId": "cannon_tower"
         },
         {
           "level": 3,
           "arrows": 2,
-          "damagePerArrow": 78,
+          "damagePerArrow": 74,
           "fireInterval": 2.4,
           "range": 190,
           "upgradeCost": 280,
-          "dps": 65,
+          "dps": 61.7,
           "modelId": "cannon_tower"
         },
         {
           "level": 4,
           "arrows": 2,
-          "damagePerArrow": 112,
+          "damagePerArrow": 106,
           "fireInterval": 2.3,
           "range": 200,
           "upgradeCost": 360,
-          "dps": 97.4,
+          "dps": 92.2,
           "modelId": "cannon_tower"
         },
         {
           "level": 5,
           "arrows": 3,
-          "damagePerArrow": 138,
+          "damagePerArrow": 131,
           "fireInterval": 2.2,
           "range": 210,
           "upgradeCost": 450,
-          "dps": 188.2,
+          "dps": 178.6,
           "modelId": "cannon_tower"
         }
       ],
@@ -2167,6 +2167,18 @@
       2,
       3
     ],
+    "difficulty": {
+      "towerDamageMul": 0.95,
+      "enemyHpMul": 1.15,
+      "spawnIntervalMul": 0.95,
+      "groupGapMul": 0.95,
+      "rank": {
+        "columnsMul": 2,
+        "maxColumns": 7,
+        "maxHalfWidth": 38,
+        "minSpacing": 12
+      }
+    },
     "waveInterval": 12,
     "firstWaveDelay": 20,
     "earlyCallBonusPerSecond": 4,

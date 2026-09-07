@@ -1,5 +1,6 @@
 import type { UnitDef, UnitKind, UnitTraits } from '../types/units';
 import type { DamageKind } from '../types/towers';
+import { BALANCE } from '../data/balance';
 
 /**
  * 적. 위치를 저장하지 않는다 — distance 하나로 전부 파생된다.
@@ -58,7 +59,17 @@ export class Enemy {
   init(id: number, def: UnitDef, hpMul: number, speedMul: number, laneOffset = 0): void {
     this.id = id;
     this.defId = def.id;
-    this.maxHp = Math.round(def.hp * hpMul);
+    /*
+     * 유닛 표의 체력 * 웨이브 성장률 * 전역 난이도 배율.
+     * 마지막 항이 여섯 장의 표를 건드리지 않고 "적이 더 단단하다"를 만든다.
+     *
+     * 장수(elite/boss)는 빼둔다. 장수의 체력은 각 장이 inserts 에 hpMul 2·3 으로
+     * 직접 적어 둔 값이고, 거기 또 곱하면 "성문 앞에 도달한 장수를 끊을 수 있는가"가
+     * 뒤집힌다 — 장수는 2초마다 성벽을 치므로 못 끊으면 그대로 패배다(실측: 3장이 그랬다).
+     * 물량을 두껍게 하자는 것이지 장수를 못 잡게 만들자는 것이 아니다.
+     */
+    const hardMul = def.kind === 'minion' ? BALANCE.difficulty.enemyHpMul : 1;
+    this.maxHp = Math.round(def.hp * hpMul * hardMul);
     this.hp = this.maxHp;
     this.distance = 0;
     this.prevDistance = 0;

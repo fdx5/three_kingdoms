@@ -341,8 +341,13 @@ describe('밸런스 (헤드리스 12웨이브)', () => {
     const r = runSim({ towers: 5, upgrade: 'greedy', seed: 1 });
     expect(r.won).toBe(true);
     expect(r.rows).toHaveLength(12);
-    expect(r.castleHp).toBeGreaterThanOrEqual(999);
-    expect(r.leaks).toBeLessThanOrEqual(2);
+    /*
+     * 난이도를 올린 뒤(횡대 확대 + 적 체력 배율 + 타워 피해 배율, BALANCE.difficulty)
+     * 최적 플레이도 무손실은 아니다 — 실측 992/1000, 누수 2.
+     * 여기서 크게 벗어나면 1장이 다시 무풍지대가 되었거나 너무 매워진 것이다.
+     */
+    expect(r.castleHp).toBeGreaterThanOrEqual(900);
+    expect(r.leaks).toBeLessThanOrEqual(10);
   });
 
   it('모퉁이 3기만으로도 업그레이드하면 이긴다', () => {

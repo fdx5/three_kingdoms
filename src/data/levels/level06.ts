@@ -112,12 +112,15 @@ export const LEVEL_06: LevelDef = {
     /*
      * 물량만 늘리면 "같은 적이 많이" 온다. 한 마리도 같이 두꺼워져야 후반이 무겁다.
      *
-     * 0.10 -> 0.140. 이 값은 벼랑 위에 있다 — 0.135 면 성이 20 밖에 안 깎이고,
-     * 0.145 면 13파에서 무너진다. 0.140 에서 성 1174/1360, 누수 119 로 끝난다
-     * (바꾸기 전에는 1330/1360, 누수 26 이었다). 손대려면 0.005 씩 움직이고
+     * 이 값은 벼랑 위에 있다. 13파(countMul 1.35 · 282기)가 이 장의 포화점이라,
+     * 그 파를 넘기느냐로 판이 통째로 갈린다 — 0.100 이면 13파에 누수 93 으로 무너지고
+     * 0.098 이면 같은 파를 누수 36 으로 넘긴다. 손대려면 0.002 씩 움직이고
      * tests/level0456.test.ts 의 출력으로 확인할 것.
+     *
+     * 0.1180 -> 0.0980 으로 내린 것은 난이도를 낮추자는 게 아니라 전역 배율에 자리를
+     * 내준 것이다. 적 체력 x1.15(BALANCE.difficulty)와 넓어진 횡대가 그만큼을 도로 채운다.
      */
-    hpGrowth: 0.1180,
+    hpGrowth: 0.0980,
     // 변주가 웨이브를 앞 웨이브보다 물러지게 만들지 않는다. [[hpRatchet]]
     hpRatchet: true,
     speedGrowth: 0.014,
@@ -164,13 +167,14 @@ export const LEVEL_06: LevelDef = {
         ],
       },
       13: { countMul: 1.35, hpMul: 0.95, groupSize: 14, intraInterval: 0.07, groupGap: 1.6 },
-      14: { countMul: 0.9, hpMul: 1.35, speedMul: 0.9, groupSize: 9, intraInterval: 0.26, groupGap: 3.0 },
+      // 14·15파의 hpMul 은 13파의 포화점을 건드리지 않고 끝을 무겁게 하는 자리다 (1.35 -> 1.5, 1.08 -> 1.25)
+      14: { countMul: 0.9, hpMul: 1.5, speedMul: 0.9, groupSize: 9, intraInterval: 0.26, groupGap: 3.0 },
       /**
        * 마지막 웨이브. 병력 수를 1.4배로 부풀리고 그 한가운데에 제갈량을 넣는다.
        * 제갈량의 회복 오라(반경 210 · 초당 90)가 이 대열을 통째로 덮으므로,
        * 앞줄부터 지우려 들면 영영 줄지 않는다 — 먼저 본체를 끊어야 한다.
        */
-      15: { countMul: 1.4, hpMul: 1.08, groupSize: 14, intraInterval: 0.08, groupGap: 1.7 },
+      15: { countMul: 1.4, hpMul: 1.25, groupSize: 14, intraInterval: 0.08, groupGap: 1.7 },
     },
 
     inserts: {
