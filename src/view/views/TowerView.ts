@@ -223,6 +223,7 @@ export class TowerView implements EntityView<Tower> {
       if (shouldShow && !b.visible && animate) b.popIn = 0;
       else if (shouldShow && !animate) b.popIn = 1;
       b.visible = shouldShow;
+      if (b.bone.userData.dragonHead) b.bone.visible = shouldShow;
       if (!shouldShow) {
         // 스케일 0은 노멀 계산에서 NaN 을 낼 수 있어 아주 작은 값으로 접는다
         b.bone.scale.setScalar(0.0001);
@@ -308,6 +309,14 @@ export class TowerView implements EntityView<Tower> {
     }
     const i = this.slotOf(bowIndex);
     this.bows[i].aimYaw = angle;
+    if (this.bows[i].bone.userData.dragonHead) {
+      const turret = this.model.getObjectByName('dragon_turret');
+      if (turret) turret.rotation.y = angle;
+      // Rotate the turret, then align its forward fan. Heads never aim through the timber drum.
+      for (const b of this.bows) {
+        b.aimYaw = 0;b.displayYaw = 0;b.bone.rotation.y = -b.restYaw;
+      }
+    }
     const action = this.shootActions[i];
     if (action) action.reset().play();
   }
@@ -319,6 +328,10 @@ export class TowerView implements EntityView<Tower> {
   muzzle(bowIndex: number, out: THREE.Vector3): THREE.Vector3 | null {
     if (!this.hasBows) return null;
     return this.bows[this.slotOf(bowIndex)].nock.getWorldPosition(out);
+  }
+
+  muzzleNode(bowIndex: number): THREE.Object3D | null {
+    return this.hasBows ? this.bows[this.slotOf(bowIndex)].nock : null;
   }
 
   /**

@@ -8,6 +8,8 @@ import type { EntityView, ViewState } from '../EntityView';
 import { CLIP_NAMES } from '../EntityView';
 import { BALANCE } from '../../data/balance';
 import { RIBBON_LIFT } from '../PathRibbon';
+import { UnitBurnView } from '../vfx/DragonFireEffects';
+import type { GroundFireAssets } from './GroundFireView';
 
 /**
  * 적 뷰. 시뮬의 distance를 Path.positionAt으로 월드 좌표로 바꾸고,
@@ -39,6 +41,7 @@ export class EnemyView implements EntityView<Enemy> {
 
   /** 흰색 플래시 */
   private flash = 0;
+  private burn: UnitBurnView | null = null;
   /** 상태 표시 */
   private slowed = false;
   private charging = false;
@@ -110,6 +113,26 @@ export class EnemyView implements EntityView<Enemy> {
 
   mount(parent: THREE.Object3D): void {
     parent.add(this.object3d);
+  }
+
+  ignite(assets: GroundFireAssets): void {
+    if (!this.burn) {
+      this.burn = new UnitBurnView(assets);
+      // Attach to the animated model, so fire follows its recoil and death fall.
+      this.model.add(this.burn.object3d);
+    }
+    this.burn.ignite();
+  }
+
+  updateBurn(dt: number, camera: THREE.Camera): void {
+    if (!this.burn) return;
+    const heat = this.burn.update(dt, camera);
+    if (heat > 0) {
+      const base = this.charging ? _chargeTint : this.slowed ? _slowTint : null;
+      for (let i = 0; i < this.flashMats.length; i++) {
+        this.flashMats[i].emissive.copy(base ?? this.originalEmissive[i]).lerp(_burnTint, .22 * heat);
+      }
+    } else if (this.flash <= 0) this.applyTint();
   }
 
   playState(state: ViewState): void {
@@ -372,6 +395,7 @@ export class EnemyView implements EntityView<Enemy> {
 
   /** 풀 재사용을 위한 초기화 */
   resetForReuse(): void {
+    this.burn?.reset();
     this.dying = false;
     this.dieTime = 0;
     this.attacking = false;
@@ -401,6 +425,7 @@ export class EnemyView implements EntityView<Enemy> {
   }
 
   dispose(): void {
+    this.burn?.dispose();
     this.object3d.removeFromParent();
     this.mixer?.stopAllAction();
     this.mixer = null;
@@ -411,5 +436,6 @@ export class EnemyView implements EntityView<Enemy> {
 }
 
 const _white = new THREE.Color(0xffffff);
+const _burnTint = new THREE.Color(0xd33a08);
 const _slowTint = new THREE.Color(0x1d5f8a);
 const _chargeTint = new THREE.Color(0x8a3a10);

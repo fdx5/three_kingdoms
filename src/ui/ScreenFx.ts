@@ -149,11 +149,12 @@ export class ScreenFx {
 
   // ── 피해 숫자 ──────────────────────────────────────────────────────
 
-  showDamage(x: number, y: number, amount: number, big = false): void {
+  showDamage(x: number, y: number, amount: number, big = false, fire = false): void {
     if (!this.showDamageNumbers || this.reduced) return;
     const displayAmount = Math.max(1, Math.round(amount));
     const node = this.numberPool.acquire();
     node.className = big ? 'dmgnum dmgnum--crit' : 'dmgnum';
+    if (fire) node.classList.add('dmgnum--fire');
     node.textContent = String(displayAmount);
     node.style.display = 'block';
     this.numbers.push({ node, t: 0, x: x + (Math.random() - 0.5) * 16, y });

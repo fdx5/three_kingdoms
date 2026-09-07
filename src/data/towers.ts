@@ -254,11 +254,11 @@ function fireTowerPrimitive(level: number): PrimitiveSpec {
  * 화공 망루는 불을 다루는 망루로 새로 디자인한다.
  */
 const FIRE_TOWER_LEVELS: TowerLevelDef[] = [
-  { arrows: 2, damagePerArrow: 9, fireInterval: 1.5, range: 105, upgradeCost: null, view: { primitive: fireTowerPrimitive(1) } },
-  { arrows: 2, damagePerArrow: 12, fireInterval: 1.45, range: 110, upgradeCost: 130, view: { primitive: fireTowerPrimitive(2) } },
-  { arrows: 2, damagePerArrow: 16, fireInterval: 1.4, range: 115, upgradeCost: 190, view: { primitive: fireTowerPrimitive(3) } },
-  { arrows: 3, damagePerArrow: 20, fireInterval: 1.35, range: 120, upgradeCost: 260, view: { primitive: fireTowerPrimitive(4) } },
-  { arrows: 3, damagePerArrow: 26, fireInterval: 1.3, range: 125, upgradeCost: 330, view: { primitive: fireTowerPrimitive(5) } },
+  { arrows: 2, damagePerArrow: 9, fireInterval: 1.5, range: 105, upgradeCost: null, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(1) } },
+  { arrows: 2, damagePerArrow: 12, fireInterval: 1.45, range: 110, upgradeCost: 130, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(2) } },
+  { arrows: 2, damagePerArrow: 16, fireInterval: 1.4, range: 115, upgradeCost: 190, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(3) } },
+  { arrows: 3, damagePerArrow: 20, fireInterval: 1.35, range: 120, upgradeCost: 260, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(4) } },
+  { arrows: 3, damagePerArrow: 26, fireInterval: 1.3, range: 125, upgradeCost: 330, view: { modelId: 'fire_tower', primitive: fireTowerPrimitive(5) } },
 ];
 
 /**
@@ -373,14 +373,14 @@ export const TOWERS: Record<string, TowerDef> = {
   fire_tower: {
     id: 'fire_tower',
     displayName: '화공 망루',
-    description: '소이탄을 쏘아 지면을 태운다. 레벨마다 포문이 하나씩 는다.',
+    description: '용머리가 화염을 내뿜어 지면과 적을 태운다. 레벨마다 용머리가 하나씩 는다.',
     buildCost: 160,
     sellRatio: BALANCE.defaultSellRatio,
     kind: 'projectile',
     damageKind: 'fire',
     // 선두를 노려야 불이 대열의 앞에 깔린다 — 뒤따라오는 줄이 그 위를 지나간다.
     targeting: 'first',
-    projectile: { speed: 230, arcHeight: 60 },
+    projectile: { speed: 230, arcHeight: 8 },
     levels: FIRE_TOWER_LEVELS,
     effect: { type: 'splash', params: { radius: 40, falloff: 0.6 } },
     /**
@@ -389,12 +389,7 @@ export const TOWERS: Record<string, TowerDef> = {
      * dpsPerLevel 1.5 — 5레벨이면 불의 화력이 5배가 된다.
      */
     ignite: { fromLevel: 1, radius: 52, dps: 26, duration: 3.6, dpsPerLevel: 1.5, source: 'flame' },
-    /**
-     * 화약을 터뜨려 밀어내는 무기다 — 쏜 포문에서 화염이 뿜고 화약 연기가 남는다.
-     * 궁노와 벽력거에는 이게 없다(활시위와 밧줄에는 화약이 없다).
-     * 흔들림은 성문 대포의 절반쯤으로, 다섯 문이 연달아 쏘면 화면이 계속 떨린다.
-     */
-    muzzleBlast: { flash: 0.9, smoke: 1.0, shake: 0.16 },
+    // 화염은 입의 분사와 지면의 연소로 표현한다. 포탄 폭발은 사용하지 않는다.
     unlockedIn: 'level04',
   },
 

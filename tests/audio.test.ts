@@ -46,7 +46,9 @@ describe('사운드 매핑', () => {
     if (typeof fired === 'string' || typeof castle === 'string') throw new Error('맵이어야 한다');
 
     expect(fired.cannon_tower).toBe('sfx_cannon');
-    expect(fired.fire_tower).toBe('sfx_cannon');
+    expect(fired.fire_tower).toBe('sfx_fire_burn');
+    expect(manifest.audio[fired.fire_tower]).toBe('audio/fire_burn.mp3');
+    expect(readFileSync(`public/assets/${manifest.audio[fired.fire_tower]}`)).toEqual(readFileSync('sound/fire_burn.mp3'));
     expect(castle.cannon).toBe('sfx_cannon');
     expect(manifest.audio.sfx_cannon).toBe('audio/cannon.mp3');
   });

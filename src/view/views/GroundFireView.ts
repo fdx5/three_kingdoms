@@ -12,7 +12,7 @@ export interface GroundFireAssets {
 }
 const STYLE = {
   arrow: { strength: .64, flames: 10, embers: 8, smoke: 3, debris: 0 },
-  flame: { strength: 1.06, flames: 24, embers: 24, smoke: 6, debris: 8 },
+  flame: { strength: .67, flames: 32, embers: 28, smoke: 5, debris: 8 },
   stone: { strength: 1.08, flames: 22, embers: 20, smoke: 6, debris: 8 },
   shell: { strength: 1.2, flames: 26, embers: 26, smoke: 7, debris: 12 },
 };
@@ -40,8 +40,10 @@ export class GroundFireView {
   private scale = new THREE.Vector3();
   private cameraPosition = new THREE.Vector3();
   private cameraRotation = new THREE.Quaternion();
+  private groundGeometry: THREE.PlaneGeometry | null = null;
 
-  constructor(assets: GroundFireAssets, private radius: number, source: FireSource, seed = 1) {
+  constructor(assets: GroundFireAssets, private radius: number, source: FireSource, seed = 1,
+    private groundHeight?: (x: number, z: number) => number) {
     const style = STYLE[source];
     this.strength = style.strength;
     const rng = new Rng(seed * 1741 + 71);
@@ -51,8 +53,9 @@ export class GroundFireView {
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       toneMapped: !additive,
     });
-    this.scorch = new THREE.Mesh(assets.quad, material(assets.maps.scorch, .83));
-    this.coals = new THREE.Mesh(assets.quad, material(assets.maps.coals, .8, true));
+    if (groundHeight) this.groundGeometry = new THREE.PlaneGeometry(1, 1, 12, 12);
+    this.scorch = new THREE.Mesh(this.groundGeometry ?? assets.quad, material(assets.maps.scorch, .83));
+    this.coals = new THREE.Mesh(this.groundGeometry ?? assets.quad, material(assets.maps.coals, .8, true));
     for (const mesh of [this.scorch, this.coals]) {
       mesh.rotation.set(-Math.PI / 2, 0, this.phase);
       mesh.scale.set(radius * 2.16, radius * 1.92, 1);
@@ -130,6 +133,16 @@ export class GroundFireView {
     const groundSpread = this.shockwave ? .2 + .8 * Math.min(1, this.elapsed / .55) : 1;
     this.scorch.scale.set(this.radius * 2.16 * groundSpread, this.radius * 1.92 * groundSpread, 1);
     this.coals.scale.copy(this.scorch.scale);
+    if (this.groundGeometry && this.groundHeight) {
+      const vertices = this.groundGeometry.getAttribute('position');
+      const cos = Math.cos(this.phase), sin = Math.sin(this.phase);
+      for (let i = 0; i < vertices.count; i++) {
+        const x = vertices.getX(i) * this.scorch.scale.x, y = vertices.getY(i) * this.scorch.scale.y;
+        vertices.setZ(i, this.groundHeight(x * cos - y * sin, -x * sin - y * cos));
+      }
+      vertices.needsUpdate = true;
+      this.groundGeometry.computeBoundingSphere();
+    }
     this.scorch.material.opacity = .83 * residue;
     this.coals.material.opacity = (.65 + .15 * Math.sin(this.elapsed * 7 + this.phase)) * afterglow;
     if (this.debris) {
@@ -150,6 +163,7 @@ export class GroundFireView {
       const height = p.height * (1 + flicker) * spread * burn * ignition;
       const gust = Math.sin(time * 2.3 + p.phase) * .13;
       this.position.set(p.x * spread + gust * height * .2, height * .47 + .3, p.z * spread);
+      this.position.y += this.groundHeight?.(p.x * spread, p.z * spread) ?? 0;
       this.rotation.setFromEuler(this.flameEuler.set(0, yaw, -gust - .07));
       this.scale.set(p.width * (1 - flicker * .6) * spread * burn * ignition, height, 1);
       this.matrix.compose(this.position, this.rotation, this.scale); this.flames.setMatrixAt(i, this.matrix);
@@ -182,6 +196,7 @@ export class GroundFireView {
   }
 
   dispose(): void {
+    this.groundGeometry?.dispose();
     this.object3d.removeFromParent();
     this.object3d.traverse(o => {
       if (o instanceof THREE.Mesh) (o.material as THREE.Material).dispose();

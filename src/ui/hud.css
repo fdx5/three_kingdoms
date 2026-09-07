@@ -654,6 +654,7 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.dmgnum--fire { color: #ffb34e; text-shadow: 0 0 5px #c53609, 1px 2px 2px #291509; }
 .dmgnum--crit {
   color: #ffd166;
   font-size: 1.05em;

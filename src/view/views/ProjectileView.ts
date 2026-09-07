@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { Projectile } from '../../sim/Projectile';
 import type { EntityView, ViewState } from '../EntityView';
+import { FlameJetView } from '../vfx/DragonFireEffects';
+import type { GroundFireAssets } from './GroundFireView';
 
 /**
  * 투사체 뷰 — 화살(얇은 원기둥 + 원뿔 촉)과 투석(회전하는 바위) 두 모습.
@@ -78,6 +80,10 @@ export class ProjectileView implements EntityView<Projectile> {
    * 활 망루는 쇠뇌가 다섯 군데에 있으므로 "어느 활에서 나갔는지"가 눈에 보여야 한다.
    */
   private launch: THREE.Vector3 | null = null;
+  private jet: FlameJetView | null = null;
+  private mouth: THREE.Object3D | null = null;
+  private jetOrigin = new THREE.Vector3();
+  private jetTarget = new THREE.Vector3();
   private assets: ProjectileAssets;
 
   /**
@@ -128,8 +134,20 @@ export class ProjectileView implements EntityView<Projectile> {
     this.launch = origin ? origin.clone() : null;
   }
 
+  get isFlame(): boolean { return this.kind === 'flame'; }
+
+  setFlameSource(assets: GroundFireAssets, mouth: THREE.Object3D | null): void {
+    this.mouth = mouth;
+    if (this.kind !== 'flame') return;
+    this.jet ??= new FlameJetView(assets);
+    this.object3d.parent?.add(this.jet.object3d);
+    this.jet.reset();
+  }
+
   setKind(kind: ProjectileKind, level = 1, incendiary = false): void {
     this.kind = kind;
+    this.mouth = null;
+    if (this.jet) this.jet.object3d.visible = kind === 'flame';
     this.incendiary = incendiary;
     this.flame.quaternion.identity();
     // 포탄과 불줄기는 늘 뜨겁다 — 레벨과 무관하게 최고 단계로 그린다.
@@ -153,8 +171,8 @@ export class ProjectileView implements EntityView<Projectile> {
 
     const heat = this.heat;
     if (kind === 'flame') {
-      // 불줄기는 알맹이가 없다 — 껍질만 크게 키워 덩어리째 날아가게 한다.
-      this.flame.visible = true;
+      // 화염은 FlameJetView의 투명 분사로 그린다.
+      this.flame.visible = false;
       this.flame.material = this.assets.flameMaterials.blazing;
       this.flame.scale.set(1.5, 1.9, 1.5);
     } else if (kind === 'shell') {
@@ -173,7 +191,7 @@ export class ProjectileView implements EntityView<Projectile> {
     }
 
     // 잔불은 달군 바위와 화살에만. 민바위는 아무것도 남기지 않는다.
-    this.trailGroup.visible = kind !== 'stone' || this.heat !== 'cold';
+    this.trailGroup.visible = kind !== 'flame' && (kind !== 'stone' || this.heat !== 'cold');
     const trailMats = kind === 'arrow' && this.heat === 'cold' ? this.assets.trailMats : this.assets.emberMats;
     for (let i = 0; i < this.trail.length; i++) this.trail[i].material = trailMats[i];
   }
@@ -183,11 +201,20 @@ export class ProjectileView implements EntityView<Projectile> {
     parent.add(this.trailGroup);
   }
 
-  sync(p: Projectile, alpha: number, _dt: number): void {
+  sync(p: Projectile, alpha: number, _dt: number, camera?: THREE.Camera, impactY = 0): void {
     const x = p.prevX + (p.x - p.prevX) * alpha;
     const z = p.prevZ + (p.z - p.prevZ) * alpha;
     const travelled = p.prevTraveled + (p.traveled - p.prevTraveled) * alpha;
     const t = Math.min(1, travelled / p.totalDist);
+    if (this.kind === 'flame' && this.jet && camera) {
+      if (this.mouth) this.mouth.getWorldPosition(this.jetOrigin);
+      else if (this.launch) this.jetOrigin.copy(this.launch);
+      else this.jetOrigin.set(p.fromX, 38, p.fromZ);
+      this.jetTarget.set(p.toX, impactY + 2.2, p.toZ);
+      this.jet.update(this.jetOrigin, this.jetTarget, t, _dt, camera);
+      this.object3d.position.lerpVectors(this.jetOrigin, this.jetTarget, t);
+      return;
+    }
 
     // 이 발이 한 다발의 몇 번째인가 — 가운데를 0으로 두고 좌우로 벌린다
     const lane = p.salvoSize > 1 ? p.salvoIndex - (p.salvoSize - 1) / 2 : 0;
@@ -291,10 +318,12 @@ export class ProjectileView implements EntityView<Projectile> {
 
   setVisible(v: boolean): void {
     this.object3d.visible = v;
-    this.trailGroup.visible = v && (this.kind === 'arrow' || this.heat !== 'cold');
+    this.trailGroup.visible = v && this.kind !== 'flame' && (this.kind === 'arrow' || this.heat !== 'cold');
+    if (this.jet) this.jet.object3d.visible = v && this.kind === 'flame';
   }
 
   dispose(): void {
+    this.jet?.dispose();
     this.object3d.removeFromParent();
     this.trailGroup.removeFromParent();
     this.object3d.clear();

@@ -21,7 +21,7 @@ export const SOUND_MAP: Record<string, SoundMapping> = {
     archer_tower: 'sfx_bow',
     catapult: 'sfx_catapult',
     cannon_tower: 'sfx_cannon',
-    fire_tower: 'sfx_cannon',
+    fire_tower: 'sfx_fire_burn',
   },
   /**
    * 성문의 사격음. 무기 종류(arrow/cannon/flame)로 갈린다 —
@@ -101,6 +101,7 @@ export const SOUND_CLIPS: Record<string, SoundClip> = {
    * 중복 억제를 발사 간격(화포 2.2초 / 성문 1.05초)보다 짧게, 그러나 넉넉히 잡는다.
    */
   sfx_cannon: { duration: 0.9, fadeOut: 0.15, trimLead: true, dedupeMs: 260 },
+  sfx_fire_burn: { duration: .8, fadeOut: .16, trimLead: true, dedupeMs: 90, gain: .8 },
 };
 
 /** 버스 배정 */
