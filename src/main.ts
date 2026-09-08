@@ -114,6 +114,7 @@ class Game {
       preset: this.preset,
       shake: true,
       damageNumbers: true,
+      buildSpots: true,
     };
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
@@ -374,6 +375,12 @@ class Game {
           this.audio.setBgmEnabled(on);
           this.hud.setBgmOn(on);
         },
+        onToggleBuildSpots: (on) => {
+          this.settings.buildSpots = on;
+          this.scene.showBuildableSpots(on);
+          this.hud.setBuildSpotsOn(on);
+          this.saveSettings();
+        },
       },
       this.settings,
     );
@@ -468,6 +475,9 @@ class Game {
     this.hud.setWave(0, this.world.waveRunner.totalWaves);
     this.hud.setTowers(this.world.towerCount, this.world.maxTowers);
     this.hud.setLevelTitle(this.level.title);
+    // 지을 수 있는 자리 표시 — 레벨이 바뀔 때마다 씬이 새로 만들어지므로 다시 켠다.
+    this.scene.showBuildableSpots(this.settings.buildSpots);
+    this.hud.setBuildSpotsOn(this.settings.buildSpots);
     /*
      * 자리 표시가 사라졌으므로 "어디에 지으라"는 안내도 사라졌다.
      * 첫 웨이브 전에 한 줄로 대신한다 — 규칙은 하나뿐이라 한 줄이면 된다.

@@ -54,8 +54,12 @@ export function spotFromKey(key: string): Spot | null {
 
 export interface PlacementContext {
   path: Path;
-  /** 이미 세워진 타워들의 자리 */
-  taken: Iterable<Spot>;
+  /**
+   * 이미 세워진 타워들의 자리.
+   * 여러 번 순회하므로 배열처럼 **다시 읽을 수 있는** 것이어야 한다
+   * (Map 이터레이터를 넘기면 두 번째 판정부터 비어 보인다).
+   */
+  taken: readonly Spot[];
   /** 지금까지 세운 수 */
   built: number;
   /** 이 레벨이 허용하는 총 수 */
@@ -95,6 +99,30 @@ export function checkPlacement(ctx: PlacementContext, x: number, z: number): Pla
     if (Math.hypot(x - t.x, z - t.z) < p.towerSpacing) return 'too_close';
   }
   return 'ok';
+}
+
+/**
+ * 지금 지을 수 있는 자리들을 격자로 훑어 돌려준다 — 화면에 "여기 지을 수 있다"를
+ * 그리기 위한 것이다.
+ *
+ * 자유 배치의 유일한 불친절은 "어디가 빈 땅인지 눈에 안 보인다"였다. 규칙(길에서 46,
+ * 성문에서 100, 타워끼리 44)은 머릿속에서 계산할 수 있는 것이 아니므로 보여줘야 한다.
+ * 뷰가 규칙을 다시 구현하지 않고 이 함수를 쓰면, 표시된 자리는 반드시 실제로 지어진다.
+ *
+ * step 은 표시 격자의 간격이다. 타워 간격(44)보다 촘촘하면 표시가 뭉개지므로
+ * 기본값은 그보다 넓다 — 표시는 "이 근방이면 된다"를 뜻하고, 실제로 누른 좌표는
+ * checkPlacement 가 다시 판정한다.
+ */
+export function buildableSpots(ctx: PlacementContext, step = 50): Spot[] {
+  const out: Spot[] = [];
+  if (ctx.built >= ctx.maxTowers) return out;
+  const half = step / 2;
+  for (let x = half; x < BALANCE.mapWidth; x += step) {
+    for (let z = half; z < BALANCE.mapDepth; z += step) {
+      if (checkPlacement(ctx, x, z) === 'ok') out.push({ x, z });
+    }
+  }
+  return out;
 }
 
 /** 판정 결과를 사람이 읽을 한 줄로. HUD 안내와 테스트가 같이 쓴다. */

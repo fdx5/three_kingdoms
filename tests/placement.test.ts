@@ -112,6 +112,43 @@ describe('타워 자유 배치', () => {
     expect(spotKey(slot.x + 0.2, slot.z - 0.3)).toBe(id);
   });
 
+  /*
+   * 화면에 그리는 "건설 가능 위치"는 이 목록이다. 뷰가 규칙을 다시 구현하지 않으므로
+   * 여기서 나온 자리는 반드시 실제로 지어져야 한다 — 안 그러면 눌러도 안 되는 표시가 뜬다.
+   */
+  it('표시되는 자리는 전부 실제로 지을 수 있다', () => {
+    for (const level of LEVEL_ORDER) {
+      const w = new World({ level, seed: 1 });
+      w.economy.add(100000);
+      const spots = w.buildableSpots();
+      expect(spots.length, level.id).toBeGreaterThan(20);
+      for (const s of spots) expect(w.canBuildAt(s.x, s.z), `${level.id} ${s.x},${s.z}`).toBe('ok');
+      // 길 위를 표시하지 않는다
+      expect(spots.every((s) => w.canBuildAt(s.x, s.z) === 'ok')).toBe(true);
+    }
+  });
+
+  it('세우면 그 자리가, 다 쓰면 전부 표시에서 빠진다', () => {
+    const w = rich();
+    const before = w.buildableSpots();
+    // 표시된 자리 하나를 그대로 눌러 짓는다 — 표시와 실제가 같은 규칙을 본다는 뜻이다.
+    const target = before[Math.floor(before.length / 2)];
+    expect(w.build(target)).toBe('ok');
+
+    const after = w.buildableSpots();
+    expect(after.length).toBeLessThan(before.length);
+    // 세운 자리 둘레(towerSpacing 안쪽)는 사라졌다
+    expect(
+      after.every(
+        (s) => Math.hypot(s.x - target.x, s.z - target.z) >= BALANCE.placement.towerSpacing,
+      ),
+    ).toBe(true);
+
+    for (const slot of LEVEL_01.buildSlots.slice(1)) w.build(slot);
+    expect(w.towerCount).toBe(w.maxTowers);
+    expect(w.buildableSpots()).toHaveLength(0);
+  });
+
   it('막힌 이유는 저마다 다른 문장을 갖는다 (HUD 가 그대로 말한다)', () => {
     const reasons = (['on_path', 'too_close', 'castle', 'out_of_bounds', 'limit'] as const).map(
       placementReason,

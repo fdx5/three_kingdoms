@@ -181,6 +181,41 @@ async function level1Pass(page: Page): Promise<void> {
   if (panel.picks !== 0) fail(`레벨 1에 타워 선택 행이 떴다 (${panel.picks}종) — 해금 필터가 새고 있다`);
   console.log('[ok] 빈 땅 탭 -> 건설 패널 표시 (타워 1종, 선택 행 없음)');
 
+  /*
+   * 건설 가능 위치 표시 — 자유 배치의 안내다.
+   * 표시된 자리는 실제로 지어져야 하므로, 그리는 수가 시뮬이 준 수와 같아야 한다.
+   */
+  const buildSpots = await page.evaluate(`(function () {
+    var g = window.game;
+    var found = null;
+    g.scene.stage.root.traverse(function (o) {
+      if (o.isInstancedMesh && o.geometry.type === 'RingGeometry') found = o;
+    });
+    return {
+      drawn: found ? found.count : -1,
+      visible: found ? found.visible : false,
+      sim: g.world.buildableSpots().length,
+      flag: g.scene.buildableSpotsVisible,
+    };
+  })()`) as { drawn: number; visible: boolean; sim: number; flag: boolean };
+  if (buildSpots.drawn <= 0) fail('건설 가능 위치가 하나도 그려지지 않았다');
+  if (buildSpots.drawn !== buildSpots.sim) {
+    fail(`표시(${buildSpots.drawn})와 시뮬(${buildSpots.sim})의 자리 수가 다르다`);
+  }
+  if (!buildSpots.visible || !buildSpots.flag) fail('건설 가능 위치 표시가 기본으로 켜져 있지 않다');
+  console.log(`[ok] 건설 가능 위치 ${buildSpots.drawn}곳 표시`);
+
+  // 토글 버튼으로 껐다 켜진다
+  await page.locator('button[aria-label="건설 가능 위치 숨기기"]').click();
+  await page.waitForTimeout(150);
+  const off = await page.evaluate(`window.game.scene.buildableSpotsVisible`);
+  if (off) fail('건설 가능 위치 토글이 꺼지지 않는다');
+  await page.locator('button[aria-label="건설 가능 위치 표시"]').click();
+  await page.waitForTimeout(150);
+  const on = await page.evaluate(`window.game.scene.buildableSpotsVisible`);
+  if (!on) fail('건설 가능 위치 토글이 다시 켜지지 않는다');
+  console.log('[ok] 건설 가능 위치 토글 on/off');
+
   // 보병 GLTF 모델이 실제로 붙었는지 — 프리미티브로 조용히 폴백하면 여기서 잡힌다
   const models = await page.evaluate(`(function () {
     var g = window.game;

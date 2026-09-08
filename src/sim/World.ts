@@ -17,7 +17,14 @@ import { MAX_CASTLE_LEVEL } from '../data/castle';
 import { getStratagem, findStratagem } from '../data/stratagems';
 import { isTowerAvailable } from '../data/levels';
 import { Path } from './Path';
-import { checkPlacement, spotKey, type PlacementCheck, type Spot } from './Placement';
+import {
+  buildableSpots,
+  checkPlacement,
+  spotKey,
+  type PlacementCheck,
+  type PlacementContext,
+  type Spot,
+} from './Placement';
 import { Enemy } from './Enemy';
 import { Projectile } from './Projectile';
 import { FireZone } from './FireZone';
@@ -842,21 +849,36 @@ export class World {
   }
 
   /**
+   * 배치 규칙이 보는 지금의 판 상태. canBuildAt 과 buildableSpots 가 같이 쓴다.
+   *
+   * taken 은 **배열**이어야 한다. Map 의 이터레이터를 그대로 넘기면 첫 후보를
+   * 판정할 때 소진되어, 그다음부터는 세워진 타워가 하나도 없는 것처럼 보인다 —
+   * 격자를 통째로 훑는 buildableSpots 에서 "이미 지은 자리"가 계속 표시됐다.
+   */
+  private placementContext(): PlacementContext {
+    return {
+      path: this.path,
+      taken: [...this.towers.values()] as Spot[],
+      built: this.towers.size,
+      maxTowers: this.maxTowers,
+      castle: this.castlePosition(),
+    };
+  }
+
+  /**
    * 이 지점에 지을 수 있는지 묻는다. 뷰의 건설 미리보기가 매 탭 이걸 부른다 —
    * 판정이 한 곳에 있어야 "지어질 것처럼 보이는데 안 지어지는" 자리가 없다.
    */
   canBuildAt(x: number, z: number): PlacementCheck {
-    return checkPlacement(
-      {
-        path: this.path,
-        taken: this.towers.values() as Iterable<Spot>,
-        built: this.towers.size,
-        maxTowers: this.maxTowers,
-        castle: this.castlePosition(),
-      },
-      x,
-      z,
-    );
+    return checkPlacement(this.placementContext(), x, z);
+  }
+
+  /**
+   * 지금 지을 수 있는 자리들 — 뷰가 이걸로 "건설 가능 위치"를 그린다.
+   * 타워를 세우거나 팔 때마다 달라지므로 그때 다시 부른다.
+   */
+  buildableSpots(step?: number): Spot[] {
+    return buildableSpots(this.placementContext(), step);
   }
 
   /**

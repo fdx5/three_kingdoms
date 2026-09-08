@@ -43,6 +43,11 @@ export function setPressed(node: HTMLElement, pressed: boolean): void {
   node.setAttribute('aria-pressed', pressed ? 'true' : 'false');
 }
 
+/** 토글 버튼의 지금 상태. 상태를 DOM 한 곳에만 두려고 aria 속성을 그대로 읽는다. */
+export function isPressed(node: HTMLElement): boolean {
+  return node.getAttribute('aria-pressed') === 'true';
+}
+
 export const prefersReducedMotion = (): boolean =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 

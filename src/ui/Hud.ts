@@ -1,4 +1,4 @@
-import { el, svg, onTap, setPressed, CountUp, formatSeconds, prefersReducedMotion } from './dom';
+import { el, svg, onTap, setPressed, isPressed, CountUp, formatSeconds, prefersReducedMotion } from './dom';
 import { BALANCE, type PerformancePresetName } from '../data/balance';
 import type { RunStats } from '../types/events';
 import type { StratagemDef, StratagemStatus } from '../types/stratagems';
@@ -24,6 +24,8 @@ export interface HudCallbacks {
   onResetView: () => void;
   /** 배경음 켜기/끄기 */
   onToggleBgm: (on: boolean) => void;
+  /** 건설 가능 위치 표시 켜기/끄기 */
+  onToggleBuildSpots: (on: boolean) => void;
 }
 
 export interface HudSettings {
@@ -32,6 +34,8 @@ export interface HudSettings {
   preset: PerformancePresetName;
   shake: boolean;
   damageNumbers: boolean;
+  /** 지을 수 있는 자리를 지면에 표시할지 */
+  buildSpots: boolean;
 }
 
 const RING_CIRCUMFERENCE = 2 * Math.PI * 10;
@@ -55,6 +59,7 @@ export class Hud {
   private speedButtons: HTMLElement[] = [];
   private pauseButton: HTMLElement;
   private bgmButton: HTMLElement;
+  private buildSpotsButton: HTMLElement;
   private callButton: HTMLElement;
   private callBonus: HTMLElement;
   private repairButton: HTMLElement;
@@ -180,6 +185,18 @@ export class Hud {
     this.bgmButton = el('button', { type: 'button', class: 'btn-ghost', text: '♪', 'aria-label': '배경음' });
     onTap(this.bgmButton, () => this.cb.onToggleBgm(this.bgmButton.textContent !== '♪'));
 
+    /*
+     * 건설 가능 위치 표시. 자유 배치의 유일한 불친절이 "어디가 빈 땅인지 눈에 안 보인다"라
+     * 기본은 켜 두고, 전장을 깨끗하게 보고 싶은 사람을 위해 끌 수 있게 둔다.
+     */
+    this.buildSpotsButton = el('button', {
+      type: 'button', class: 'btn-ghost', text: '⛶',
+      'aria-label': '건설 가능 위치 표시', title: '건설 가능 위치 표시',
+    });
+    onTap(this.buildSpotsButton, () =>
+      this.cb.onToggleBuildSpots(!isPressed(this.buildSpotsButton)),
+    );
+
     this.callBonus = el('span', { class: 'call-wave__bonus', text: '' });
     this.callButton = el('button', { type: 'button', id: 'call-wave', class: 'btn-primary call-wave' }, [
       el('span', { text: '지금 소집' }),
@@ -217,7 +234,7 @@ export class Hud {
     this.stratagemBar.style.display = 'none';
 
     const bottombar = el('div', { class: 'bottombar' }, [
-      el('div', { class: 'bottombar__left' }, [seg, this.pauseButton, resetViewButton, this.bgmButton, settingsButton, exitMenuButton]),
+      el('div', { class: 'bottombar__left' }, [seg, this.pauseButton, resetViewButton, this.buildSpotsButton, this.bgmButton, settingsButton, exitMenuButton]),
       el('div', { class: 'bottombar__center' }, [this.stratagemBar]),
       el('div', { class: 'bottombar__right' }, [this.gateButton, this.repairButton, this.callButton]),
     ]);
@@ -528,6 +545,13 @@ export class Hud {
   }
 
   /** 배경음 버튼 표시 갱신 (설정을 불러왔거나 다른 곳에서 껐을 때) */
+  setBuildSpotsOn(on: boolean): void {
+    const label = on ? '건설 가능 위치 숨기기' : '건설 가능 위치 표시';
+    this.buildSpotsButton.setAttribute('aria-label', label);
+    this.buildSpotsButton.setAttribute('title', label);
+    setPressed(this.buildSpotsButton, on);
+  }
+
   setBgmOn(on: boolean): void {
     this.bgmButton.textContent = on ? '♪' : '🔇';
     this.bgmButton.setAttribute('aria-label', on ? '배경음 끄기' : '배경음 켜기');

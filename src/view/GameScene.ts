@@ -18,6 +18,7 @@ import { EnemyView } from './views/EnemyView';
 import { TowerView } from './views/TowerView';
 import { CastleView } from './views/CastleView';
 import { RangeRing } from './views/RangeRing';
+import { BuildableField } from './views/BuildableField';
 import { ProjectileView, createProjectileAssets, heatOf } from './views/ProjectileView';
 import { GroundFireView, createGroundFireAssets } from './views/GroundFireView';
 import { ParticleSystem } from './vfx/Particles';
@@ -102,6 +103,8 @@ export class GameScene {
   private groundFireAssets = createGroundFireAssets();
 
   private subs = new Subscriptions();
+  /** "여기 지을 수 있다" 표시. 켜고 끄는 것은 main 이 정한다. */
+  private buildable: BuildableField;
   private selectedSlot: string | null = null;
 
   private raycaster = new THREE.Raycaster();
@@ -178,6 +181,10 @@ export class GameScene {
     this.hitPlaneGeo = new THREE.CylinderGeometry(1, 1, 1, 12, 1, false);
     this.hitPlaneGeo.translate(0, 0.5, 0); // 밑면이 원점 — scale.y 가 곧 높이
     this.hitPlaneMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+
+    this.buildable = new BuildableField(this.terrain);
+    this.stage.root.add(this.buildable.mesh);
+    this.refreshBuildable();
 
     this.projectilePool = new ObjectPool<ProjectileView>(
       () => {
@@ -550,6 +557,7 @@ export class GameScene {
         this.towerViews.set(slotId, view);
         this.addTowerHit(slotId, tower.x, tower.z);
         this.fitHitVolume(slotId);
+        this.refreshBuildable();
         this.particles.emit('upgrade_ray', tower.x, 10, tower.z, 0.6);
       }),
     );
@@ -572,6 +580,7 @@ export class GameScene {
         }
         this.pendingHitFit.delete(slotId);
         this.removeTowerHit(slotId);
+        this.refreshBuildable();
         if (this.selectedSlot === slotId) this.setSelected(null);
       }),
     );
@@ -764,6 +773,7 @@ export class GameScene {
     this.particles.update(dt);
     this.impacts.update(dt);
     this.blood.update(dt);
+    this.buildable.update(dt);
     this.flushHitFits();
   }
 
@@ -947,6 +957,23 @@ export class GameScene {
     this.previewRing?.setVisible(false);
   }
 
+  /**
+   * 지을 수 있는 자리 표시를 켜고 끈다.
+   * 예산을 다 쓰면 표시할 자리가 없으므로 켜 두어도 아무것도 그리지 않는다.
+   */
+  showBuildableSpots(on: boolean): void {
+    this.buildable.setVisible(on);
+  }
+
+  get buildableSpotsVisible(): boolean {
+    return this.buildable.visible;
+  }
+
+  /** 타워를 세우거나 팔면 지을 수 있는 자리가 달라진다. */
+  private refreshBuildable(): void {
+    this.buildable.setSpots(this.world.buildableSpots());
+  }
+
   private previewRing: RangeRing | null = null;
 
   private ensurePreviewRing(radius: number): void {
@@ -999,6 +1026,8 @@ export class GameScene {
 
     for (const v of this.towerViews.values()) v.dispose();
     this.towerViews.clear();
+
+    this.buildable.dispose();
 
     for (const p of this.towerHitList) p.removeFromParent();
     this.towerHitList.length = 0;
