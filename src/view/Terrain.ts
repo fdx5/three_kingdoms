@@ -4,12 +4,13 @@ import type { LevelEnvironment } from '../types/level';
 import type { Path } from '../sim/Path';
 import { Rng } from '../core/Rng';
 import type { AssetRegistry } from './AssetRegistry';
-import { settlementMeshes, type SettlementSite } from './BattlefieldProps';
+import { settlementMeshes, type SettlementSite, type HouseKind } from './BattlefieldProps';
 import { foliageGeometry, grassGeometry, rockGeometry, treeTrunkGeometry } from './NaturalGeometry';
 import { ChapterLandscape, chapterHeight, chapterSites } from './ChapterLandscape';
 import { scenerySurface } from './ScenerySurfaces';
 import { groundMaterialDetail, type GroundCover } from './GroundMaterial';
 import { battlefieldHeight, surroundingHeight } from './Landform';
+import { treeSpeciesMeshes, type TreeSite, type TreeSpecies } from './TreeSpecies';
 
 /**
  * 160×96 높이 격자와 연속된 외곽 능선으로 구성한 전장.
@@ -253,13 +254,42 @@ export class Terrain {
 
     const sites: SettlementSite[] = [];
     const landmarks = chapterSites(this.env.landscape);
-    for (let attempt = 0; attempt < 180 && sites.length < Math.round((this.env.landscape ? 0 : 8) * preset.decorScale); attempt++) {
+    const houseKinds: HouseKind[] = this.env.landscape === 'loess' ? ['storehouse', 'granary', 'thatch', 'tile']
+      : this.env.landscape === 'lakeside' ? ['thatch', 'pavilion', 'tile', 'granary']
+      : this.env.landscape === 'floodplain' ? ['granary', 'thatch', 'storehouse', 'pavilion']
+      : this.env.biome === 'highlands' ? ['tile', 'storehouse', 'pavilion', 'thatch']
+      : ['thatch', 'tile', 'granary', 'pavilion', 'storehouse'];
+    for (let attempt = 0; attempt < 700 && sites.length < Math.round((this.env.landscape ? 5 : 9) * preset.decorScale); attempt++) {
       const x = rng.range(65, BALANCE.mapWidth - 65), z = rng.range(50, BALANCE.mapDepth - 50);
-      if (this.heightAt(x, z) < 0 || distanceToPath(this.path, x, z) < 120 || this.reserved.some(p => Math.hypot(x - p.x, z - p.z) < 100)
-        || sites.some(p => Math.hypot(x - p.x, z - p.z) < 100)) continue;
-      sites.push({ x, y: this.heightAt(x, z), z, angle: rng.range(-0.5, 0.5) });
+      if (this.heightAt(x, z) < 0 || distanceToPath(this.path, x, z) < 90 || this.reserved.some(p => Math.hypot(x - p.x, z - p.z) < 92)
+        || sites.some(p => Math.hypot(x - p.x, z - p.z) < 100)
+        || landmarks.some(([lx, lz]) => Math.hypot(x - lx, z - lz) < 90)) continue;
+      const heights = [-34, 0, 34].flatMap(dx => [-30, 0, 30].map(dz => this.heightAt(x + dx, z + dz)));
+      if (Math.min(...heights) < 0 || Math.max(...heights) - Math.min(...heights) > 6) continue;
+      sites.push({ x, y: Math.max(...heights), z, angle: rng.range(-0.35, 0.35), kind: houseKinds[sites.length % houseKinds.length] });
     }
-    const architecture = settlementMeshes(sites);
+    // Satellite hamlets sit beside the battlefield, with open frontage and small yards.
+    // Keep them away from the foreground camera and the entry/castle approaches.
+    const outerHouseCount = Math.max(4, Math.round(10 * preset.decorScale));
+    for (let i = 0; i < outerHouseCount; i++) {
+      const cluster = i % 3, row = Math.floor(i / 3);
+      const cx = cluster === 0 ? 290 + row * 75 : cluster === 1 ? 880 + row * 70 : 1300 + row % 2 * 65;
+      const cz = cluster === 0 ? -100 - row % 2 * 60 : cluster === 1 ? -95 - row % 2 * 70 : 100 + row * 80;
+      // Search for a gentle shoulder instead of putting houses on tall concrete-looking stilts.
+      search: for (const dx of [0, 60, -60, 120, -120, 180, -180]) for (const dz of [0, -60, 60, -120, 120]) {
+        const x = cx + dx, z = cz + dz;
+        if (x > -60 && x < BALANCE.mapWidth + 60 && z > -60 && z < BALANCE.mapDepth + 60) continue;
+        if (sites.some(site => Math.hypot(x - site.x, z - site.z) < 78)) continue;
+        const heights = [-38, 0, 38].flatMap(ox => [-35, 0, 35].map(oz =>
+          this.outerHeight(x + ox - BALANCE.mapWidth / 2, z + oz - BALANCE.mapDepth / 2)));
+        const y = Math.max(...heights), variation = y - Math.min(...heights);
+        if (variation > 6) continue;
+        sites.push({ x, y, z, foundationDepth: variation + 4,
+          angle: cluster === 2 ? -.65 : .2, kind: houseKinds[i % houseKinds.length] });
+        break search;
+      }
+    }
+    const architecture = settlementMeshes(sites, this.assets);
     const trees = Math.round((this.env.landscape === 'loess' ? 34 : this.env.landscape === 'floodplain' ? 52 : this.env.landscape === 'lakeside' ? 100 : 190) * preset.decorScale);
     const rocks = Math.round(120 * preset.decorScale);
     const flags = Math.round(22 * preset.decorScale);
@@ -318,7 +348,8 @@ export class Terrain {
 
     let placed = 0;
     let guard = 0;
-    while (placed < trees && guard++ < trees * 40) {
+    const speciesSites: TreeSite[] = [];
+    while (placed + speciesSites.length < trees && guard++ < trees * 40) {
       const x = rng.range(8, BALANCE.mapWidth - 8);
       const z = rng.range(8, BALANCE.mapDepth - 8);
       // 경로/슬롯 위에는 두지 않는다
@@ -328,6 +359,12 @@ export class Terrain {
       if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 76) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
       const y = this.heightAt(x, z);
       const s = rng.range(0.7, 1.5);
+      if ((placed + speciesSites.length) % 3 === 0) {
+        const choices: TreeSpecies[] = this.env.biome === 'highlands' || this.env.biome === 'drylands' ? ['pine']
+          : this.env.landscape ? ['willow', 'bamboo'] : ['pine', 'bamboo', 'willow'];
+        speciesSites.push({ x, y, z, scale: s, angle: rng.range(0, Math.PI * 2), species: choices[speciesSites.length % choices.length] });
+        continue;
+      }
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
       scl.set(s, s, s);
       pos.set(x, y + 8 * s, z);
@@ -478,7 +515,8 @@ export class Terrain {
     bannerIM.instanceMatrix.needsUpdate = true;
     grassIM.instanceMatrix.needsUpdate = true;
 
-    this.decor.push(...architecture, trunkIM, crownIM, crownSmallIM, rockIM, poleIM, bannerIM, grassIM, outerTrunks, outerCrowns);
+    this.decor.push(...architecture, ...treeSpeciesMeshes(speciesSites, this.surfaces.bark, preset.postFx),
+      trunkIM, crownIM, crownSmallIM, rockIM, poleIM, bannerIM, grassIM, outerTrunks, outerCrowns);
     for (const d of this.decor) this.group.add(d);
     if (this.env.landscape) {
       this.chapter = new ChapterLandscape(this.env.landscape, this,

@@ -21,6 +21,10 @@ try {
       g.applyPreset('high');
       g.render(1, 1 / 60);
       const { terrain } = g.scene;
+      const houseKinds = [...new Set(terrain.group.children.map(o => o.userData.houseKind).filter(Boolean))];
+      const treeSpecies = [...new Set(terrain.group.children.map(o => o.userData.treeSpecies).filter(Boolean))];
+      const thatchMaterials = terrain.group.children.filter(o => o.name === 'settlement-thatch-3' || o.name === 'settlement-granary-3');
+      const thatchLoaded = thatchMaterials.length > 0 && thatchMaterials.every(o => o.material.map && o.material.normalMap);
       const point = { x: 0, z: 0 };
       let roadDeviation = 0;
       for (let d = 0; d <= g.world.path.totalLength; d += 10) {
@@ -43,6 +47,7 @@ try {
       return {
         roadDeviation, slotDeviation, buildResult, towers: g.world.towers.size,
         minimum, maximum, raisedFraction: raised / samples,
+        houseKinds, treeSpecies, thatchLoaded,
         groundMap: !!terrain.material.map,
         normalMap: !!terrain.material.normalMap,
         roughnessMap: !!terrain.material.roughnessMap,
@@ -56,6 +61,9 @@ try {
     assert.equal(result.buildResult, 'ok');
     assert.ok(result.maximum > 18 && result.maximum < 85, 'terrain relief is too flat or too tall');
     assert.ok(result.raisedFraction > .06, 'raised contours occupy too little of the battlefield');
+    assert.ok(result.houseKinds.length >= 3, 'not enough settlement variety');
+    assert.ok(result.treeSpecies.length >= 1, 'specialized trees are missing');
+    assert.equal(result.thatchLoaded, true, 'the external thatch material did not load');
     assert.ok(result.groundMap && result.normalMap && result.roughnessMap && result.detail);
     await page.screenshot({ path: `artifacts/surfaces-${level}-high.png` });
     await page.evaluate(() => { window.game.scene.stage.setZoom(.72); window.game.render(1, 1 / 60); });

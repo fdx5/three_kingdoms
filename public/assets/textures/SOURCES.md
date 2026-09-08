@@ -11,6 +11,14 @@ map is used: texture relief must not raise terrain or obstruct gameplay.
 
 License: https://polyhaven.com/license
 
+## Settlement roofs
+
+- `thatch_roof_angled_*.webp`: [Thatch Roof Angled](https://polyhaven.com/a/thatch_roof_angled), photography by Dimitrios Savva, processing by Rob Tuytel. CC0.
+
+Downloaded on 2026-09-08. `scripts/settlement-textures.mjs` converts the 1K
+diffuse and OpenGL normal maps to 1024×1024 WebP (quality 88 and 95).
+Used on thatched homes and granaries; no displacement map is used.
+
 ## Ground surface upgrade
 
 - `forest_ground_04_surface_*`: https://polyhaven.com/a/forest_ground_04 — Rob Tuytel, minor adjustment by Rico Cilliers.
