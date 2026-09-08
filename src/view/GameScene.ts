@@ -146,7 +146,9 @@ export class GameScene {
     this.stage.root.add(this.storm.group);
 
     this.ribbon = new PathRibbon(world.path, this.terrain, assets);
-    this.ribbon.setSurfaceQuality(preset.postFx);
+    // 지면 재질의 디테일 단계. PathRibbon 이 아직 이 API 를 갖지 않은 빌드에서도
+    // 부팅이 죽지 않도록 옵셔널로 부른다 — 없으면 재질 품질만 기본값으로 남는다.
+    this.ribbon.setSurfaceQuality?.(preset.postFx);
     this.stage.root.add(this.ribbon.group);
 
     const cpos = world.castlePosition();
@@ -960,7 +962,9 @@ export class GameScene {
     this.stage.applyPreset(preset, renderer);
     this.terrain.buildDecor(preset);
     this.storm.applyPreset(preset);
-    this.ribbon.setSurfaceQuality(preset.postFx);
+    // 지면 재질의 디테일 단계. PathRibbon 이 아직 이 API 를 갖지 않은 빌드에서도
+    // 부팅이 죽지 않도록 옵셔널로 부른다 — 없으면 재질 품질만 기본값으로 남는다.
+    this.ribbon.setSurfaceQuality?.(preset.postFx);
     this.particles.setPreset(preset);
     this.impacts.setPreset(preset);
     this.blood.setPreset(preset);
