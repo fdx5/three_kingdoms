@@ -84,8 +84,8 @@ describe('Terrain', () => {
       }
     }
     // Hills must read as actual contours, with a bounded height above the road.
-    expect(maxH).toBeGreaterThan(45);
-    expect(maxH).toBeLessThanOrEqual(80);
+    expect(maxH).toBeGreaterThan(90);
+    expect(maxH).toBeLessThanOrEqual(160);
     terrain.dispose();
   });
 

@@ -59,8 +59,8 @@ try {
     assert.ok(result.slotDeviation < .1, JSON.stringify(result));
     assert.equal(result.towers, 1);
     assert.equal(result.buildResult, 'ok');
-    const previousPeak = [41, 74, 42, 36, 32, 61][level - 1];
-    assert.ok(result.maximum > previousPeak * 1.4 && result.maximum < 125, 'terrain relief must visibly exceed the previous chapter peak');
+    const previousPeak = [67, 111, 69, 61, 56, 92][level - 1];
+    assert.ok(result.maximum > previousPeak * 1.85 && result.maximum < previousPeak * 2.15, 'terrain relief must be approximately twice the previous chapter peak');
     assert.ok(result.raisedFraction > .06, 'raised contours occupy too little of the battlefield');
     assert.ok(result.houseKinds.length >= 3, 'not enough settlement variety');
     assert.ok(result.treeSpecies.length >= 1, 'specialized trees are missing');

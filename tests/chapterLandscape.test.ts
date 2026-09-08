@@ -25,11 +25,11 @@ describe('Chapter landscapes', () => {
         if (z < 700) slope = Math.max(slope, Math.abs(terrain.heightAt(x, z + 10) - height) / 10);
       }
       // Every chapter must visibly exceed its previous peak, including the wet maps.
-      const previousPeak = [41, 74, 42, 36, 32, 61][Number(level.id.slice(-2)) - 1];
-      expect(max).toBeGreaterThan(previousPeak * 1.4);
-      expect(max).toBeLessThan(125);
+      const previousPeak = [67, 111, 69, 61, 56, 92][Number(level.id.slice(-2)) - 1];
+      expect(max).toBeGreaterThan(previousPeak * 1.85);
+      expect(max).toBeLessThan(previousPeak * 2.15);
       expect(raised / samples).toBeGreaterThan(.06);
-      expect(slope).toBeLessThan(2);
+      expect(slope).toBeLessThan(4);
       if (level.environment.landscape === 'lakeside' || level.environment.landscape === 'floodplain') {
         expect(min).toBeLessThan(-5);
       }

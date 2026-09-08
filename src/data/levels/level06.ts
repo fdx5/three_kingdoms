@@ -221,7 +221,7 @@ export const LEVEL_06: LevelDef = {
     highColor: '#a09363',
     fogColor: '#d3c1a8',
     terrainTexture: 'ground_dry',
-    terrainRelief: 1.55,
+    terrainRelief: 3.1,
     biome: 'drylands',
     bgmYoutubeId: '6Keux8E6GVw',
   },

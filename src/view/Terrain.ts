@@ -85,6 +85,8 @@ export class Terrain {
     // 경로에서 이 거리 안쪽은 완전히 평탄, 바깥으로 부드럽게 올라간다
     const flatRadius = 44;
     const blendRadius = 108;
+    // The open dryland's foreground hill needs a wider approach to keep its rear slot visible.
+    const slotBlendRadius = env.biome === 'drylands' && !env.landscape ? 200 : 95;
 
     for (let i = 0; i < pos.count; i++) {
       // 지오메트리는 맵 중앙 기준. 월드 좌표로 옮긴다.
@@ -111,7 +113,7 @@ export class Terrain {
       }
       // Keep building foundations level while the surrounding banks rise.
       const slotDistance = reserved.reduce((best, p) => Math.min(best, Math.hypot(wx - p.x, wz - p.z)), Infinity);
-      h *= THREE.MathUtils.smoothstep(slotDistance, 48, 95);
+      h *= THREE.MathUtils.smoothstep(slotDistance, 48, slotBlendRadius);
 
       pos.setY(i, h);
       this.heights[i] = h;
@@ -265,8 +267,10 @@ export class Terrain {
         || sites.some(p => Math.hypot(x - p.x, z - p.z) < 100)
         || landmarks.some(([lx, lz]) => Math.hypot(x - lx, z - lz) < 90)) continue;
       const heights = [-34, 0, 34].flatMap(dx => [-30, 0, 30].map(dz => this.heightAt(x + dx, z + dz)));
-      if (Math.min(...heights) < 0 || Math.max(...heights) - Math.min(...heights) > 6) continue;
-      sites.push({ x, y: Math.max(...heights), z, angle: rng.range(-0.35, 0.35), kind: houseKinds[sites.length % houseKinds.length] });
+      const variation = Math.max(...heights) - Math.min(...heights);
+      if (Math.min(...heights) < 0 || variation > 12) continue;
+      sites.push({ x, y: Math.max(...heights), z, foundationDepth: variation + 4,
+        angle: rng.range(-0.35, 0.35), kind: houseKinds[sites.length % houseKinds.length] });
     }
     // Satellite hamlets sit beside the battlefield, with open frontage and small yards.
     // Keep them away from the foreground camera and the entry/castle approaches.
@@ -283,7 +287,7 @@ export class Terrain {
         const heights = [-38, 0, 38].flatMap(ox => [-35, 0, 35].map(oz =>
           this.outerHeight(x + ox - BALANCE.mapWidth / 2, z + oz - BALANCE.mapDepth / 2)));
         const y = Math.max(...heights), variation = y - Math.min(...heights);
-        if (variation > 6) continue;
+        if (variation > 12) continue;
         sites.push({ x, y, z, foundationDepth: variation + 4,
           angle: cluster === 2 ? -.65 : .2, kind: houseKinds[sites.length % houseKinds.length] });
         break search;
