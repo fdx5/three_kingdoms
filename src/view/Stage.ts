@@ -56,7 +56,7 @@ export class Stage {
   constructor(env: LevelEnvironment) {
     this.scene.background = new THREE.Color(env.skyColor);
     // 안개는 원경 정리용으로 약하게
-    this.scene.fog = new THREE.Fog(env.fogColor, 1800, 4200);
+    this.scene.fog = new THREE.Fog(env.fogColor, 1550, 3700);
     this.scene.add(this.root);
 
     const skyGeo = new THREE.SphereGeometry(3600, 32, 16);
@@ -81,11 +81,11 @@ export class Stage {
       skyMat.needsUpdate = true;
     });
 
-    this.hemi = new THREE.HemisphereLight(new THREE.Color(env.skyColor), new THREE.Color(env.groundColor), 1.5);
+    this.hemi = new THREE.HemisphereLight(new THREE.Color(env.skyColor), new THREE.Color(env.groundColor), 1.05);
     this.scene.add(this.hemi);
 
     this.sun = new THREE.DirectionalLight(0xffe4bd, 2.75);
-    this.sun.position.set(-500, 900, 400);
+    this.sun.position.set(-620, 740, 250);
     if (env.landscape === 'floodplain') { this.sun.color.set(0xd8e7f0); this.sun.intensity = 2.1; }
     if (env.landscape === 'lakeside') { this.sun.color.set(0xffebc8); this.sun.intensity = 2.55; }
     if (env.landscape === 'loess') { this.sun.color.set(0xffd09b); this.sun.position.set(-650, 650, 180); }
@@ -96,7 +96,7 @@ export class Stage {
     // swim and also overwrote the chapter-specific sunset direction every frame.
     this.sun.position.add(this.target);
 
-    this.fill = new THREE.DirectionalLight(new THREE.Color(env.skyColor).lerp(new THREE.Color(0x9dc9ff), 0.35), 0.48);
+    this.fill = new THREE.DirectionalLight(new THREE.Color(env.skyColor).lerp(new THREE.Color(0x9dc9ff), 0.35), 0.38);
     this.fill.position.set(700, 420, -600);
     this.scene.add(this.fill);
 

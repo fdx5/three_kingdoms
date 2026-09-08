@@ -9,9 +9,8 @@ import { foliageGeometry, grassGeometry, rockGeometry, treeTrunkGeometry } from 
 import { ChapterLandscape, chapterHeight, chapterSites } from './ChapterLandscape';
 
 /**
- * "평면이지만 3D처럼" 보이는 지형.
- * 1200x700 평면을 48x28로 세분화하고 정점 y에 낮은 진폭(0~12u)의 값 노이즈를 준다.
- * 경로 주변은 평탄하게 마스킹한다 — 길이 울퉁불퉁하면 리본이 뜬다.
+ * 160×96 높이 격자와 연속된 외곽 능선으로 구성한 전장.
+ * 경로와 건설 기반은 평탄하게 유지하고, 경사면의 암석층과 음영은 생성 시 굽는다.
  */
 export class Terrain {
   readonly group = new THREE.Group();
@@ -21,7 +20,6 @@ export class Terrain {
   private decor: THREE.InstancedMesh[] = [];
   private decorKey = '';
   private skirt: THREE.Mesh | null = null;
-  private ridges: THREE.Mesh[] = [];
   private ownedTextures: THREE.Texture[] = [];
   private chapter: ChapterLandscape | null = null;
   get landscape(): LevelEnvironment['landscape'] { return this.env.landscape; }
@@ -77,7 +75,7 @@ export class Terrain {
     const high = new THREE.Color(env.highColor).lerp(new THREE.Color(0xffffff), 0.68);
     const tmp = new THREE.Color();
 
-    const maxAmp = assets ? 12 * (env.terrainRelief ?? 1) : 5;
+    const maxAmp = 23 * (env.terrainRelief ?? 1);
     // 경로에서 이 거리 안쪽은 완전히 평탄, 바깥으로 부드럽게 올라간다
     const flatRadius = 52;
     const blendRadius = 130;
@@ -110,6 +108,9 @@ export class Terrain {
         const clearance = Math.min(dist, ...reserved.map(p => Math.hypot(wx - p.x, wz - p.z)));
         h = chapterHeight(env.landscape, wx, wz, h, clearance);
       }
+      // Keep building foundations level while the surrounding banks rise.
+      const slotDistance = reserved.reduce((best, p) => Math.min(best, Math.hypot(wx - p.x, wz - p.z)), Infinity);
+      h *= THREE.MathUtils.smoothstep(slotDistance, 48, 105);
 
       pos.setY(i, h);
       this.heights[i] = h;
@@ -130,6 +131,7 @@ export class Terrain {
 
     this.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     this.geometry.computeVertexNormals();
+    shadeRelief(this.geometry, env);
 
     const texId = env.terrainTexture;
     const albedo = assets?.getTexture(texId)?.clone() ?? null;
@@ -159,10 +161,6 @@ export class Terrain {
     this.group.add(this.mesh);
 
     this.buildSkirt();
-    this.buildApron();
-    // Distant relief now comes from the photographic 360 panorama. The old
-    // triangle-strip ridges visibly read as low-poly pyramids and are omitted.
-    void this.buildRidges;
   }
 
   /**
@@ -171,55 +169,8 @@ export class Terrain {
    * "허공에 뜬 판때기" 처럼 읽힌다. 산맥 실루엣까지 땅이 이어져야 한다.
    */
   private buildSkirt(): void {
-    const outerW = BALANCE.mapWidth * 3.4;
-    const outerD = BALANCE.mapDepth * 3.8;
-    const geo = new THREE.PlaneGeometry(outerW, outerD, 192, 128);
-    geo.rotateX(-Math.PI / 2);
-    const positions = geo.getAttribute('position') as THREE.BufferAttribute;
-    const colors = new Float32Array(positions.count * 3);
-    // World-aligned UVs make the surrounding terrain meet the map without a scale seam.
-    const uv = geo.getAttribute('uv');
-    for (let i = 0; i < positions.count; i++) {
-      uv.setXY(i, positions.getX(i) / BALANCE.mapWidth + 0.5, 0.5 - positions.getZ(i) / BALANCE.mapDepth);
-    }
-    const low = new THREE.Color(this.env.lowColor).lerp(new THREE.Color(0xffffff), 0.72);
-    const high = new THREE.Color(this.env.highColor).lerp(new THREE.Color(0xffffff), 0.68);
-    const color = new THREE.Color();
-    for (let i = 0; i < positions.count; i++) {
-      const x = positions.getX(i);
-      const z = positions.getZ(i);
-      const nx = Math.max(0, (Math.abs(x) - BALANCE.mapWidth * 0.48) / (outerW * 0.32));
-      const nz = Math.max(0, (Math.abs(z) - BALANCE.mapDepth * 0.48) / (outerD * 0.32));
-      const edge = THREE.MathUtils.clamp(Math.max(nx, nz), 0, 1);
-      const relief = landformNoise(x, z);
-      const height = surroundingHeight(x, z);
-      positions.setY(i, height);
-      color.copy(low).lerp(high, THREE.MathUtils.clamp(height / 250, 0, 1));
-      color.multiplyScalar(0.78 + relief * 0.3 + edge * 0.05);
-      colors[i * 3] = color.r;
-      colors[i * 3 + 1] = color.g;
-      colors[i * 3 + 2] = color.b;
-    }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      map: this.material.map,
-      normalMap: this.material.normalMap,
-      normalScale: new THREE.Vector2(0.7, 0.7),
-      roughnessMap: this.material.roughnessMap,
-      roughness: 0.96,
-      metalness: 0,
-    });
-    this.skirt = new THREE.Mesh(geo, mat);
-    // 본 평면보다 살짝 아래에 둬서 z-fighting 없이 이어 붙인다.
-    this.skirt.position.set(BALANCE.mapWidth / 2, 0, BALANCE.mapDepth / 2);
-    this.skirt.receiveShadow = true;
-    this.group.add(this.skirt);
-  }
-
-  /** 맵 경계 밖 저폴리 산맥 실루엣 — 배경 깊이감용 */
-  private buildApron(): void {
+    // Concentric rings share the exact battlefield boundary. A single continuous
+    // surface avoids overlapping apron/skirt triangles and visible rectangular seams.
     const border: number[] = [];
     const stride = this.segX + 1;
     for (let x = 0; x < this.segX; x++) border.push(x);
@@ -228,86 +179,62 @@ export class Terrain {
     for (let z = this.segZ; z > 0; z--) border.push(z * stride);
     const source = this.geometry.getAttribute('position');
     const sourceColor = this.geometry.getAttribute('color');
-    const positions: number[] = [], uv: number[] = [], colors: number[] = [], indices: number[] = [];
-    const rings = this.env.landscape ? 12 : 1;
+    const rings = 48;
+    const positions: number[] = [], colors: number[] = [], uv: number[] = [], indices: number[] = [];
+    const low = new THREE.Color(this.env.lowColor).lerp(new THREE.Color(0xffffff), .72);
+    const high = new THREE.Color(this.env.highColor).lerp(new THREE.Color(0xffffff), .68);
+    const color = new THREE.Color();
     border.forEach((vertex, i) => {
       const x = source.getX(vertex), z = source.getZ(vertex);
-      const reach = this.env.landscape ? 330 + 70 * Math.sin(x * .008 + z * .006) : 100;
       for (let ring = 0; ring <= rings; ring++) {
-        const t = ring / rings;
-        const px = x * (1 + reach * t / BALANCE.mapWidth), pz = z * (1 + reach * t / BALANCE.mapDepth);
-        const outer = this.env.landscape ? surroundingHeight(px, pz) + .08 : -4;
-        const y = THREE.MathUtils.lerp(source.getY(vertex) - .02, outer, t * t * (3 - 2 * t));
+        // More vertices at the playable edge, progressively coarser in the distance.
+        const t = Math.pow(ring / rings, 1.35);
+        const px = x * (1 + 2.4 * t), pz = z * (1 + 2.8 * t);
+        const blend = THREE.MathUtils.smoothstep(Math.hypot(px - x, pz - z), 0, 210);
+        const y = THREE.MathUtils.lerp(source.getY(vertex), surroundingHeight(px, pz), blend);
         positions.push(px, y, pz);
-        uv.push(px / BALANCE.mapWidth + 0.5, 0.5 - pz / BALANCE.mapDepth);
-        colors.push(sourceColor.getX(vertex), sourceColor.getY(vertex), sourceColor.getZ(vertex));
-      }
-      for (let ring = 0; ring < rings; ring++) {
-        const a = i * (rings + 1) + ring, b = ((i + 1) % border.length) * (rings + 1) + ring;
-        indices.push(a, b, a + 1, b, b + 1, a + 1);
+        uv.push(px / BALANCE.mapWidth + .5, .5 - pz / BALANCE.mapDepth);
+        color.copy(low).lerp(high, THREE.MathUtils.clamp(y / 250, 0, 1));
+        color.multiplyScalar(.78 + landformNoise(px, pz) * .3);
+        colors.push(color.r, color.g, color.b);
+        if (ring < rings) {
+          const a = i * (rings + 1) + ring;
+          const b = ((i + 1) % border.length) * (rings + 1) + ring;
+          indices.push(a, b, a + 1, b, b + 1, a + 1);
+        }
       }
     });
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(indices); geo.computeVertexNormals();
-    const material = this.material.clone();
-    material.side = THREE.DoubleSide;
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.position.copy(this.mesh.position);
-    mesh.receiveShadow = true;
-    this.ridges.push(mesh);
-    this.group.add(mesh);
-  }
-
-  private buildRidges(rng: Rng): void {
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(this.env.groundColor).multiplyScalar(0.62),
-      roughness: 1,
-      metalness: 0,
-      flatShading: true,
-      fog: true,
-    });
-
-    const makeRidge = (cx: number, cz: number, len: number, alongX: boolean, heightScale = 1) => {
-      const count = 28;
-      const geo = new THREE.BufferGeometry();
-      const verts: number[] = [];
-      for (let i = 0; i < count; i++) {
-        const t0 = (i / count - 0.5) * len;
-        const t1 = ((i + 1) / count - 0.5) * len;
-        const wave = Math.sin(i * 0.71) * 35 + Math.sin(i * 1.93) * 18;
-        const h = (105 + rng.next() * 175 + wave) * heightScale;
-        const mid = (t0 + t1) / 2;
-        if (alongX) {
-          verts.push(cx + t0, 0, cz, cx + t1, 0, cz, cx + mid, h, cz);
-        } else {
-          verts.push(cx, 0, cz + t0, cx, 0, cz + t1, cx, h, cz + mid);
-        }
+    shadeRelief(geo, this.env);
+    // Blend the exact edge colour into the mineral palette of the foothills.
+    const shaded = geo.getAttribute('color');
+    border.forEach((vertex, i) => {
+      for (let ring = 0; ring < 8; ring++) {
+        const index = i * (rings + 1) + ring;
+        color.fromBufferAttribute(sourceColor, vertex).lerp(new THREE.Color().fromBufferAttribute(shaded, index), ring / 8);
+        shaded.setXYZ(index, color.r, color.g, color.b);
       }
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-      geo.computeVertexNormals();
-      const m = new THREE.Mesh(geo, mat);
-      m.frustumCulled = false;
-      this.ridges.push(m);
-      this.group.add(m);
-    };
-
-    const w = BALANCE.mapWidth;
-    const d = BALANCE.mapDepth;
-    makeRidge(w / 2, -230, w * 1.8, true, 1.0);
-    makeRidge(w / 2, -470, w * 2.35, true, 1.55);
-    makeRidge(w / 2, d + 270, w * 1.8, true, 1.05);
-    makeRidge(w / 2, d + 540, w * 2.4, true, 1.6);
-    makeRidge(-300, d / 2, d * 2.1, false, 1.1);
-    makeRidge(w + 320, d / 2, d * 2.1, false, 1.1);
+    });
+    this.skirt = new THREE.Mesh(geo, this.material.clone());
+    this.skirt.position.copy(this.mesh.position);
+    this.skirt.receiveShadow = true;
+    this.group.add(this.skirt);
   }
 
-  /**
-   * 장식 InstancedMesh — 나무/바위. 경로에서 일정 거리 밖에만 배치한다.
-   * 개수는 성능 프리셋에 따라 조절한다.
-   */
+  /** Same radial blend as the skirt, so scenery follows the new transition banks. */
+  private outerHeight(x: number, z: number): number {
+    const t = Math.max(0, (Math.abs(x) / (BALANCE.mapWidth / 2) - 1) / 2.4,
+      (Math.abs(z) / (BALANCE.mapDepth / 2) - 1) / 2.8);
+    const bx = x / (1 + 2.4 * t), bz = z / (1 + 2.8 * t);
+    const blend = THREE.MathUtils.smoothstep(Math.hypot(x - bx, z - bz), 0, 210);
+    return THREE.MathUtils.lerp(this.heightAt(bx + BALANCE.mapWidth / 2, bz + BALANCE.mapDepth / 2), surroundingHeight(x, z), blend);
+  }
+
+  /** Rebuild batched scenery only when the quality preset or seed changes. */
   buildDecor(preset: PerformancePreset, seed = 20240): void {
     const key = `${preset.decorScale}:${preset.shadows}:${seed}`;
     if (key === this.decorKey) return;
@@ -330,8 +257,8 @@ export class Terrain {
     const grasses = Math.round((this.env.landscape ? 900 : 1700) * preset.decorScale);
 
     const trunkGeo = treeTrunkGeometry();
-    const crownGeo = foliageGeometry(13, 19);
-    const crownSmallGeo = foliageGeometry(9, 31);
+    const crownGeo = foliageGeometry(13, 19, preset.postFx ? 180 : 100);
+    const crownSmallGeo = foliageGeometry(9, 31, preset.postFx ? 120 : 64);
     const rockGeo = rockGeometry();
     const poleGeo = new THREE.CylinderGeometry(1, 1, 52, 4);
     const bannerGeo = new THREE.PlaneGeometry(16, 26, 12, 8);
@@ -418,10 +345,14 @@ export class Terrain {
       if (distanceToPath(this.path, x, z) < 46) continue;
       if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 49) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
       const y = this.heightAt(x, z);
-      const s = rng.range(0.5, 1.4);
+      const bank = y > 12 && distanceToPath(this.path, x, z) > 85
+        && this.reserved.every(slot => Math.hypot(x - slot.x, z - slot.z) > 85);
+      // Occasional larger embedded rocks reveal the scale of the banks without
+      // adding meshes or filling the road with visual obstacles.
+      const s = bank && rplaced % 4 === 0 ? rng.range(2.2, 3.8) : rng.range(0.5, 1.4);
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
       scl.set(s, s * 0.65, s);
-      pos.set(x, y + 2, z);
+      pos.set(x, y + 1, z);
       m.compose(pos, q, scl);
       rockIM.setMatrixAt(rplaced, m);
       rplaced++;
@@ -477,7 +408,7 @@ export class Terrain {
     // Low-cost silhouette forest on the outer terrain keeps every orbit angle populated.
     const outerTrees = Math.round((this.env.landscape === 'loess' ? 140 : this.env.landscape === 'floodplain' ? 240 : 680) * preset.decorScale);
     const outerTrunks = new THREE.InstancedMesh(trunkGeo.clone(), trunkMat.clone(), outerTrees);
-    const outerCrowns = new THREE.InstancedMesh(crownGeo.clone(), crownMat.clone(), outerTrees);
+    const outerCrowns = new THREE.InstancedMesh(foliageGeometry(14, 53, preset.postFx ? 128 : 64), crownMat.clone(), outerTrees);
     let oplaced = 0;
     guard = 0;
     while (oplaced < outerTrees && guard++ < outerTrees * 30) {
@@ -487,7 +418,7 @@ export class Terrain {
       const lx = x - BALANCE.mapWidth / 2;
       const lz = z - BALANCE.mapDepth / 2;
       // Shared relief function prevents trees floating above the surrounding hills.
-      const y = surroundingHeight(lx, lz) - 1.8;
+      const y = this.outerHeight(lx, lz) - 1.8;
       if (landformNoise(lx * 1.7, lz * 1.7) < 0.38) continue;
       const s = rng.range(1.2, 3.1);
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
@@ -499,14 +430,16 @@ export class Terrain {
     }
     outerTrunks.count = outerCrowns.count = oplaced;
     outerTrunks.instanceMatrix.needsUpdate = outerCrowns.instanceMatrix.needsUpdate = true;
-    outerTrunks.castShadow = outerCrowns.castShadow = preset.shadows;
+    // Distant forest receives light but does not fill the battlefield shadow atlas.
+    outerTrunks.castShadow = outerCrowns.castShadow = false;
+    outerCrowns.receiveShadow = true;
 
     const outcrops = new THREE.InstancedMesh(rockGeo.clone(), rockMat.clone(), Math.round(160 * preset.decorScale));
     for (let i = 0; i < outcrops.count; i++) {
       const angle = rng.range(0, Math.PI * 2);
       const x = BALANCE.mapWidth / 2 + Math.cos(angle) * rng.range(820, 1450);
       const z = BALANCE.mapDepth / 2 + Math.sin(angle) * rng.range(610, 1020);
-      const y = surroundingHeight(x - BALANCE.mapWidth / 2, z - BALANCE.mapDepth / 2);
+      const y = this.outerHeight(x - BALANCE.mapWidth / 2, z - BALANCE.mapDepth / 2);
       const size = rng.range(2.5, 8);
       pos.set(x, y - 3, z);
       q.setFromAxisAngle(_up, angle);
@@ -576,12 +509,6 @@ export class Terrain {
       this.group.remove(this.skirt);
       this.skirt = null;
     }
-    for (const r of this.ridges) {
-      r.geometry.dispose();
-      this.group.remove(r);
-    }
-    (this.ridges[0]?.material as THREE.Material)?.dispose();
-    this.ridges.length = 0;
     this.geometry.dispose();
     this.material.dispose();
     this.ownedTextures.forEach(texture => texture.dispose());
@@ -620,6 +547,10 @@ export function distanceToPath(path: Path, x: number, z: number): number {
   return best;
 }
 
+const MASSIFS = [[-530, -630, 240, 250, 210], [30, -790, 310, 320, 245],
+  [650, -590, 215, 220, 200], [-900, 30, 190, 200, 340],
+  [960, 110, 180, 230, 290], [-480, 830, 65, 320, 230], [550, 890, 80, 330, 260]];
+
 /** Continuous foothills with eroded ridges; x/z are relative to the map centre. */
 function surroundingHeight(x: number, z: number): number {
   const nx = Math.max(0, (Math.abs(x) - BALANCE.mapWidth * 0.48) / (BALANCE.mapWidth * 3.4 * 0.32));
@@ -628,6 +559,41 @@ function surroundingHeight(x: number, z: number): number {
   const broad = landformNoise(x, z);
   const erosion = landformNoise(x * 2.37 + 311, z * 2.11 - 179);
   const ridge = Math.pow(1 - Math.abs(broad * 2 - 1), 3);
-  return -4 + Math.pow(edge, 1.65) * (65 + broad * 135 + ridge * 145)
-    + (erosion - 0.5) * edge * 32;
+  const clearance = Math.hypot(Math.max(0, Math.abs(x) - BALANCE.mapWidth / 2), Math.max(0, Math.abs(z) - BALANCE.mapDepth / 2));
+  const foothill = THREE.MathUtils.smoothstep(clearance, 12, 200);
+  // Unequal overlapping massifs, deliberately taller behind the battlefield.
+  // The foreground stays low so troops remain visible from the default camera.
+  let massifs = 0;
+  for (const [cx, cz, height, rx, rz] of MASSIFS) {
+    massifs += height * Math.exp(-(((x - cx) / rx) ** 2) - ((z - cz) / rz) ** 2);
+  }
+  return -4 + foothill * massifs * (.78 + erosion * .44)
+    + Math.pow(edge, 1.65) * (90 + broad * 185 + ridge * 170)
+    + (erosion - .5) * foothill * 24;
+}
+
+/** Bake mineral strata and broad cavity shade once; no extra texture or render pass. */
+function shadeRelief(geometry: THREE.BufferGeometry, env: LevelEnvironment): void {
+  const positions = geometry.getAttribute('position');
+  const normals = geometry.getAttribute('normal');
+  const colors = geometry.getAttribute('color');
+  const color = new THREE.Color();
+  const rock = new THREE.Color(env.landscape === 'loess' ? 0x997351 : 0x738079);
+  const moss = new THREE.Color(env.biome === 'drylands' ? 0xb0a17a : 0x84956d).lerp(new THREE.Color(0xffffff), .58);
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i), z = positions.getZ(i), y = positions.getY(i);
+    const slope = 1 - Math.max(0, normals.getY(i));
+    color.fromBufferAttribute(colors, i);
+    color.multiply(moss);
+    color.lerp(rock, THREE.MathUtils.smoothstep(slope, .08, .48) * .72);
+    const strata = Math.sin(y * .26 + Math.sin(x * .012 + z * .009) * 1.8);
+    color.multiplyScalar(1 + strata * Math.min(.10, slope * .4));
+    // Shallow concavities retain depth even when real-time shadows are disabled.
+    const stride = geometry instanceof THREE.PlaneGeometry ? geometry.parameters.widthSegments + 1 : 0;
+    if (stride && i >= stride && i + stride < positions.count && i % stride > 0 && i % stride < stride - 1) {
+      const cavity = (positions.getY(i - 1) + positions.getY(i + 1) + positions.getY(i - stride) + positions.getY(i + stride)) * .25 - y;
+      color.multiplyScalar(1 - THREE.MathUtils.clamp(cavity * .055, 0, .20));
+    }
+    colors.setXYZ(i, color.r, color.g, color.b);
+  }
 }

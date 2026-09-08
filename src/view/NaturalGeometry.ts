@@ -3,15 +3,15 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng } from '../core/Rng';
 
 /** Solid folded leaves retain their silhouette and shadows at every camera angle. */
-export function foliageGeometry(radius: number, seed: number): THREE.BufferGeometry {
+export function foliageGeometry(radius: number, seed: number, leafCount = 260): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const vertices: number[] = [], colors: number[] = [];
   const color = new THREE.Color();
-  for (let i = 0; i < 260; i++) {
+  for (let i = 0; i < leafCount; i++) {
     const az = rng.range(0, Math.PI * 2), el = rng.range(-1, 1);
     const r = radius * Math.cbrt(rng.range(0.15, 1));
     const center = new THREE.Vector3(Math.cos(az) * Math.sqrt(1 - el * el) * r, el * r * 0.82, Math.sin(az) * Math.sqrt(1 - el * el) * r);
-    const length = rng.range(1.8, 3.5), width = length * 0.44;
+    const length = rng.range(1.8, 3.5) * Math.sqrt(260 / leafCount), width = length * 0.44;
     const rotation = new THREE.Euler(rng.range(-1, 1), az, rng.range(-0.7, 0.7));
     const points = [[-length, 0, 0], [0, 0.4, -width], [length, 0, 0], [0, 0.4, width], [0, 0.85, 0]];
     const transformed = points.map(p => new THREE.Vector3(...p as [number, number, number]).applyEuler(rotation).add(center));

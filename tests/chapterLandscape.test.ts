@@ -5,8 +5,26 @@ import { LEVEL_06 } from '../src/data/levels/level06';
 import { Path } from '../src/sim/Path';
 import { Terrain } from '../src/view/Terrain';
 import { BALANCE } from '../src/data/balance';
+import { LEVEL_01 } from '../src/data/levels/level01';
+import { LEVEL_02 } from '../src/data/levels/level02';
+import { LEVEL_03 } from '../src/data/levels/level03';
 
 describe('Chapter landscapes', () => {
+  for (const level of [LEVEL_01, LEVEL_02, LEVEL_03, LEVEL_04, LEVEL_05, LEVEL_06]) {
+    it(`${level.id}: elevated terrain preserves the road and full building footprint`, () => {
+      const path = new Path(level.path);
+      const terrain = new Terrain(path, level.environment, undefined, 1337, level.buildSlots);
+      const p = { x: 0, z: 0 };
+      for (let d = 0; d <= path.totalLength; d += 10) {
+        path.positionAt(d, p);
+        expect(Math.abs(terrain.heightAt(p.x, p.z))).toBeLessThan(.1);
+      }
+      for (const slot of level.buildSlots) for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+        expect(Math.abs(terrain.heightAt(slot.x + Math.cos(a) * 32, slot.z + Math.sin(a) * 32))).toBeLessThan(.1);
+      }
+      terrain.dispose();
+    });
+  }
   for (const level of [LEVEL_04, LEVEL_05, LEVEL_06]) {
     it(`${level.id}: keeps roads dry and flat, provides chapter scenery, releases it on preset rebuild`, () => {
       const path = new Path(level.path);
