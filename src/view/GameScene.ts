@@ -149,9 +149,13 @@ export class GameScene {
     this.stage.root.add(this.storm.group);
 
     this.ribbon = new PathRibbon(world.path, this.terrain, assets);
-    // 지면 재질의 디테일 단계. PathRibbon 이 아직 이 API 를 갖지 않은 빌드에서도
-    // 부팅이 죽지 않도록 옵셔널로 부른다 — 없으면 재질 품질만 기본값으로 남는다.
-    this.ribbon.setSurfaceQuality?.(preset.postFx);
+    // 지면 재질의 디테일 단계. PathRibbon 이 아직 이 API 를 갖지 않은 트리에서도
+    // 타입과 런타임 양쪽에서 안전하도록 캐스트 + 옵셔널로 부른다 —
+    // 없으면 재질 품질만 기본값으로 남고, 들어오면 그대로 동작한다.
+    // (이 한 줄이 미커밋 API 에 걸려 배포본이 부팅 중 죽은 적이 있다. npm run check:head)
+    (this.ribbon as { setSurfaceQuality?: (high: boolean) => void }).setSurfaceQuality?.(
+      preset.postFx,
+    );
     this.stage.root.add(this.ribbon.group);
 
     const cpos = world.castlePosition();
@@ -989,9 +993,13 @@ export class GameScene {
     this.stage.applyPreset(preset, renderer);
     this.terrain.buildDecor(preset);
     this.storm.applyPreset(preset);
-    // 지면 재질의 디테일 단계. PathRibbon 이 아직 이 API 를 갖지 않은 빌드에서도
-    // 부팅이 죽지 않도록 옵셔널로 부른다 — 없으면 재질 품질만 기본값으로 남는다.
-    this.ribbon.setSurfaceQuality?.(preset.postFx);
+    // 지면 재질의 디테일 단계. PathRibbon 이 아직 이 API 를 갖지 않은 트리에서도
+    // 타입과 런타임 양쪽에서 안전하도록 캐스트 + 옵셔널로 부른다 —
+    // 없으면 재질 품질만 기본값으로 남고, 들어오면 그대로 동작한다.
+    // (이 한 줄이 미커밋 API 에 걸려 배포본이 부팅 중 죽은 적이 있다. npm run check:head)
+    (this.ribbon as { setSurfaceQuality?: (high: boolean) => void }).setSurfaceQuality?.(
+      preset.postFx,
+    );
     this.particles.setPreset(preset);
     this.impacts.setPreset(preset);
     this.blood.setPreset(preset);

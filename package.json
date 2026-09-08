@@ -21,6 +21,7 @@
     "sim": "tsx scripts/sim.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "check:head": "node scripts/check-head.mjs",
     "smoke": "tsx scripts/smoke.ts",
     "share:art": "node scripts/share-art/make.mjs",
     "asset:optimize": "tsx scripts/optimize-model.ts",
