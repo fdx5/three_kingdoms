@@ -83,10 +83,9 @@ describe('Terrain', () => {
         maxH = Math.max(maxH, terrain.heightAt(x, z));
       }
     }
-    // The battlefield now has visible banks; the previous 12u ceiling described
-    // the old flat fallback. Keep the relief below a gameplay-obscuring cliff.
-    expect(maxH).toBeGreaterThan(40);
-    expect(maxH).toBeLessThanOrEqual(160);
+    // Ground relief stays below troop height; material detail supplies the depth.
+    expect(maxH).toBeGreaterThan(1);
+    expect(maxH).toBeLessThanOrEqual(16);
     terrain.dispose();
   });
 

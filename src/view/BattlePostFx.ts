@@ -3,11 +3,13 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ContactOcclusion } from './ContactOcclusion';
 
 /** HDR highlights only; terrain stays readable. Owned by the renderer, not a level. */
 export class BattlePostFx {
   private composer: EffectComposer;
   private scenePass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
+  private contact = new ContactOcclusion();
   private bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.24, 0.35, 1.25);
   private output = new OutputPass();
   private size = new THREE.Vector2();
@@ -20,6 +22,7 @@ export class BattlePostFx {
     this.composer = new EffectComposer(renderer, target);
     this.composer.setPixelRatio(1);
     this.composer.addPass(this.scenePass);
+    this.composer.addPass(this.contact);
     this.composer.addPass(this.bloom);
     this.composer.addPass(this.output);
   }
@@ -34,16 +37,21 @@ export class BattlePostFx {
       this.width = width;
       this.height = height;
       this.composer.setSize(width, height);
+      // Half-resolution contact shadows, capped independently of display DPR.
+      this.contact.setSize(Math.min(960, Math.round(width / 2)), Math.min(600, Math.round(height / 2)));
       // Bloom starts at quarter resolution, independent of the sharp scene image.
       this.bloom.setSize(Math.max(64, width / 2), Math.max(64, height / 2));
     }
     this.scenePass.scene = scene;
     this.scenePass.camera = camera;
+    this.contact.scene = scene;
+    this.contact.camera = camera;
     this.composer.render(dt);
   }
 
   dispose(): void {
     this.scenePass.dispose();
+    this.contact.dispose();
     this.bloom.dispose();
     // r180 does not dispose this threshold material in UnrealBloomPass.dispose().
     this.bloom.materialHighPassFilter.dispose();

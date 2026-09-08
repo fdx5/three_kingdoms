@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { roadSurface } from './RoadSurface';
+import { groundMaterialDetail } from './GroundMaterial';
 import type { Path } from '../sim/Path';
 import type { Terrain } from './Terrain';
 import type { AssetRegistry } from './AssetRegistry';
@@ -126,7 +127,7 @@ export class PathRibbon {
       depthWrite: false,
       map: tex,
       normalMap: normal,
-      normalScale: new THREE.Vector2(0.65, 0.65),
+      normalScale: new THREE.Vector2(.95, .95),
       roughnessMap: roughness,
       roughness: 0.94,
       metalness: 0,
@@ -139,7 +140,7 @@ export class PathRibbon {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     }
     for (const roadTex of this.ownedTextures) {
-      roadTex.anisotropy = 8;
+      roadTex.anisotropy = 16;
       roadTex.repeat.set(1, 1);
       roadTex.wrapS = roadTex.wrapT = THREE.RepeatWrapping;
       roadTex.needsUpdate = true;
@@ -153,6 +154,8 @@ export class PathRibbon {
 
     this.buildArrows(terrain);
   }
+
+  setSurfaceQuality(high: boolean): void { groundMaterialDetail(this.material, high); }
 
   private buildRoadDetails(terrain: Terrain): void {
     const stoneCount = Math.max(12, Math.floor(this.path.totalLength / 6));

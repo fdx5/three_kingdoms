@@ -35,9 +35,9 @@ export function chapterHeight(theme: Theme, x: number, z: number, base: number, 
   }
   const ridge = Math.exp(-Math.pow((x - 490) / 140, 2) - Math.pow((z - 170) / 190, 2))
     + Math.exp(-Math.pow((x - 1080) / 230, 2) - Math.pow((z - 140) / 200, 2));
-  const elevation = ridge * 80 + base * 1.15;
+  const elevation = ridge * 18 + base * .8;
   // Eroded stepped loess terraces, rounded at each ledge.
-  const terrace = Math.floor(elevation / 14) * 14 + THREE.MathUtils.smoothstep(elevation % 14, 4, 13) * 14;
+  const terrace = Math.floor(elevation / 6) * 6 + THREE.MathUtils.smoothstep(elevation % 6, 1, 5.5) * 6;
   return THREE.MathUtils.lerp(base, terrace, safe);
 }
 

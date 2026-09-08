@@ -11,13 +11,17 @@ export function foliageGeometry(radius: number, seed: number, leafCount = 260): 
     const az = rng.range(0, Math.PI * 2), el = rng.range(-1, 1);
     const r = radius * Math.cbrt(rng.range(0.15, 1));
     const center = new THREE.Vector3(Math.cos(az) * Math.sqrt(1 - el * el) * r, el * r * 0.82, Math.sin(az) * Math.sqrt(1 - el * el) * r);
-    const length = rng.range(1.8, 3.5) * Math.sqrt(260 / leafCount), width = length * 0.44;
+    const length = rng.range(1.8, 3.5) * Math.cbrt(260 / leafCount), width = length * 0.34;
     const rotation = new THREE.Euler(rng.range(-1, 1), az, rng.range(-0.7, 0.7));
-    const points = [[-length, 0, 0], [0, 0.4, -width], [length, 0, 0], [0, 0.4, width], [0, 0.85, 0]];
+    // Tapered six-sided leaves with a raised midrib catch light as curved surfaces.
+    const points = [[-length, 0, 0], [-length * .4, .15, -width], [length * .45, .25, -width * .8],
+      [length, 0, 0], [length * .45, .25, width * .8], [-length * .4, .15, width], [0, .5, 0]];
     const transformed = points.map(p => new THREE.Vector3(...p as [number, number, number]).applyEuler(rotation).add(center));
-    color.setHSL(rng.range(0.20, 0.27), rng.range(0.15, 0.34), rng.range(0.40, 0.69));
-    for (const index of [0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4]) {
-      vertices.push(...transformed[index].toArray()); colors.push(color.r, color.g, color.b);
+    color.setHSL(rng.range(0.20, 0.26), rng.range(0.12, 0.26), rng.range(0.58, 0.82));
+    const depthShade = .78 + .22 * (center.y / radius + 1) / 2;
+    for (const index of [0, 1, 6, 1, 2, 6, 2, 3, 6, 3, 4, 6, 4, 5, 6, 5, 0, 6]) {
+      const shade = depthShade * (index === 6 ? 1.08 : .96);
+      vertices.push(...transformed[index].toArray()); colors.push(color.r * shade, color.g * shade, color.b * shade);
     }
   }
   const geo = new THREE.BufferGeometry();
@@ -52,7 +56,16 @@ export function grassGeometry(): THREE.BufferGeometry {
 }
 
 export function treeTrunkGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [new THREE.CylinderGeometry(1.3, 3, 23, 9).translate(0, 3.5, 0)];
+  const trunk = new THREE.CylinderGeometry(1.1, 2.8, 23, 12, 6).translate(0, 3.5, 0);
+  const positions = trunk.getAttribute('position');
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i), y = positions.getY(i), z = positions.getZ(i);
+    const angle = Math.atan2(z, x), t = (y + 8) / 23;
+    const roots = 1 + Math.pow(1 - t, 3) * (.25 + .2 * Math.cos(angle * 5));
+    positions.setXYZ(i, x * roots + Math.sin(t * 2.4) * .8, y, z * roots + t * t * .7);
+  }
+  trunk.computeVertexNormals();
+  const parts: THREE.BufferGeometry[] = [trunk];
   for (let i = 0; i < 5; i++) {
     parts.push(new THREE.CylinderGeometry(0.25, 1, 13, 6).rotateZ(0.65 + i * 0.1).translate(-3.5, 13, 0).rotateY(i * 2.4));
   }
@@ -66,8 +79,11 @@ export function rockGeometry(): THREE.BufferGeometry {
   const p = geo.getAttribute('position');
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const distortion = 1 + Math.sin(x * 1.3 + z * 0.7) * 0.12 + Math.cos(y * 1.7 - x) * 0.09;
-    p.setXYZ(i, x * distortion, y * distortion, z * distortion);
+    const distortion = 1 + Math.sin(x * .65 + z * .4) * .13 + Math.cos(y * .8 - x * .35) * .10;
+    // Broad fracture planes, a weathered top and a buried base replace lumpy spheres.
+    const rx = x * distortion, rz = z * distortion;
+    const ry = Math.min(y * distortion, 4.2 + x * .17 - z * .12);
+    p.setXYZ(i, Math.min(rx, 5.1 - y * .13), Math.max(-4.5, ry), Math.max(rz, -5.2 + x * .12));
   }
   geo.computeVertexNormals();
   return geo;

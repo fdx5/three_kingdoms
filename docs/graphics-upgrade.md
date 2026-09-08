@@ -19,8 +19,9 @@
 [Three.js 공식 애드온](https://threejs.org/manual/en/post-processing.html)을 검토했다.
 이번에 필요한 효과는 Bloom과 최종 색 변환이므로 기존 Three.js 0.180에 포함된
 EffectComposer, UnrealBloomPass, OutputPass, RoomEnvironment를 사용했다.
-새 패키지·외부 CDN·추가 이미지 다운로드는 필요하지 않다. 무거운 SSAO/DOF는
-전장 가독성과 저사양 비용을 고려해 추가하지 않았다. 실험적 WebGPU 렌더러에는
+초기 Bloom 구성은 새 패키지·외부 CDN·추가 이미지 다운로드 없이 구현했다.
+이후 지면 개선에서 로컬 PBR 이미지와 고품질 전용 GTAO를 추가했다(아래 참조).
+실험적 WebGPU 렌더러에는
 WebGL 전용 후처리를 적용하지 않는다.
 
 ## 검증
@@ -39,3 +40,22 @@ GPU 자원 해제, 일시정지/3배속, 적응 품질, 화면 크기 변경을 
 새 검증의 스크린샷과 JSON 보고서는 `artifacts/battle-fx-*`로 생성된다.
 품질 전환 검증에서 중간 텍스처 92개, 고품질 104개가 반복 전환 후에도 유지됐다.
 이는 해당 테스트 장면의 값이며 하드웨어별 FPS 향상률을 의미하지 않는다.
+
+## 지형·표면 개선 마무리
+
+- 전장과 외곽의 높이를 낮추고 전경 나무·바위 크기를 줄여 경로 가림을 완화했다.
+  6장 황토 단차도 낮췄으며 길과 기존 건설 위치는 평탄하게 유지한다.
+- 나무껍질·바위·지면의 색상, 법선, 거칠기 텍스처를 로컬 WebP로 연결했다.
+  원본 출처와 변환 방법은 `public/assets/textures/SOURCES.md`에 기록했다.
+- 고품질에서는 지면의 반복 무늬를 분산하고 일부 장에서 숲 지면을 섞는다.
+  반해상도 GTAO는 최대 960×600이며 투명 효과·히트 영역·작은 식생을 제외한다.
+  중간·낮음에서는 혼합 셰이더와 후처리를 끄고 일반 PBR 재질을 사용한다.
+- `scripts/smoke-surfaces.mjs`는 1~6장 고품질 셰이더, 지면 혼합 분기,
+  경로·건설 위치 높이, 실제 건설 및 작은 화면을 검증한다.
+- 전투 효과 스모크의 건설 호출을 현재 좌표 기반 API에 맞췄다.
+  건설과 업그레이드의 성공 여부도 검사한다.
+
+빌드 결과를 검증하려면 `npm run build` 후 `npm run preview -- --port 5188`을
+실행하고, `REVIEW_URL=http://localhost:5188` 환경 변수를 지정해
+`node scripts/smoke-surfaces.mjs`와 `node scripts/smoke-battle-fx.mjs`를 실행한다.
+화면과 검사 결과는 `artifacts/surfaces-*`, `artifacts/battle-fx-*`에 저장된다.

@@ -20,8 +20,12 @@ try {
     g.world.economy.add(100000);
     const types = ['archer_tower', 'catapult', 'cannon_tower', 'fire_tower'];
     g.level.buildSlots.forEach((slot, i) => {
-      g.world.build(slot.id, types[i % types.length]);
-      for (let j = 0; j < 3; j++) g.world.upgrade(slot.id);
+      if (g.world.build(slot, types[i % types.length]) !== 'ok') throw new Error(`Cannot build at ${slot.id}`);
+      const tower = [...g.world.towers.values()].find(t => t.x === slot.x && t.z === slot.z);
+      if (!tower) throw new Error(`Missing tower at ${slot.id}`);
+      for (let j = 0; j < 3; j++) {
+        if (g.world.upgrade(tower.slotId) !== 'ok') throw new Error(`Cannot upgrade at ${slot.id}`);
+      }
     });
     for (let i = 0; i < 56; i++) {
       g.world.spawnEnemy({ unitId: 'yt_infantry', hpMul: 30, speedMul: 1 });

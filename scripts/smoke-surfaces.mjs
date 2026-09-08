@@ -1,0 +1,63 @@
+/* global window, console, process */
+import { chromium } from 'playwright-core';
+import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+
+await mkdir('artifacts', { recursive: true });
+const browser = await chromium.launch({ channel: 'chrome', args: ['--enable-unsafe-swiftshader'] });
+const report = [];
+try {
+  for (let level = 1; level <= 6; level++) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await page.goto(`${process.env.REVIEW_URL ?? 'http://localhost:5178'}/?level=${level}&api=local`);
+    await page.waitForFunction(() => !!window.game?.scene, null, { timeout: 60000 });
+    await page.evaluate(() => { window.game.loop.stop(); window.game.autoTuned = true; });
+    await page.waitForFunction(() => !!window.game.scene.stage.skyTexture);
+    const result = await page.evaluate(() => {
+      const g = window.game;
+      g.applyPreset('high');
+      g.render(1, 1 / 60);
+      const { terrain } = g.scene;
+      const point = { x: 0, z: 0 };
+      let roadDeviation = 0;
+      for (let d = 0; d <= g.world.path.totalLength; d += 10) {
+        g.world.path.positionAt(d, point);
+        roadDeviation = Math.max(roadDeviation, Math.abs(terrain.heightAt(point.x, point.z)));
+      }
+      const slotDeviation = Math.max(...g.level.buildSlots.map(slot => Math.abs(terrain.heightAt(slot.x, slot.z))));
+      g.world.economy.add(100000);
+      const slot = g.level.buildSlots[0];
+      const buildResult = g.world.build(slot, 'archer_tower');
+      g.scene.render(1, 1 / 60);
+      g.render(1, 1 / 60);
+      return {
+        roadDeviation, slotDeviation, buildResult, towers: g.world.towers.size,
+        groundMap: !!terrain.material.map,
+        normalMap: !!terrain.material.normalMap,
+        roughnessMap: !!terrain.material.roughnessMap,
+        detail: terrain.material.userData.groundDetail,
+        cover: !!terrain.groundCover,
+      };
+    });
+    assert.ok(result.roadDeviation < .1, JSON.stringify(result));
+    assert.ok(result.slotDeviation < .1, JSON.stringify(result));
+    assert.equal(result.towers, 1);
+    assert.equal(result.buildResult, 'ok');
+    assert.ok(result.groundMap && result.normalMap && result.roughnessMap && result.detail);
+    await page.screenshot({ path: `artifacts/surfaces-${level}-high.png` });
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.evaluate(() => { window.game.resize(); window.game.render(1, 1 / 60); });
+    await page.screenshot({ path: `artifacts/surfaces-${level}-compact.png` });
+    assert.deepEqual(errors, []);
+    report.push({ level, ...result, errors });
+    console.log(`Chapter ${level}: PBR shaders, flat road/slots, construction and compact rendering passed.`, result);
+    await page.close();
+  }
+  assert.ok(report.some(result => result.cover), 'ground coverage shader was never exercised');
+  await writeFile('artifacts/surfaces-report.json', JSON.stringify(report, null, 2));
+} finally {
+  await browser.close();
+}

@@ -8,6 +8,7 @@ import { BALANCE } from '../src/data/balance';
 import { LEVEL_01 } from '../src/data/levels/level01';
 import { LEVEL_02 } from '../src/data/levels/level02';
 import { LEVEL_03 } from '../src/data/levels/level03';
+import * as THREE from 'three';
 
 describe('Chapter landscapes', () => {
   for (const level of [LEVEL_01, LEVEL_02, LEVEL_03, LEVEL_04, LEVEL_05, LEVEL_06]) {
@@ -21,6 +22,16 @@ describe('Chapter landscapes', () => {
       }
       for (const slot of level.buildSlots) for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
         expect(Math.abs(terrain.heightAt(slot.x + Math.cos(a) * 32, slot.z + Math.sin(a) * 32))).toBeLessThan(.1);
+      }
+      // From shallow, rotated views, terrain must not hide the building markers.
+      terrain.group.updateMatrixWorld(true);
+      for (const yaw of [-Math.PI / 3, 0, Math.PI / 3]) {
+        const origin = new THREE.Vector3(600 + Math.sin(yaw) * 1500, 800, 350 + Math.cos(yaw) * 1500);
+        for (const slot of level.buildSlots) {
+          const target = new THREE.Vector3(slot.x, 8, slot.z);
+          const ray = new THREE.Raycaster(origin, target.clone().sub(origin).normalize(), 0, origin.distanceTo(target) - .1);
+          expect(ray.intersectObject(terrain.group, true), `terrain obscures ${slot.id} at yaw ${yaw}`).toHaveLength(0);
+        }
       }
       terrain.dispose();
     });

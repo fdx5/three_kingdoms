@@ -7,6 +7,8 @@ import type { AssetRegistry } from './AssetRegistry';
 import { settlementMeshes, type SettlementSite } from './BattlefieldProps';
 import { foliageGeometry, grassGeometry, rockGeometry, treeTrunkGeometry } from './NaturalGeometry';
 import { ChapterLandscape, chapterHeight, chapterSites } from './ChapterLandscape';
+import { scenerySurface } from './ScenerySurfaces';
+import { groundMaterialDetail, type GroundCover } from './GroundMaterial';
 
 /**
  * 160×96 높이 격자와 연속된 외곽 능선으로 구성한 전장.
@@ -21,7 +23,9 @@ export class Terrain {
   private decorKey = '';
   private skirt: THREE.Mesh | null = null;
   private ownedTextures: THREE.Texture[] = [];
+  private surfaces: { bark: ReturnType<typeof scenerySurface>; stone: ReturnType<typeof scenerySurface> } | null = null;
   private chapter: ChapterLandscape | null = null;
+  private groundCover?: GroundCover;
   get landscape(): LevelEnvironment['landscape'] { return this.env.landscape; }
   private readonly reserved: readonly { x: number; z: number }[];
 
@@ -33,7 +37,7 @@ export class Terrain {
   constructor(
     private readonly path: Path,
     private readonly env: LevelEnvironment,
-    assets?: AssetRegistry,
+    private readonly assets?: AssetRegistry,
     seed = 1337,
     reserved: readonly { x: number; z: number }[] = [],
   ) {
@@ -75,7 +79,7 @@ export class Terrain {
     const high = new THREE.Color(env.highColor).lerp(new THREE.Color(0xffffff), 0.68);
     const tmp = new THREE.Color();
 
-    const maxAmp = 23 * (env.terrainRelief ?? 1);
+    const maxAmp = 5 * Math.min(env.terrainRelief ?? 1, 2);
     // 경로에서 이 거리 안쪽은 완전히 평탄, 바깥으로 부드럽게 올라간다
     const flatRadius = 52;
     const blendRadius = 130;
@@ -94,7 +98,7 @@ export class Terrain {
       let h = (broad * 0.5 + detail * 0.13 + micro * 0.04 + ridge * 0.33) * maxAmp;
       // Raise the outer landscape into a natural basin while the combat route remains readable.
       const edge = Math.max(Math.abs(u - 0.5) * 2, Math.abs(v - 0.5) * 2);
-      h += Math.pow(Math.max(0, edge - 0.48) / 0.52, 2.2) * maxAmp * 1.35;
+      h += Math.pow(Math.max(0, edge - 0.48) / 0.52, 2.2) * maxAmp * .35;
 
       // 경로 근처 마스킹
       const dist = distanceToPath(this.path, wx, wz);
@@ -137,11 +141,18 @@ export class Terrain {
     const albedo = assets?.getTexture(texId)?.clone() ?? null;
     const normal = assets?.getTexture(texId ? `${texId}_normal` : undefined)?.clone() ?? null;
     const roughness = assets?.getTexture(texId ? `${texId}_roughness` : undefined)?.clone() ?? null;
+    const coverMap = assets?.getTexture('ground_forest');
+    const coverNormal = assets?.getTexture('ground_forest_normal');
+    const coverRoughness = assets?.getTexture('ground_forest_roughness');
+    if (texId !== 'ground_forest' && env.landscape !== 'loess' && coverMap && coverNormal && coverRoughness) {
+      this.groundCover = { map: coverMap, normal: coverNormal, roughness: coverRoughness, amount: texId === 'ground_rocky' ? .28 : .58 };
+    }
     for (const tex of [albedo, normal, roughness]) {
       if (!tex) continue;
       this.ownedTextures.push(tex);
-      tex.repeat.set(w / 72, d / 72);
-      tex.anisotropy = 8;
+      const tileSize = texId === 'ground_rocky' ? 220 : 115;
+      tex.repeat.set(w / tileSize, d / tileSize);
+      tex.anisotropy = 16;
       tex.needsUpdate = true;
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     }
@@ -149,7 +160,7 @@ export class Terrain {
       vertexColors: true,
       map: albedo,
       normalMap: normal,
-      normalScale: new THREE.Vector2(0.85, 0.85),
+      normalScale: new THREE.Vector2(1.15, 1.15),
       roughnessMap: roughness,
       roughness: 0.92,
       metalness: 0,
@@ -236,6 +247,8 @@ export class Terrain {
 
   /** Rebuild batched scenery only when the quality preset or seed changes. */
   buildDecor(preset: PerformancePreset, seed = 20240): void {
+    groundMaterialDetail(this.material, preset.postFx, this.groundCover);
+    if (this.skirt) groundMaterialDetail(this.skirt.material as THREE.MeshStandardMaterial, preset.postFx, this.groundCover);
     const key = `${preset.decorScale}:${preset.shadows}:${seed}`;
     if (key === this.decorKey) return;
     this.clearDecor();
@@ -270,11 +283,16 @@ export class Terrain {
     }
     bannerGeo.computeVertexNormals();
 
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: 1 });
-    const treeColor = this.env.biome === 'drylands' ? 0x5e6334 : this.env.biome === 'highlands' ? 0x3d5140 : 0x42683f;
+    if (!this.surfaces) {
+      this.surfaces = { bark: scenerySurface('bark', this.assets), stone: scenerySurface('stone', this.assets) };
+      for (const set of Object.values(this.surfaces)) this.ownedTextures.push(...Object.values(set).filter((t): t is THREE.Texture => t !== null));
+    }
+    const trunkMat = new THREE.MeshStandardMaterial({ ...this.surfaces.bark, roughness: 1, normalScale: new THREE.Vector2(.7, .7) });
+    const treeColor = this.env.biome === 'drylands' ? 0x818054 : this.env.biome === 'highlands' ? 0x657b67 : 0x728658;
     const crownMat = new THREE.MeshStandardMaterial({ color: treeColor, roughness: 0.9, vertexColors: true, side: THREE.DoubleSide });
     const crownSmallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(treeColor).multiplyScalar(1.14), roughness: 0.9, vertexColors: true, side: THREE.DoubleSide });
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x8a887b, map: this.material.map, normalMap: this.material.normalMap, normalScale: new THREE.Vector2(0.7, 0.7), roughness: 0.94 });
+    const rockMat = new THREE.MeshStandardMaterial({ ...this.surfaces.stone, color: this.env.landscape === 'loess' ? 0xc5ad88 : 0xffffff,
+      normalScale: new THREE.Vector2(.9, .9), roughness: .94 });
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a2c1e, roughness: 1 });
     // 한(漢)군 깃발 — 방어측 진영색
     const bannerMat = new THREE.MeshStandardMaterial({
@@ -291,7 +309,10 @@ export class Terrain {
     const poleIM = new THREE.InstancedMesh(poleGeo, poleMat, flags);
     const bannerIM = new THREE.InstancedMesh(bannerGeo, bannerMat, flags);
     const grassIM = new THREE.InstancedMesh(grassGeo, grassMat, grasses);
+    // Tiny leaves/grass contribute little at half-resolution; trunks anchor the canopy.
+    for (const mesh of [crownIM, crownSmallIM, grassIM]) mesh.userData.contactOcclusion = false;
     trunkIM.castShadow = crownIM.castShadow = crownSmallIM.castShadow = rockIM.castShadow = true;
+    trunkIM.receiveShadow = crownIM.receiveShadow = crownSmallIM.receiveShadow = rockIM.receiveShadow = true;
     poleIM.castShadow = bannerIM.castShadow = true;
 
     const m = new THREE.Matrix4();
@@ -308,7 +329,7 @@ export class Terrain {
       if (landmarks.some(([lx, lz]) => Math.hypot(x - lx, z - lz) < 70)) continue;
       if (this.env.landscape && this.heightAt(x, z) < 1) continue;
       if (distanceToPath(this.path, x, z) < 70) continue;
-      if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 49) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
+      if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 76) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
       const y = this.heightAt(x, z);
       const s = rng.range(0.7, 1.5);
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
@@ -409,6 +430,7 @@ export class Terrain {
     const outerTrees = Math.round((this.env.landscape === 'loess' ? 140 : this.env.landscape === 'floodplain' ? 240 : 680) * preset.decorScale);
     const outerTrunks = new THREE.InstancedMesh(trunkGeo.clone(), trunkMat.clone(), outerTrees);
     const outerCrowns = new THREE.InstancedMesh(foliageGeometry(14, 53, preset.postFx ? 128 : 64), crownMat.clone(), outerTrees);
+    outerCrowns.userData.contactOcclusion = false;
     let oplaced = 0;
     guard = 0;
     while (oplaced < outerTrees && guard++ < outerTrees * 30) {
@@ -420,7 +442,7 @@ export class Terrain {
       // Shared relief function prevents trees floating above the surrounding hills.
       const y = this.outerHeight(lx, lz) - 1.8;
       if (landformNoise(lx * 1.7, lz * 1.7) < 0.38) continue;
-      const s = rng.range(1.2, 3.1);
+      const s = rng.range(.9, z > BALANCE.mapDepth ? 1.45 : 2.1);
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
       scl.set(s, s, s);
       pos.set(x, y + 8 * s, z); m.compose(pos, q, scl); outerTrunks.setMatrixAt(oplaced, m);
@@ -440,7 +462,7 @@ export class Terrain {
       const x = BALANCE.mapWidth / 2 + Math.cos(angle) * rng.range(820, 1450);
       const z = BALANCE.mapDepth / 2 + Math.sin(angle) * rng.range(610, 1020);
       const y = this.outerHeight(x - BALANCE.mapWidth / 2, z - BALANCE.mapDepth / 2);
-      const size = rng.range(2.5, 8);
+      const size = rng.range(1.3, z > BALANCE.mapDepth ? 2.8 : 4.2);
       pos.set(x, y - 3, z);
       q.setFromAxisAngle(_up, angle);
       scl.set(size * 1.7, size, size);
@@ -547,29 +569,12 @@ export function distanceToPath(path: Path, x: number, z: number): number {
   return best;
 }
 
-const MASSIFS = [[-530, -630, 240, 250, 210], [30, -790, 310, 320, 245],
-  [650, -590, 215, 220, 200], [-900, 30, 190, 200, 340],
-  [960, 110, 180, 230, 290], [-480, 830, 65, 320, 230], [550, 890, 80, 330, 260]];
-
-/** Continuous foothills with eroded ridges; x/z are relative to the map centre. */
+/** Low rolling surroundings: distant scenery must not become a wall around play. */
 function surroundingHeight(x: number, z: number): number {
-  const nx = Math.max(0, (Math.abs(x) - BALANCE.mapWidth * 0.48) / (BALANCE.mapWidth * 3.4 * 0.32));
-  const nz = Math.max(0, (Math.abs(z) - BALANCE.mapDepth * 0.48) / (BALANCE.mapDepth * 3.8 * 0.32));
-  const edge = THREE.MathUtils.clamp(Math.max(nx, nz), 0, 1);
-  const broad = landformNoise(x, z);
-  const erosion = landformNoise(x * 2.37 + 311, z * 2.11 - 179);
-  const ridge = Math.pow(1 - Math.abs(broad * 2 - 1), 3);
   const clearance = Math.hypot(Math.max(0, Math.abs(x) - BALANCE.mapWidth / 2), Math.max(0, Math.abs(z) - BALANCE.mapDepth / 2));
-  const foothill = THREE.MathUtils.smoothstep(clearance, 12, 200);
-  // Unequal overlapping massifs, deliberately taller behind the battlefield.
-  // The foreground stays low so troops remain visible from the default camera.
-  let massifs = 0;
-  for (const [cx, cz, height, rx, rz] of MASSIFS) {
-    massifs += height * Math.exp(-(((x - cx) / rx) ** 2) - ((z - cz) / rz) ** 2);
-  }
-  return -4 + foothill * massifs * (.78 + erosion * .44)
-    + Math.pow(edge, 1.65) * (90 + broad * 185 + ridge * 170)
-    + (erosion - .5) * foothill * 24;
+  const near = THREE.MathUtils.smoothstep(clearance, 40, 320);
+  const distant = THREE.MathUtils.smoothstep(clearance, 480, 1400);
+  return -4 + near * landformNoise(x, z) * 12 + distant * landformNoise(x * .7, z * .8) * 55;
 }
 
 /** Bake mineral strata and broad cavity shade once; no extra texture or render pass. */
