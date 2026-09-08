@@ -204,7 +204,7 @@ export const LEVEL_05: LevelDef = {
     highColor: '#7c8163',
     fogColor: '#aab3b8',
     terrainTexture: 'ground_rocky',
-    terrainRelief: 2.2,
+    terrainRelief: 1.0,
     biome: 'woodland',
     bgmYoutubeId: 'deyim16dRzE',
   },

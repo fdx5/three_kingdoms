@@ -83,9 +83,9 @@ describe('Terrain', () => {
         maxH = Math.max(maxH, terrain.heightAt(x, z));
       }
     }
-    // Ground relief stays below troop height; material detail supplies the depth.
-    expect(maxH).toBeGreaterThan(1);
-    expect(maxH).toBeLessThanOrEqual(16);
+    // Hills must read as actual contours, with a bounded height above the road.
+    expect(maxH).toBeGreaterThan(25);
+    expect(maxH).toBeLessThanOrEqual(55);
     terrain.dispose();
   });
 

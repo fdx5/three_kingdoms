@@ -9,6 +9,7 @@ import { foliageGeometry, grassGeometry, rockGeometry, treeTrunkGeometry } from 
 import { ChapterLandscape, chapterHeight, chapterSites } from './ChapterLandscape';
 import { scenerySurface } from './ScenerySurfaces';
 import { groundMaterialDetail, type GroundCover } from './GroundMaterial';
+import { battlefieldHeight, surroundingHeight } from './Landform';
 
 /**
  * 160×96 높이 격자와 연속된 외곽 능선으로 구성한 전장.
@@ -79,10 +80,10 @@ export class Terrain {
     const high = new THREE.Color(env.highColor).lerp(new THREE.Color(0xffffff), 0.68);
     const tmp = new THREE.Color();
 
-    const maxAmp = 5 * Math.min(env.terrainRelief ?? 1, 2);
+    const maxAmp = 55 * (env.terrainRelief ?? 1);
     // 경로에서 이 거리 안쪽은 완전히 평탄, 바깥으로 부드럽게 올라간다
-    const flatRadius = 52;
-    const blendRadius = 130;
+    const flatRadius = 44;
+    const blendRadius = 108;
 
     for (let i = 0; i < pos.count; i++) {
       // 지오메트리는 맵 중앙 기준. 월드 좌표로 옮긴다.
@@ -91,14 +92,9 @@ export class Terrain {
 
       const u = wx / BALANCE.mapWidth;
       const v = wz / BALANCE.mapDepth;
-      const broad = sample(u, v);
       const detail = sample((u * 2.31 + 0.17) % 1, (v * 2.17 + 0.31) % 1);
       const micro = Math.sin(wx * 0.047 + Math.cos(wz * 0.031)) * 0.5 + 0.5;
-      const ridge = Math.pow(1 - Math.abs(detail * 2 - 1), 2.4);
-      let h = (broad * 0.5 + detail * 0.13 + micro * 0.04 + ridge * 0.33) * maxAmp;
-      // Raise the outer landscape into a natural basin while the combat route remains readable.
-      const edge = Math.max(Math.abs(u - 0.5) * 2, Math.abs(v - 0.5) * 2);
-      h += Math.pow(Math.max(0, edge - 0.48) / 0.52, 2.2) * maxAmp * .35;
+      let h = battlefieldHeight(env, wx, wz);
 
       // 경로 근처 마스킹
       const dist = distanceToPath(this.path, wx, wz);
@@ -114,7 +110,7 @@ export class Terrain {
       }
       // Keep building foundations level while the surrounding banks rise.
       const slotDistance = reserved.reduce((best, p) => Math.min(best, Math.hypot(wx - p.x, wz - p.z)), Infinity);
-      h *= THREE.MathUtils.smoothstep(slotDistance, 48, 105);
+      h *= THREE.MathUtils.smoothstep(slotDistance, 48, 95);
 
       pos.setY(i, h);
       this.heights[i] = h;
@@ -202,10 +198,10 @@ export class Terrain {
         const t = Math.pow(ring / rings, 1.35);
         const px = x * (1 + 2.4 * t), pz = z * (1 + 2.8 * t);
         const blend = THREE.MathUtils.smoothstep(Math.hypot(px - x, pz - z), 0, 210);
-        const y = THREE.MathUtils.lerp(source.getY(vertex), surroundingHeight(px, pz), blend);
+        const y = THREE.MathUtils.lerp(source.getY(vertex), surroundingHeight(this.env, px + BALANCE.mapWidth / 2, pz + BALANCE.mapDepth / 2), blend);
         positions.push(px, y, pz);
         uv.push(px / BALANCE.mapWidth + .5, .5 - pz / BALANCE.mapDepth);
-        color.copy(low).lerp(high, THREE.MathUtils.clamp(y / 250, 0, 1));
+        color.copy(low).lerp(high, THREE.MathUtils.clamp(y / 100, 0, 1));
         color.multiplyScalar(.78 + landformNoise(px, pz) * .3);
         colors.push(color.r, color.g, color.b);
         if (ring < rings) {
@@ -242,7 +238,7 @@ export class Terrain {
       (Math.abs(z) / (BALANCE.mapDepth / 2) - 1) / 2.8);
     const bx = x / (1 + 2.4 * t), bz = z / (1 + 2.8 * t);
     const blend = THREE.MathUtils.smoothstep(Math.hypot(x - bx, z - bz), 0, 210);
-    return THREE.MathUtils.lerp(this.heightAt(bx + BALANCE.mapWidth / 2, bz + BALANCE.mapDepth / 2), surroundingHeight(x, z), blend);
+    return THREE.MathUtils.lerp(this.heightAt(bx + BALANCE.mapWidth / 2, bz + BALANCE.mapDepth / 2), surroundingHeight(this.env, x + BALANCE.mapWidth / 2, z + BALANCE.mapDepth / 2), blend);
   }
 
   /** Rebuild batched scenery only when the quality preset or seed changes. */
@@ -567,14 +563,6 @@ export function distanceToPath(path: Path, x: number, z: number): number {
     if (d < best) best = d;
   }
   return best;
-}
-
-/** Low rolling surroundings: distant scenery must not become a wall around play. */
-function surroundingHeight(x: number, z: number): number {
-  const clearance = Math.hypot(Math.max(0, Math.abs(x) - BALANCE.mapWidth / 2), Math.max(0, Math.abs(z) - BALANCE.mapDepth / 2));
-  const near = THREE.MathUtils.smoothstep(clearance, 40, 320);
-  const distant = THREE.MathUtils.smoothstep(clearance, 480, 1400);
-  return -4 + near * landformNoise(x, z) * 12 + distant * landformNoise(x * .7, z * .8) * 55;
 }
 
 /** Bake mineral strata and broad cavity shade once; no extra texture or render pass. */

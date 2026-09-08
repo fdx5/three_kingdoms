@@ -28,6 +28,13 @@ try {
         roadDeviation = Math.max(roadDeviation, Math.abs(terrain.heightAt(point.x, point.z)));
       }
       const slotDeviation = Math.max(...g.level.buildSlots.map(slot => Math.abs(terrain.heightAt(slot.x, slot.z))));
+      let minimum = Infinity, maximum = -Infinity, raised = 0, samples = 0;
+      for (let x = 0; x <= 1200; x += 20) for (let z = 0; z <= 700; z += 20) {
+        const height = terrain.heightAt(x, z);
+        minimum = Math.min(minimum, height); maximum = Math.max(maximum, height);
+        if (height > 10) raised++;
+        samples++;
+      }
       g.world.economy.add(100000);
       const slot = g.level.buildSlots[0];
       const buildResult = g.world.build(slot, 'archer_tower');
@@ -35,6 +42,7 @@ try {
       g.render(1, 1 / 60);
       return {
         roadDeviation, slotDeviation, buildResult, towers: g.world.towers.size,
+        minimum, maximum, raisedFraction: raised / samples,
         groundMap: !!terrain.material.map,
         normalMap: !!terrain.material.normalMap,
         roughnessMap: !!terrain.material.roughnessMap,
@@ -46,8 +54,13 @@ try {
     assert.ok(result.slotDeviation < .1, JSON.stringify(result));
     assert.equal(result.towers, 1);
     assert.equal(result.buildResult, 'ok');
+    assert.ok(result.maximum > 18 && result.maximum < 85, 'terrain relief is too flat or too tall');
+    assert.ok(result.raisedFraction > .06, 'raised contours occupy too little of the battlefield');
     assert.ok(result.groundMap && result.normalMap && result.roughnessMap && result.detail);
     await page.screenshot({ path: `artifacts/surfaces-${level}-high.png` });
+    await page.evaluate(() => { window.game.scene.stage.setZoom(.72); window.game.render(1, 1 / 60); });
+    await page.screenshot({ path: `artifacts/surfaces-${level}-close.png` });
+    await page.evaluate(() => { window.game.scene.stage.setZoom(1); window.game.render(1, 1 / 60); });
     await page.setViewportSize({ width: 844, height: 390 });
     await page.evaluate(() => { window.game.resize(); window.game.render(1, 1 / 60); });
     await page.screenshot({ path: `artifacts/surfaces-${level}-compact.png` });

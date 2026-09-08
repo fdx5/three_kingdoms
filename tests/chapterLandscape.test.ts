@@ -15,6 +15,22 @@ describe('Chapter landscapes', () => {
     it(`${level.id}: elevated terrain preserves the road and full building footprint`, () => {
       const path = new Path(level.path);
       const terrain = new Terrain(path, level.environment, undefined, 1337, level.buildSlots);
+      let min = Infinity, max = -Infinity, raised = 0, samples = 0, slope = 0;
+      for (let x = 0; x <= 1200; x += 10) for (let z = 0; z <= 700; z += 10) {
+        const height = terrain.heightAt(x, z);
+        min = Math.min(min, height); max = Math.max(max, height);
+        if (height > 10) raised++;
+        samples++;
+        if (x < 1200) slope = Math.max(slope, Math.abs(terrain.heightAt(x + 10, z) - height) / 10);
+        if (z < 700) slope = Math.max(slope, Math.abs(terrain.heightAt(x, z + 10) - height) / 10);
+      }
+      expect(max).toBeGreaterThan(18);
+      expect(max).toBeLessThan(85);
+      expect(raised / samples).toBeGreaterThan(.06);
+      expect(slope).toBeLessThan(1.2);
+      if (level.environment.landscape === 'lakeside' || level.environment.landscape === 'floodplain') {
+        expect(min).toBeLessThan(-5);
+      }
       const p = { x: 0, z: 0 };
       for (let d = 0; d <= path.totalLength; d += 10) {
         path.positionAt(d, p);
