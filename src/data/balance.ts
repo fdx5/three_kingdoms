@@ -21,7 +21,15 @@ export const BALANCE = {
    * 주석으로 붙어 있다. 난이도를 올리자고 그 표를 하나씩 고치면 그 근거가
    * 전부 거짓말이 되므로, 표는 그대로 두고 곱하는 값만 여기서 정한다.
    *
-   *   towerDamageMul   타워 한 발의 피해 (towers.ts 의 표에 곱해진다)
+   *   towerDamageMul   타워 한 발의 피해 (towers.ts 의 표에 곱해진다). 모든 레벨에 똑같이.
+   *   towerLevelFalloff 레벨이 오를수록 **더** 깎는다 — n레벨 피해에 falloff^(n-1).
+   *                    업그레이드 곡선이 너무 가팔랐다: 궁노는 1레벨 10 DPS 에서
+   *                    5레벨 175 DPS 로 17배가 된다(화살 수 x5, 한 발 피해 x2.8,
+   *                    발사 간격 x1.25 가 전부 곱해진다). 그래서 한 번 다 올리면
+   *                    남은 웨이브가 전부 헐거워졌다. 이 값은 그 곱셈의 한 축만 눕힌다 —
+   *                    1레벨은 그대로 두고 5레벨만 깎으므로, 초반 난이도는 건드리지 않고
+   *                    "다 올리면 끝"만 사라진다.
+   *                    참고: 0.90 이면 5레벨 피해가 0.90^4 = 0.656 배.
    *   enemyHpMul       모든 적의 최대 체력 (Enemy.init 에서 곱해진다)
    *   hpGrowthBonus    각 장이 정한 웨이브당 체력 성장률(hpGrowth)에 **더하는** 값.
    *                    enemyHpMul 이 판 전체를 같은 비율로 두껍게 한다면 이쪽은
@@ -47,6 +55,7 @@ export const BALANCE = {
    */
   difficulty: {
     towerDamageMul: 0.95,
+    towerLevelFalloff: 0.95,
     enemyHpMul: 1.15,
     spawnIntervalMul: 0.95,
     groupGapMul: 0.95,

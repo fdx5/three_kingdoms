@@ -3,19 +3,25 @@ import type { PrimitiveSpec } from '../types/primitives';
 import { BALANCE } from './balance';
 
 /**
- * 표에 적힌 피해에 BALANCE.difficulty.towerDamageMul 을 곱한다.
+ * 표에 적힌 피해에 난이도 손잡이 둘을 곱한다.
+ *
+ *   towerDamageMul       모든 레벨에 똑같이 (1레벨 망루도 그만큼 약해진다)
+ *   towerLevelFalloff    레벨이 오를수록 더 깎는다 — n레벨에 falloff^(n-1)
  *
  * 아래 다섯 표의 수치에는 "왜 이 값인가"가 주석으로 붙어 있다(벽력거가 1발인 이유,
  * 화공 망루가 2·2·2·3·3 인 이유). 난이도를 조이자고 그 숫자를 하나씩 고치면
- * 근거가 전부 거짓말이 되므로, 표는 그대로 두고 곱하는 값 하나만 밖에서 정한다.
+ * 근거가 전부 거짓말이 되므로, 표는 그대로 두고 곱하는 값만 밖에서 정한다.
  * 철질려처럼 피해가 0인 타워는 0으로 남는다 — 감속 타워를 실수로 공격 타워로 만들지 않는다.
  */
 function scaled(levels: TowerLevelDef[]): TowerLevelDef[] {
-  const mul = BALANCE.difficulty.towerDamageMul;
-  return levels.map((lv) => ({
-    ...lv,
-    damagePerArrow: lv.damagePerArrow === 0 ? 0 : Math.max(1, Math.round(lv.damagePerArrow * mul)),
-  }));
+  const { towerDamageMul, towerLevelFalloff } = BALANCE.difficulty;
+  return levels.map((lv, i) => {
+    const mul = towerDamageMul * Math.pow(towerLevelFalloff, i);
+    return {
+      ...lv,
+      damagePerArrow: lv.damagePerArrow === 0 ? 0 : Math.max(1, Math.round(lv.damagePerArrow * mul)),
+    };
+  });
 }
 
 const WOOD = '#6b4f32';

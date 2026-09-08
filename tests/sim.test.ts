@@ -354,12 +354,14 @@ describe('밸런스 (헤드리스 12웨이브)', () => {
     expect(r.won).toBe(true);
     expect(r.rows).toHaveLength(12);
     /*
-     * 난이도를 올린 뒤(횡대 확대 + 적 체력 배율 + 타워 피해 배율, BALANCE.difficulty)
-     * 최적 플레이도 무손실은 아니다 — 실측 992/1000, 누수 2.
+     * 난이도를 올린 뒤(횡대 확대 + 적 체력 배율 + 타워 피해 배율 + 업그레이드 곡선,
+     * BALANCE.difficulty) 최적 플레이도 무손실은 아니다 — 실측 873/1000, 누수 4.
      * 여기서 크게 벗어나면 1장이 다시 무풍지대가 되었거나 너무 매워진 것이다.
+     * 1장은 배우는 장이므로 아래쪽 경계를 지키는 편이 위쪽보다 중요하다.
      */
-    expect(r.castleHp).toBeGreaterThanOrEqual(900);
-    expect(r.leaks).toBeLessThanOrEqual(10);
+    expect(r.castleHp).toBeGreaterThanOrEqual(800);
+    expect(r.castleHp).toBeLessThanOrEqual(960);
+    expect(r.leaks).toBeLessThanOrEqual(12);
   });
 
   it('모퉁이 3기만으로도 업그레이드하면 이긴다', () => {

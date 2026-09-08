@@ -29,12 +29,21 @@ describe('데이터 무결성', () => {
   it('레벨 표가 전제 블록의 확정 수치와 일치한다', () => {
     const lv = TOWERS.archer_tower.levels;
     expect(lv.map((l) => l.arrows)).toEqual([1, 2, 3, 4, 5]);
-    // 표에 적힌 값은 그대로고, 난이도 손잡이(towerDamageMul)가 곱해져서 나온다.
+    /*
+     * 표에 적힌 값은 그대로고, 난이도 손잡이 둘이 곱해져서 나온다 —
+     * 모든 레벨에 똑같이 걸리는 towerDamageMul 과, 레벨이 오를수록 더 깎는
+     * towerLevelFalloff^(n-1). 뒤엣것이 "다 올리면 끝"을 막는 값이다.
+     */
     const table = [10, 13, 17, 22, 28];
-    const mul = BALANCE.difficulty.towerDamageMul;
+    const { towerDamageMul, towerLevelFalloff } = BALANCE.difficulty;
     expect(lv.map((l) => l.damagePerArrow)).toEqual(
-      table.map((d) => Math.max(1, Math.round(d * mul))),
+      table.map((d, i) =>
+        Math.max(1, Math.round(d * towerDamageMul * Math.pow(towerLevelFalloff, i))),
+      ),
     );
+    // 5레벨은 1레벨보다 확실히 세지만, 표 그대로였다면 얻었을 값보다는 덜 세다.
+    expect(lv[4].damagePerArrow).toBeGreaterThan(lv[0].damagePerArrow);
+    expect(lv[4].damagePerArrow).toBeLessThan(28 * towerDamageMul);
     expect(lv.map((l) => l.fireInterval)).toEqual([1.0, 0.95, 0.9, 0.85, 0.8]);
     expect(lv.map((l) => l.range)).toEqual([100, 100, 100, 100, 100]);
     expect(lv.map((l) => l.upgradeCost)).toEqual([null, 100, 150, 200, 250]);

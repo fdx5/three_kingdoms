@@ -179,20 +179,19 @@ describe('레벨 3 밸런스 (헤드리스 15웨이브)', () => {
   });
 
   /*
-   * 예전에는 "슬롯 4기로도 클리어는 된다, 대신 누수가 많다"였다.
-   * 장수 체력을 올린 뒤(difficulty.bossHpMul) 그 여유가 사라졌다 —
-   * 4기로도 15파까지는 버티지만(성 472/500) 거기서 원소를 못 끊고 진다.
-   * 즉 이 장의 슬롯은 물량이 아니라 마지막 장수를 위해 채우는 것이다.
+   * 예전에는 "망루를 덜 세워도 클리어는 된다, 대신 누수가 많다"였다.
+   * 장수 체력(difficulty.bossHpMul)과 업그레이드 곡선(towerLevelFalloff)을
+   * 차례로 조이면서 그 여유가 사라졌다 — 4기로는 마지막 파까지 버티기는 하지만
+   * 누수가 여덟 배로 늘고 거기서 무너진다. 이 장의 예산 7기는 다 쓰라고 있는 것이다.
    */
-  it('슬롯을 덜 지으면 물량은 버텨도 마지막 장수를 못 끊는다', () => {
+  it('망루를 덜 세우면 마지막 파를 못 넘긴다', () => {
     const full = runSim({ level: 'level03', early: true });
     const fewer = runSim({ level: 'level03', early: true, towers: 4 });
     expect(full.won).toBe(true);
     expect(fewer.won).toBe(false);
     // 도중에 무너진 것이 아니라 마지막 파까지 갔다
     expect(fewer.lastWave).toBe(15);
-    expect(fewer.leaks).toBeGreaterThan(full.leaks);
-    expect(fewer.leaksByUnit.yuanshao).toBe(1);
+    expect(fewer.leaks).toBeGreaterThan(full.leaks * 3);
   });
 
   it('조기 소집을 써도 업그레이드를 안 하면 진다 (레벨 1의 교훈이 유지된다)', () => {

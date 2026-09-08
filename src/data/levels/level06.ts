@@ -180,14 +180,17 @@ export const LEVEL_06: LevelDef = {
        * 여기서는 되돌려 주므로, 남는 자리가 이 두 파뿐이다.
        * 실측: 1.5/1.25 = 1324, 2.4/2.1 = 633, 2.6/2.25 = 451, 3.2/2.8 = 15파 패배.
        * 즉 이 두 값은 벼랑 바로 앞까지 와 있다. 더 올릴 거면 0.2 씩.
+       *
+       * 2.6/2.25 -> 2.2/2.0. 타워 업그레이드 곡선을 눕히면서(difficulty.towerLevelFalloff)
+       * 후반 화력이 줄었으므로 그만큼만 돌려준다. 올리기 전(1.5/1.25)보다는 여전히 훨씬 무겁다.
        */
-      14: { countMul: 0.9, hpMul: 2.6, speedMul: 0.9, groupSize: 9, intraInterval: 0.26, groupGap: 3.0 },
+      14: { countMul: 0.9, hpMul: 2.2, speedMul: 0.9, groupSize: 9, intraInterval: 0.26, groupGap: 3.0 },
       /**
        * 마지막 웨이브. 병력 수를 1.4배로 부풀리고 그 한가운데에 제갈량을 넣는다.
        * 제갈량의 회복 오라(반경 210 · 초당 90)가 이 대열을 통째로 덮으므로,
        * 앞줄부터 지우려 들면 영영 줄지 않는다 — 먼저 본체를 끊어야 한다.
        */
-      15: { countMul: 1.4, hpMul: 2.25, groupSize: 14, intraInterval: 0.08, groupGap: 1.7 },
+      15: { countMul: 1.4, hpMul: 2.0, groupSize: 14, intraInterval: 0.08, groupGap: 1.7 },
     },
 
     inserts: {

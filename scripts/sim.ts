@@ -14,9 +14,9 @@
  *                       auto   = 좋은 자리에 궁노, 기병 직선에 철질려, 나머지에 벽력거
  *                       archer = 전부 궁노 망루 (속성을 무시했을 때를 재현)
  *                       또는 슬롯 순서대로 타워 id를 직접 나열
- *   --spots recommended|best
- *                       recommended = 레벨의 추천 자리 (기본)
- *                       best        = 자유 배치에서 커버리지가 가장 큰 자리를 스스로 고른다
+ *   --spots best|recommended
+ *                       best        = 자유 배치에서 길을 고르게 덮는 자리를 스스로 고른다 (기본)
+ *                       recommended = 레벨의 추천 자리 (자유 배치 이전 수치와 비교할 때)
  *   --upgrade greedy|none
  *   --no-repair         성벽 수리를 하지 않는다 (골드 소비처 효과 측정용)
  *   --cards greedy|boss|none
@@ -38,8 +38,13 @@ interface Args {
   slots: string[] | null;
   /**
    * 어느 자리에 지을 것인가.
-   *   recommended  레벨이 적어 둔 추천 자리 (기본값 — 과거 실측치와 비교 가능)
-   *   best         자유 배치에서 커버리지가 가장 큰 자리를 스스로 고른다
+   *   best         자유 배치에서 길을 고르게 덮는 자리를 스스로 고른다 (기본값)
+   *   recommended  레벨이 적어 둔 추천 자리 (자유 배치 이전의 실측치와 비교할 때)
+   *
+   * 기본값이 best 인 이유: 타워를 빈 땅 아무 데나 세우게 된 뒤로 "레벨이 정해 준
+   * 자리에만 짓는 플레이"는 더 이상 기준이 아니다. 사람은 자리를 고르고,
+   * 그 고름이 곧 이 게임의 실력이다. 조합(어느 타워를 몇 기)은 추천 자리 기준
+   * 계획을 그대로 쓰므로, 두 모드의 차이는 오직 **자리**뿐이다.
    */
   spots: 'recommended' | 'best';
   build: string;
@@ -70,7 +75,7 @@ const DEFAULTS: Args = {
   level: DEFAULT_LEVEL_ID,
   towers: 99,
   slots: null,
-  spots: 'recommended',
+  spots: 'best',
   build: 'auto',
   upgrade: 'greedy',
   repair: true,
@@ -375,14 +380,32 @@ export function runSim(args: Partial<Args> = {}): SimResult {
    * 최선을 다한 배치가 얼마나 더 센지를 재는 쪽이다.
    */
   const budget = Math.min(a.towers, world.maxTowers);
-  const ranked = a.spots === 'best' ? rankBest(world, budget) : rankRecommended(world);
+  const recommended = rankRecommended(world);
+  // --slots 는 추천 자리를 이름으로 고르는 옵션이므로 그때는 자동 배치를 쓰지 않는다.
+  const useBest = a.spots === 'best' && !a.slots;
+  const ranked = useBest ? rankBest(world, budget) : recommended;
   const chosen = a.slots
     ? a.slots
         .map((raw) => resolveSlotId(world, raw))
         .map((id) => ranked.find((r) => r.id === id))
         .filter((r): r is SpotRank => !!r)
     : ranked.slice(0, budget);
-  const plan = planBuilds(ranked, a.build, level.id);
+  /*
+   * 자유 배치(best)에서도 **조합은 추천 자리의 것을 그대로** 쓴다.
+   *
+   * planBuilds 는 "커버리지 300 이상이면 좋은 자리"라는 기준으로 타워 종류를 나눈다.
+   * 자유 배치에서는 고른 자리가 전부 좋은 자리라 그 기준이 무너져 전 슬롯이 궁노가 되고,
+   * 그러면 2·6장이 방패병·백이병에 뚫려 진다 — 그건 배치의 값이 아니라
+   * "전부 궁노면 진다"는 원래의 교훈이다. 자리만 갈아 끼워야 배치의 값이 보인다.
+   */
+  const plan =
+    useBest
+      ? new Map(
+          [...planBuilds(recommended, a.build, level.id).values()]
+            .slice(0, ranked.length)
+            .map((towerId, i) => [ranked[i].id, towerId] as const),
+        )
+      : planBuilds(ranked, a.build, level.id);
 
   const rows: WaveRow[] = [];
   let leaksAtWaveStart = 0;
