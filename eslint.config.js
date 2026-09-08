@@ -14,7 +14,7 @@ export default [
     languageOptions: { globals: { process: 'readonly', console: 'readonly', window: 'readonly', document: 'readonly', getComputedStyle: 'readonly' } },
   },
   {
-    files: ['scripts/ensure-deps.mjs', 'scripts/postbuild-serve.mjs'],
+    files: ['scripts/ensure-deps.mjs', 'scripts/postbuild-serve.mjs', 'scripts/check-head.mjs'],
     languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
   },
   {

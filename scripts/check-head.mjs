@@ -46,17 +46,23 @@ try {
     execSync(`ln -s "${target}" "${link}"`);
   }
 
-  const tsc = join(repo, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc');
-  if (!existsSync(tsc)) throw new Error('tsc 를 찾을 수 없다 — npm install 먼저');
+  // .bin 의 래퍼(.cmd)는 윈도우에서 shell 없이 못 띄운다. 타입스크립트의 JS 진입점을 직접 돌린다.
+  const tsc = join(repo, 'node_modules', 'typescript', 'bin', 'tsc');
+  if (!existsSync(tsc)) throw new Error('typescript 를 찾을 수 없다 — npm install 먼저');
 
-  execFileSync(tsc, ['--noEmit', '-p', 'tsconfig.json'], { cwd: out, stdio: 'inherit' });
+  execFileSync(process.execPath, [tsc, '--noEmit', '-p', 'tsconfig.json'], {
+    cwd: out,
+    stdio: 'inherit',
+  });
   console.log(`[check:head] 커밋된 트리(${files.length}개 파일)만으로 타입 검사 통과`);
 } catch (err) {
   console.error('\n[check:head] 커밋된 트리만으로는 성립하지 않는다.');
   console.error('  워킹 트리에만 있는 코드에 기대고 있다는 뜻이다 — 그대로 배포하면 배포본이 죽는다.');
   console.error('  의존하는 파일을 같이 커밋하거나, 그 호출을 빼거나, 옵셔널로 감싼다.');
   process.exitCode = 1;
-  if (!(err && typeof err === 'object' && 'status' in err)) console.error(err);
+  // tsc 가 낸 오류는 이미 위에 찍혔다. 그 밖의 실패(정션·git 등)는 이유를 보여준다.
+  const isTsc = err && typeof err === 'object' && err.cmd && String(err.cmd).includes('tsc');
+  if (!isTsc) console.error(err?.message ?? err);
 } finally {
   rmSync(out, { recursive: true, force: true });
 }
