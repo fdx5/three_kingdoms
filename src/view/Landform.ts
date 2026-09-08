@@ -56,5 +56,7 @@ export function surroundingHeight(env: LevelEnvironment, x: number, z: number): 
   const wet = key === 'floodplain' ? .65 : key === 'lakeside' ? .8 : 1;
   const texture = .92 + .08 * Math.sin(x * .012 + Math.sin(z * .009));
   const frontMask = 1 - MathUtils.smoothstep(z, 520, 850) * .65;
-  return (back + sides * frontMask + foreground) * texture * wet;
+  // Echo the chapter's stronger relief in the skyline without raising the foreground as much.
+  const relief = 1 + ((env.terrainRelief ?? 1) - 1) * .4;
+  return (back * relief + sides * frontMask * relief + foreground) * texture * wet;
 }

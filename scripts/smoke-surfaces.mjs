@@ -36,7 +36,7 @@ try {
       for (let x = 0; x <= 1200; x += 20) for (let z = 0; z <= 700; z += 20) {
         const height = terrain.heightAt(x, z);
         minimum = Math.min(minimum, height); maximum = Math.max(maximum, height);
-        if (height > 10) raised++;
+        if (height > 20) raised++;
         samples++;
       }
       g.world.economy.add(100000);
@@ -59,7 +59,8 @@ try {
     assert.ok(result.slotDeviation < .1, JSON.stringify(result));
     assert.equal(result.towers, 1);
     assert.equal(result.buildResult, 'ok');
-    assert.ok(result.maximum > 18 && result.maximum < 85, 'terrain relief is too flat or too tall');
+    const previousPeak = [41, 74, 42, 36, 32, 61][level - 1];
+    assert.ok(result.maximum > previousPeak * 1.4 && result.maximum < 125, 'terrain relief must visibly exceed the previous chapter peak');
     assert.ok(result.raisedFraction > .06, 'raised contours occupy too little of the battlefield');
     assert.ok(result.houseKinds.length >= 3, 'not enough settlement variety');
     assert.ok(result.treeSpecies.length >= 1, 'specialized trees are missing');

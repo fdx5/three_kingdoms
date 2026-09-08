@@ -285,7 +285,7 @@ export class Terrain {
         const y = Math.max(...heights), variation = y - Math.min(...heights);
         if (variation > 6) continue;
         sites.push({ x, y, z, foundationDepth: variation + 4,
-          angle: cluster === 2 ? -.65 : .2, kind: houseKinds[i % houseKinds.length] });
+          angle: cluster === 2 ? -.65 : .2, kind: houseKinds[sites.length % houseKinds.length] });
         break search;
       }
     }

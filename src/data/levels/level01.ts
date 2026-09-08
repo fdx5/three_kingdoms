@@ -118,7 +118,7 @@ export const LEVEL_01: LevelDef = {
     highColor: '#8f8358',
     fogColor: '#c3cbd4',
     terrainTexture: 'ground_dry',
-    terrainRelief: 1.0,
+    terrainRelief: 1.65,
     biome: 'drylands',
     // 배경음: https://youtu.be/zYY4gbajgKY
     bgmYoutubeId: 'zYY4gbajgKY',
