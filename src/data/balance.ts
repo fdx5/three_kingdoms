@@ -23,6 +23,19 @@ export const BALANCE = {
    *
    *   towerDamageMul   타워 한 발의 피해 (towers.ts 의 표에 곱해진다)
    *   enemyHpMul       모든 적의 최대 체력 (Enemy.init 에서 곱해진다)
+   *   hpGrowthBonus    각 장이 정한 웨이브당 체력 성장률(hpGrowth)에 **더하는** 값.
+   *                    enemyHpMul 이 판 전체를 같은 비율로 두껍게 한다면 이쪽은
+   *                    뒤로 갈수록 벌어진다 — 1파는 그대로고 15파는 1.4~1.5배가 된다.
+   *                    "초반은 지금처럼 배우고 후반은 실제로 밀린다"가 목표다.
+   *                    곱이 아니라 합인 이유: 장마다 hpGrowth 가 0.078~0.26 으로
+   *                    제각각이라 배수로 올리면 이미 가파른 1장만 폭발한다.
+   *                    합이면 어느 장이든 "웨이브당 +3%p" 라는 같은 크기로 얹힌다.
+   *   bossHpMul        장수(elite/boss)의 체력 (Enemy.init 에서 곱해진다).
+   *                    각 장이 inserts 에 적어 둔 hpMul 2·3 위에 다시 곱한다 —
+   *                    표를 고치지 않고 "여포가 두 배로 단단하다"를 만드는 자리다.
+   *                    장수는 2초마다 성벽을 치므로(castleCombat.bossAttackInterval)
+   *                    이 값을 올리면 "성문 앞에서 끊을 수 있는가"가 곧바로 흔들린다.
+   *                    올린 뒤에는 반드시 level02/03/0456 테스트로 클리어를 확인한다.
    *   spawnIntervalMul 적과 적 사이 간격. 1보다 작으면 한 웨이브가 짧은 시간에
    *                    통째로 쏟아진다 — "길게 늘어져 오는" 대열이 "왕창 몰려오는"
    *                    대열로 바뀐다. 웨이브 사이 간격(waveInterval)은 그대로라
@@ -37,6 +50,8 @@ export const BALANCE = {
     enemyHpMul: 1.15,
     spawnIntervalMul: 0.95,
     groupGapMul: 0.95,
+    hpGrowthBonus: 0.005,
+    bossHpMul: 2,
 
     /**
      * 횡대 — "한 줄로 늘어져 온다"를 "한 무리가 통째로 온다"로 바꾸는 값.

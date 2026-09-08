@@ -76,7 +76,9 @@ describe('웨이브 생성기', () => {
     expect(waves[0].spawns).toHaveLength(10);
     expect(waves[1].spawns).toHaveLength(12);
     expect(waves[2].spawns).toHaveLength(14);
-    expect(waves[2].spawns[0].hpMul).toBeCloseTo(1.14 ** 2, 6);
+    // 각 장의 성장률에 전역 가산치가 더해진 값이 실제 기울기다.
+    const growth = 0.14 + BALANCE.difficulty.hpGrowthBonus;
+    expect(waves[2].spawns[0].hpMul).toBeCloseTo((1 + growth) ** 2, 6);
     expect(waves[2].spawns[0].speedMul).toBeCloseTo(1.02 ** 2, 6);
   });
 

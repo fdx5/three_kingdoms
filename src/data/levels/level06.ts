@@ -119,8 +119,12 @@ export const LEVEL_06: LevelDef = {
      *
      * 0.1180 -> 0.0980 으로 내린 것은 난이도를 낮추자는 게 아니라 전역 배율에 자리를
      * 내준 것이다. 적 체력 x1.15(BALANCE.difficulty)와 넓어진 횡대가 그만큼을 도로 채운다.
+     *
+     * 0.0980 -> 0.0930 도 같은 양보다. 전역 가산치(difficulty.hpGrowthBonus = 0.005)가
+     * 더해져 실제 기울기는 그대로 0.098 — 위에 적은 포화점을 지킨다.
+     * 이 장의 상향은 제갈량 쪽이다 (bossHpMul x2).
      */
-    hpGrowth: 0.0980,
+    hpGrowth: 0.0930,
     // 변주가 웨이브를 앞 웨이브보다 물러지게 만들지 않는다. [[hpRatchet]]
     hpRatchet: true,
     speedGrowth: 0.014,
@@ -167,14 +171,23 @@ export const LEVEL_06: LevelDef = {
         ],
       },
       13: { countMul: 1.35, hpMul: 0.95, groupSize: 14, intraInterval: 0.07, groupGap: 1.6 },
-      // 14·15파의 hpMul 은 13파의 포화점을 건드리지 않고 끝을 무겁게 하는 자리다 (1.35 -> 1.5, 1.08 -> 1.25)
-      14: { countMul: 0.9, hpMul: 1.5, speedMul: 0.9, groupSize: 9, intraInterval: 0.26, groupGap: 3.0 },
+      /*
+       * 14·15파의 hpMul 은 13파의 포화점을 건드리지 않고 끝을 무겁게 하는 자리다
+       * (1.35 -> 1.5 -> 2.6, 1.08 -> 1.25 -> 2.25).
+       *
+       * 마지막 장이 여섯 중 가장 헐거웠다 — 기준 플레이가 1345/1360 으로,
+       * 사실상 상처 없이 끝났다. 13파는 포화점이라 못 올리고 전역 가산치도
+       * 여기서는 되돌려 주므로, 남는 자리가 이 두 파뿐이다.
+       * 실측: 1.5/1.25 = 1324, 2.4/2.1 = 633, 2.6/2.25 = 451, 3.2/2.8 = 15파 패배.
+       * 즉 이 두 값은 벼랑 바로 앞까지 와 있다. 더 올릴 거면 0.2 씩.
+       */
+      14: { countMul: 0.9, hpMul: 2.6, speedMul: 0.9, groupSize: 9, intraInterval: 0.26, groupGap: 3.0 },
       /**
        * 마지막 웨이브. 병력 수를 1.4배로 부풀리고 그 한가운데에 제갈량을 넣는다.
        * 제갈량의 회복 오라(반경 210 · 초당 90)가 이 대열을 통째로 덮으므로,
        * 앞줄부터 지우려 들면 영영 줄지 않는다 — 먼저 본체를 끊어야 한다.
        */
-      15: { countMul: 1.4, hpMul: 1.25, groupSize: 14, intraInterval: 0.08, groupGap: 1.7 },
+      15: { countMul: 1.4, hpMul: 2.25, groupSize: 14, intraInterval: 0.08, groupGap: 1.7 },
     },
 
     inserts: {

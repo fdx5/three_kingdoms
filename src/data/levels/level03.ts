@@ -162,9 +162,19 @@ export const LEVEL_03: LevelDef = {
       15: { countMul: 1.25, hpMul: 1.05, groupSize: 13, intraInterval: 0.09, groupGap: 1.7 },
     },
 
+    /*
+     * 전역 difficulty.bossHpMul(x2)이 다시 곱해진다 — 안량 실질 2.5배, 원소 3배.
+     *
+     * 표의 2·3 을 그대로 두면 실질 4·6배가 된다. 원소 6배는 이 장을 클리어 불가로
+     * 만든다 — 궁노/벽력거 도배, 조기 소집, 계략 두 정책까지 다섯 조합 전부 15파에서
+     * 패배했다. 위 hpGrowth 주석이 적어 둔 그 지점이다("마지막 파에서 원소가
+     * 성문에 붙는 순간 뒤집혔다"). 그래서 원소만은 실질 배율을 3배 그대로 두고,
+     * 이 장의 상향은 안량(2 -> 2.5)과 웨이브 성장 가산치가 맡는다.
+     * 3.2배(hpMul 1.6)는 이기기는 하지만 슬롯 4기·수리 없음 같은 여유가 전부 사라진다.
+     */
     inserts: {
-      8: [{ unitId: 'yanliang', atRatio: 0.55, hpMul: 2 }],
-      15: [{ unitId: 'yuanshao', atRatio: 0.45, hpMul: 3 }],
+      8: [{ unitId: 'yanliang', atRatio: 0.55, hpMul: 1.25 }],
+      15: [{ unitId: 'yuanshao', atRatio: 0.45, hpMul: 1.5 }],
     },
 
     banner: (n, isBoss) => {

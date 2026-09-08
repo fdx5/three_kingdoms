@@ -11,10 +11,18 @@ import { FIXED_DT } from '../src/core/Loop';
 import { runSim } from '../scripts/sim';
 
 describe('레벨 3 맵', () => {
-  it('15개 웨이브이며 중간보스 2배·최종보스 3배가 적용된다', () => {
+  /*
+   * 표에 적힌 배율에 전역 difficulty.bossHpMul 이 곱해진 값이 실제 장수의 체력이다.
+   * 그래서 표의 숫자가 아니라 곱한 결과를 재는 것이 맞다 — 어느 쪽을 움직여도 걸린다.
+   */
+  it('15개 웨이브이며 중간보스 2.5배·최종보스 3배가 적용된다', () => {
+    const boss = BALANCE.difficulty.bossHpMul;
     expect(LEVEL_03.waves).toHaveLength(15);
-    expect(LEVEL_03.waves[7].spawns.find((s) => s.unitId === 'yanliang')?.hpMul).toBe(2);
-    expect(LEVEL_03.waves[14].spawns.find((s) => s.unitId === 'yuanshao')?.hpMul).toBe(3);
+    const yanliang = LEVEL_03.waves[7].spawns.find((s) => s.unitId === 'yanliang')!;
+    const yuanshao = LEVEL_03.waves[14].spawns.find((s) => s.unitId === 'yuanshao')!;
+    expect(yanliang.hpMul * boss).toBeCloseTo(2.5, 6);
+    // 원소는 3배가 이 장의 상한이다 — 더 올리면 15파에서 성문에 붙는 순간 뒤집힌다.
+    expect(yuanshao.hpMul * boss).toBeCloseTo(3, 6);
   });
   const path = new Path(LEVEL_03.path);
 
@@ -170,11 +178,21 @@ describe('레벨 3 밸런스 (헤드리스 15웨이브)', () => {
     );
   });
 
-  it('슬롯을 덜 지으면 클리어해도 누수가 더 많다', () => {
+  /*
+   * 예전에는 "슬롯 4기로도 클리어는 된다, 대신 누수가 많다"였다.
+   * 장수 체력을 올린 뒤(difficulty.bossHpMul) 그 여유가 사라졌다 —
+   * 4기로도 15파까지는 버티지만(성 472/500) 거기서 원소를 못 끊고 진다.
+   * 즉 이 장의 슬롯은 물량이 아니라 마지막 장수를 위해 채우는 것이다.
+   */
+  it('슬롯을 덜 지으면 물량은 버텨도 마지막 장수를 못 끊는다', () => {
     const full = runSim({ level: 'level03', early: true });
     const fewer = runSim({ level: 'level03', early: true, towers: 4 });
-    expect(fewer.won).toBe(true);
+    expect(full.won).toBe(true);
+    expect(fewer.won).toBe(false);
+    // 도중에 무너진 것이 아니라 마지막 파까지 갔다
+    expect(fewer.lastWave).toBe(15);
     expect(fewer.leaks).toBeGreaterThan(full.leaks);
+    expect(fewer.leaksByUnit.yuanshao).toBe(1);
   });
 
   it('조기 소집을 써도 업그레이드를 안 하면 진다 (레벨 1의 교훈이 유지된다)', () => {

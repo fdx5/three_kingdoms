@@ -107,8 +107,13 @@ export const LEVEL_02: LevelDef = {
      * 0.10 -> 0.115. 전역 난이도(BALANCE.difficulty)만으로는 이 장의 성적이
      * 592/600 에서 거의 움직이지 않았다 — 누수는 늘었는데 수리가 전부 되돌렸다.
      * 0.115 에서 502/600, 누수 25 로 끝난다. 0.13 은 11파에서 무너진다.
+     *
+     * 0.115 -> 0.110. 전역 가산치(difficulty.hpGrowthBonus = 0.005)에 자리를
+     * 내준 것이지 물러진 것이 아니다 — 실제 기울기는 그대로 0.115 다.
+     * 이 장에는 위로 갈 여유가 없다: 0.120(= 0.115 + 가산치)이면 12파에서 무너진다.
+     * 이 장의 상향은 물량이 아니라 아래 inserts 의 장수 쪽으로 갔다.
      */
-    hpGrowth: 0.115,
+    hpGrowth: 0.110,
     speedGrowth: 0.015,
     spawnInterval: (n) => Math.max(0.38, 1.05 - 0.03 * n),
     formationColumns: 4,
@@ -156,9 +161,17 @@ export const LEVEL_02: LevelDef = {
       14: { countMul: 1.2, hpMul: 1.05, groupSize: 12, intraInterval: 0.12, groupGap: 2.1 },
     },
 
+    /*
+     * 장수 배율은 전역 difficulty.bossHpMul(x2)이 다시 곱해진 값이 실제 체력이다.
+     * 화웅 1.25 -> 실질 2.5배, 여포 1.75 -> 실질 3.5배 (예전 2배·3배).
+     *
+     * 표의 숫자를 내리고도 장수가 세진다. 여기서 2·3 을 그대로 두면 실질 4·6배가
+     * 되는데, 그러면 여포가 성문에 붙는 순간 끝난다 — 누수 25기짜리 멀쩡한 방어를
+     * 하고도 14파에서 성이 0 이 된다(실측). 3.5배가 이 장이 답할 수 있는 상한이다.
+     */
     inserts: {
-      7: [{ unitId: 'huaxiong', atRatio: 0.55, hpMul: 2 }],
-      14: [{ unitId: 'lubu', atRatio: 0.5, hpMul: 3 }],
+      7: [{ unitId: 'huaxiong', atRatio: 0.55, hpMul: 1.25 }],
+      14: [{ unitId: 'lubu', atRatio: 0.5, hpMul: 1.75 }],
     },
 
     banner: (n, isBoss) => {

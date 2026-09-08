@@ -5,7 +5,10 @@ export interface WaveInsert {
   unitId: string;
   /** 0~1. 그 웨이브 스폰 구간의 어느 시점에 끼워 넣을지 */
   atRatio: number;
-  /** 보스 원본 스탯에 적용할 개별 배율. 웨이브 성장률과는 중복되지 않는다. */
+  /**
+   * 보스 원본 스탯에 적용할 개별 배율. 웨이브 성장률과는 중복되지 않는다.
+   * 그 위에 전역 BALANCE.difficulty.bossHpMul 이 Enemy.init 에서 다시 곱해진다.
+   */
   hpMul?: number;
   speedMul?: number;
 }
@@ -59,7 +62,10 @@ export interface GenerateWavesParams {
   baseCount: number;
   /** 웨이브마다 늘어나는 보병 수 */
   countStep: number;
-  /** 웨이브당 HP 성장률 (0.14 = x1.14 누적) */
+  /**
+   * 웨이브당 HP 성장률 (0.14 = x1.14 누적).
+   * 여기에 BALANCE.difficulty.hpGrowthBonus 가 **더해진** 값이 실제 기울기다.
+   */
   hpGrowth: number;
   /**
    * 체력 배율이 앞 웨이브보다 낮아지지 않게 한다.
@@ -152,9 +158,16 @@ export function generateWaves(params: GenerateWavesParams): WaveDef[] {
     const pattern = params.patterns?.[n];
     const baseMinionCount = params.baseCount + params.countStep * (n - 1);
     const minionCount = Math.max(1, Math.round(baseMinionCount * (pattern?.countMul ?? 1)));
-    const rawHpMul = Math.pow(1 + params.hpGrowth, n - 1) * (pattern?.hpMul ?? 1);
-    // 래칫: 앞 웨이브보다 최소 한 걸음(hpGrowth)은 올라간다. 같은 자리에 머무는 파가 없다.
-    const floor = prevHpMul * (1 + params.hpGrowth);
+    /*
+     * 각 장이 정한 성장률에 전역 가산치를 얹는다 — 표는 그대로 두고 기울기만 세운다.
+     * 1파는 어느 장이든 그대로고(성장률은 n-1 제곱이므로), 뒤로 갈수록 벌어진다.
+     * 왜 여기인가: 이 값이 웨이브 번호를 아는 유일한 자리다. Enemy.init 은 스폰이
+     * 건네준 hpMul 만 볼 뿐 몇 파째인지 모른다. [[BALANCE.difficulty.hpGrowthBonus]]
+     */
+    const growth = params.hpGrowth + BALANCE.difficulty.hpGrowthBonus;
+    const rawHpMul = Math.pow(1 + growth, n - 1) * (pattern?.hpMul ?? 1);
+    // 래칫: 앞 웨이브보다 최소 한 걸음(growth)은 올라간다. 같은 자리에 머무는 파가 없다.
+    const floor = prevHpMul * (1 + growth);
     const hpMul = params.hpRatchet ? Math.max(rawHpMul, floor) : rawHpMul;
     prevHpMul = hpMul;
     const speedMul = Math.pow(1 + params.speedGrowth, n - 1) * (pattern?.speedMul ?? 1);
