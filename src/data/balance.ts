@@ -69,6 +69,29 @@ export const BALANCE = {
     rank: { columnsMul: 2, maxColumns: 7, maxHalfWidth: 38, minSpacing: 12 },
   },
 
+  /**
+   * 타워를 어디에 세울 수 있는가 — 자유 배치의 규칙.
+   *
+   * 레벨이 정한 슬롯 위에만 짓던 시절에는 이 값들이 필요 없었다. 지금은 빈 땅
+   * 아무 데나 지을 수 있고, 레벨이 정하는 것은 자리가 아니라 **개수**다
+   * (LevelDef.maxTowers). 그래서 "어디에 세울 수 없는가"를 여기 네 줄로 정한다.
+   *
+   * 값은 예전 슬롯들이 실제로 지키던 거리에서 가져왔다 — 여섯 장의 슬롯은
+   * 길에서 최소 48, 성문에서 117, 서로 95, 가장자리에서 90 떨어져 있었다.
+   * 그래서 예전 슬롯 자리는 전부 지금도 유효하다(tests/placement.test.ts 가 지킨다).
+   *
+   *   pathClearance   길 중심선에서 이만큼 안쪽은 못 짓는다. 길 리본의 반폭이 44 다.
+   *   towerSpacing    타워끼리 최소 간격. 모델이 겹쳐 보이지 않는 최소치이기도 하다.
+   *   castleClearance 성문 앞 광장. 성벽에 붙여 지어 성문 전투를 화력으로 덮는 것을 막는다.
+   *   edgeMargin      맵 가장자리 여백. 카메라가 잘 안 닿는 구석에 짓지 못하게.
+   */
+  placement: {
+    pathClearance: 46,
+    towerSpacing: 44,
+    castleClearance: 100,
+    edgeMargin: 40,
+  },
+
   /** 웨이브 사이 대기 시간 (초) */
   waveInterval: 12,
   /** 첫 웨이브 시작 전 준비 시간 (초) — 타워 1기를 지을 여유 */

@@ -60,6 +60,10 @@ export class TowerPanel {
   get openSlotId(): string | null {
     return this.slotId;
   }
+  /** 건설 패널에서 지금 고른 타워. 뷰가 그 사거리로 미리보기를 그린다. */
+  get pickedTower(): TowerDef {
+    return this.picked;
+  }
 
   /** 화면 좌표에 패널을 놓는다 (데스크톱 팝오버). 모바일은 CSS가 하단 시트로 덮어쓴다. */
   place(screenX: number, screenY: number): void {

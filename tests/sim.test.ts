@@ -11,6 +11,17 @@ import { LEVEL_01 } from '../src/data/levels/level01';
 import { UNITS } from '../src/data/units';
 import { FIXED_DT } from '../src/core/Loop';
 import { runSim } from '../scripts/sim';
+import { spotKey } from '../src/sim/Placement';
+
+
+/*
+ * 자유 배치가 된 뒤로 build() 는 좌표를 받고, 타워의 id 는 그 좌표에서 나온다
+ * (Placement.spotKey). 아래 두 헬퍼가 예전의 슬롯 id 를 그 좌표/키로 옮겨 준다 —
+ * 레벨의 추천 자리는 자유 배치에서도 여전히 유효한 자리다.
+ */
+const at = (id: string): { x: number; z: number } =>
+  LEVEL_01.buildSlots.find((s) => s.id === id)!;
+const keyOf = (id: string): string => spotKey(at(id).x, at(id).z);
 
 describe('Path', () => {
   const path = new Path([
@@ -174,8 +185,9 @@ describe('화살 배분 규칙 (밸런스의 핵심)', () => {
   it('한 번에 나간 화살들이 다발 안의 제 번호를 갖는다 (뷰가 N발로 흩는 근거)', () => {
     const w = new World({ level: LEVEL_01, seed: 1 });
     w.economy.add(5000);
-    const slotId = LEVEL_01.buildSlots[0].id;
-    w.build(slotId, 'archer_tower');
+    const slot = LEVEL_01.buildSlots[0];
+    const slotId = spotKey(slot.x, slot.z);
+    w.build(slot, 'archer_tower');
     for (let i = 0; i < 4; i++) w.upgrade(slotId); // 5레벨 = 화살 5발
 
     const fired: { id: number; index: number; size: number }[] = [];
@@ -227,41 +239,41 @@ describe('World 규칙', () => {
   it('건설은 골드를 소모하고 부족하면 실패한다', () => {
     const w = newWorld();
     expect(w.economy.gold).toBe(250);
-    expect(w.build('slot_a')).toBe('ok');
+    expect(w.build(at('slot_a'))).toBe('ok');
     expect(w.economy.gold).toBe(150);
-    expect(w.build('slot_a')).toBe('occupied');
-    expect(w.build('slot_nope')).toBe('no_slot');
-    expect(w.build('slot_b')).toBe('ok');
+    // 같은 자리에 겹쳐 지을 수 없다 — 이제 "점유"가 아니라 "간격" 규칙이 막는다
+    expect(w.build(at('slot_a'))).toBe('too_close');
+    expect(w.build(at('slot_b'))).toBe('ok');
     expect(w.economy.gold).toBe(50);
-    expect(w.build('slot_c')).toBe('no_gold');
-    expect(w.build('slot_a')).toBe('occupied');
+    expect(w.build(at('slot_c'))).toBe('no_gold');
+    expect(w.build(at('slot_a'))).toBe('too_close');
   });
 
   it('업그레이드 비용과 판매 환급이 표대로다', () => {
     const w = newWorld();
-    w.build('slot_a');
+    w.build(at('slot_a'));
     w.economy.add(100);
-    const t = w.towers.get('slot_a')!;
+    const t = w.towers.get(keyOf('slot_a'))!;
     expect(t.level).toBe(1);
     expect(t.totalInvested).toBe(100);
-    expect(w.upgrade('slot_a')).toBe('ok'); // 100
-    expect(w.upgrade('slot_a')).toBe('ok'); // 150
+    expect(w.upgrade(keyOf('slot_a'))).toBe('ok'); // 100
+    expect(w.upgrade(keyOf('slot_a'))).toBe('ok'); // 150
     expect(t.level).toBe(3);
     expect(t.totalInvested).toBe(350);
     expect(t.sellValue()).toBe(245); // floor(350 * 0.7)
     const goldBefore = w.economy.gold;
-    expect(w.sell('slot_a')).toBe(245);
+    expect(w.sell(keyOf('slot_a'))).toBe(245);
     expect(w.economy.gold).toBe(goldBefore + 245);
-    expect(w.towers.has('slot_a')).toBe(false);
+    expect(w.towers.has(keyOf('slot_a'))).toBe(false);
   });
 
   it('만렙에서는 더 올라가지 않는다', () => {
     const w = newWorld();
     w.economy.add(10000);
-    w.build('slot_a');
-    for (let i = 0; i < 4; i++) expect(w.upgrade('slot_a')).toBe('ok');
-    expect(w.towers.get('slot_a')!.level).toBe(5);
-    expect(w.upgrade('slot_a')).toBe('max_level');
+    w.build(at('slot_a'));
+    for (let i = 0; i < 4; i++) expect(w.upgrade(keyOf('slot_a'))).toBe('ok');
+    expect(w.towers.get(keyOf('slot_a'))!.level).toBe(5);
+    expect(w.upgrade(keyOf('slot_a'))).toBe('max_level');
   });
 
   it('성에 도착한 적은 죽을 때까지 반복 공격하고 성은 화살 두 발로 반격한다', () => {
@@ -309,7 +321,7 @@ describe('World 규칙', () => {
   it('죽은 적의 골드가 지급되고 이벤트가 발행된다', () => {
     const w = newWorld();
     w.economy.add(10000);
-    w.build('slot_a');
+    w.build(at('slot_a'));
     let killed = 0;
     let goldFromKills = 0;
     w.bus.on('enemy:killed', (e) => {
@@ -324,9 +336,9 @@ describe('World 규칙', () => {
   it('3레벨 궁노 화살은 착탄 지점에 지속 화염 지대를 만든다', () => {
     const w = newWorld();
     w.economy.add(10_000);
-    expect(w.build('slot_a')).toBe('ok');
-    expect(w.upgrade('slot_a')).toBe('ok');
-    expect(w.upgrade('slot_a')).toBe('ok');
+    expect(w.build(at('slot_a'))).toBe('ok');
+    expect(w.upgrade(keyOf('slot_a'))).toBe('ok');
+    expect(w.upgrade(keyOf('slot_a'))).toBe('ok');
     let created = 0;
     w.bus.on('fire-zone:created', () => created++);
     w.callWaveEarly();

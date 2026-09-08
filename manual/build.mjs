@@ -200,7 +200,7 @@ mark('', '', '', page('머리말', `
     <tr><td>제一장</td><td>${esc(LEVEL.level01.title.split('—')[0].trim())}</td><td><b>업그레이드</b> — 망루를 키우지 않으면 중간보스를 넘지 못한다.</td></tr>
     <tr><td>제二장</td><td>${esc(LEVEL.level02.title.split('—')[0].trim())}</td><td><b>조합</b> — 방패병에는 화살이 통하지 않는다. 벽력거와 철질려가 열린다.</td></tr>
     <tr><td>제三장</td><td>${esc(LEVEL.level03.title.split('—')[0].trim())}</td><td><b>시간</b> — 처치 골드가 짜다. 조기 소집으로 시간을 팔아 돈을 산다.</td></tr>
-    <tr><td>제四장</td><td>${esc(LEVEL.level04.title.split('—')[0].trim())}</td><td><b>성문</b> — 슬롯이 다섯뿐이다. 일곱 번째 망루는 성문 그 자체다.</td></tr>
+    <tr><td>제四장</td><td>${esc(LEVEL.level04.title.split('—')[0].trim())}</td><td><b>성문</b> — 망루가 다섯 기뿐이다. 여섯 번째 망루는 성문 그 자체다.</td></tr>
     <tr><td>제五장</td><td>${esc(LEVEL.level05.title.split('—')[0].trim())}</td><td><b>속성</b> — 물에 젖은 형주군에게 불은 듣지 않는다.</td></tr>
     <tr><td>제六장</td><td>${esc(LEVEL.level06.title.split('—')[0].trim())}</td><td><b>전부</b> — 앞의 다섯을 한 판에서 동시에 요구한다.</td></tr>
   </tbody>
@@ -239,13 +239,13 @@ mark('', '', '', page('화면과 조작', `
 <h3 class="h-sub" style="margin-top:0">조작 — PC</h3>
 <table class="t-tight">
   <tbody>
-    <tr><td style="width:44mm"><b>슬롯 탭</b></td><td>건설 · 타워 패널 열기</td></tr>
+    <tr><td style="width:44mm"><b>빈 땅 탭</b></td><td>그 자리에 건설 · 세운 망루를 누르면 타워 패널</td></tr>
     <tr><td><b>드래그</b></td><td>카메라 팬 (지면이 커서를 그대로 따라온다)</td></tr>
     <tr><td><b>우클릭 · 휠클릭 · Shift+드래그</b></td><td>시점 회전 (좌우 ±60°, 부감 28~72°)</td></tr>
     <tr><td><b>휠</b></td><td>줌 (커서가 가리키는 지점을 향해)</td></tr>
     <tr><td><b>W A S D · 화살표</b></td><td>카메라 팬</td></tr>
     <tr><td><b>Q · E</b></td><td>시점 회전 &nbsp;/&nbsp; <b>PageUp · PageDown</b> 줌</td></tr>
-    <tr><td><b>1 ~ 9</b></td><td>슬롯 선택 &nbsp;/&nbsp; <b>U</b> 선택한 망루 업그레이드</td></tr>
+    <tr><td><b>1 ~ 9</b></td><td>세운 순서대로 망루 선택 &nbsp;/&nbsp; <b>U</b> 선택한 망루 업그레이드</td></tr>
     <tr><td><b>Space</b></td><td>일시정지 &nbsp;/&nbsp; <b>R · ⌂</b> 시점 초기화</td></tr>
   </tbody>
 </table>
@@ -512,7 +512,7 @@ ${sechead('第五章', '성문', '지켜야 할 대상이자, 가장 강한 망�
 
 <div class="callout callout--seal">
   <span class="callout__t">왜 제四장부터인가</span>
-  <p>앞의 세 장은 슬롯이 넉넉하다. 제四장은 슬롯이 다섯뿐인데 적은 ${n(LEVEL.level04.totalSpawns)}마리가 온다.
+  <p>앞의 세 장은 망루를 넉넉히 세운다. 제四장은 다섯 기뿐인데 적은 ${n(LEVEL.level04.totalSpawns)}마리가 온다.
   여섯 번째 망루를 지을 자리가 없을 때, 성문이 그 자리를 대신한다.</p>
 </div>
 
@@ -599,9 +599,9 @@ mark('', '', '', page('계략', `
   <thead><tr><th style="width:30mm">소비처</th><th style="width:26mm">언제</th><th>무엇을 사는가</th></tr></thead>
   <tbody>
     <tr><td><b>업그레이드</b></td><td>언제나</td><td>가장 확실한 투자. 단계가 오를수록 골드당 효율이 오른다.</td></tr>
-    <tr><td><b>새 망루</b></td><td>빈 슬롯이 있을 때</td><td>화력이 닿지 않는 구간을 메운다.</td></tr>
+    <tr><td><b>새 망루</b></td><td>망루 한도가 남았을 때</td><td>화력이 닿지 않는 구간을 메운다.</td></tr>
     <tr><td><b>성벽 수리</b></td><td>웨이브 사이</td><td>이미 잃은 체력. 최대치를 넘길 수는 없다.</td></tr>
-    <tr><td><b>성문 강화</b></td><td>제四장부터</td><td>최대 체력과 화력을 동시에. 슬롯이 모자랄 때의 답.</td></tr>
+    <tr><td><b>성문 강화</b></td><td>제四장부터</td><td>최대 체력과 화력을 동시에. 망루 한도가 모자랄 때의 답.</td></tr>
     <tr><td><b>계략</b></td><td>웨이브 한복판</td><td>지금 넘기지 못하면 끝나는 순간을 산다.</td></tr>
     <tr><td><b>지금 소집</b></td><td>웨이브 사이</td><td><b>반대다.</b> 남은 대기 시간을 팔아 골드를 번다.</td></tr>
   </tbody>
@@ -687,13 +687,13 @@ const LEVEL_LEAD = {
   level01: '황건의 무리가 호뢰관으로 밀려온다. 저항도 계략도 없는 순수한 물량전이다. 이 장이 묻는 것은 하나뿐이다 — 망루를 키웠는가.',
   level02: '동탁의 서량군이 온다. 방패병의 등장으로 "화살만으로는 안 되는 적"이 처음 나타나고, 그 답으로 벽력거와 철질려가 열린다.',
   level03: '관도의 나루. 처치 골드가 유난히 짜고, 대신 조기 소집 계수가 가장 높다. 안전하게 기다릴수록 가난해지는 장이다.',
-  level04: '소요진. 슬롯이 다섯뿐인데 적은 천 마리가 넘는다. 여섯 번째 망루를 지을 자리가 없다 — 성문을 올려야 한다.',
+  level04: '소요진. 망루가 다섯 기뿐인데 적은 천 마리가 넘는다. 여섯 번째 망루를 세울 한도가 없다 — 성문을 올려야 한다.',
   level05: '한수가 범람했다. 물에 젖은 형주군에게 불은 거의 듣지 않는다. 화공 망루를 도배해 온 사람이 처음으로 무너지는 장이다.',
   level06: '오장원. 앞의 다섯 장이 가르친 것을 한 판에서 동시에 요구한다. 제갈량은 성문을 때리는 대신 태운다.',
 };
 const LEVEL_TIP = {
   level01: ['궁노 망루 두 대를 먼저 5단계 근처까지 올린다. 다섯 대를 1단계로 늘어놓는 것보다 낫다.',
-    '길이 겹쳐 지나가는 안쪽 슬롯이 가장 값지다 — 한 망루가 같은 적을 두 번 만난다.',
+    '길이 겹쳐 지나가는 안쪽 자리가 가장 값지다 — 한 망루가 같은 적을 두 번 만난다.',
     '제六파 두목과 제十二파 장각 전에는 반드시 업그레이드를 끝내 둔다.'],
   level02: ['방패병이 보이면 즉시 벽력거를 한 대 세운다. 화살로는 28%만 들어간다.',
     '서량 철기는 속도 112다. 철질려로 묶어 두지 않으면 사거리를 순식간에 빠져나간다.',
@@ -703,7 +703,7 @@ const LEVEL_TIP = {
     '웨이브 사이마다 지금 소집을 눌러 남은 초를 골드로 바꾼다 — 초당 10골드다.',
     '하북 기수의 가속 오라 반경은 110이다. 무리 한복판에 있으므로 범위 피해로 함께 친다.',
     '원소는 반경 200의 가속 오라를 두른다. 웨이브 전체가 앞당겨 도착한다는 뜻이다.'],
-  level04: ['성문 강화가 처음 열린다. 슬롯 다섯이 다 차면 남는 골드는 성문으로 간다.',
+  level04: ['성문 강화가 처음 열린다. 망루 다섯 기가 다 차면 남는 골드는 성문으로 간다.',
     '등갑병은 화염 취약 ×2.2다. 화공 망루 한 대가 궁노 세 대보다 낫다.',
     '강동 야습대는 감속 면역이다. 철질려로 묶이지 않으니 얼음폭풍을 아껴 둔다.',
     '손권은 반경 190으로 초당 55를 회복시킨다. 화력을 나누면 영영 죽지 않는다.'],
@@ -711,7 +711,7 @@ const LEVEL_TIP = {
     '화포 진지가 열린다. 사거리 175~210으로 뒷줄의 위험을 직접 노릴 수 있다.',
     '공성 목우는 체력 380에 감속 면역, 성 피해 60이다. 반드시 길 위에서 끊는다.',
     '관우는 화염 저항 75%에 돌진과 가속 오라를 함께 가진다. 공성으로 답한다.'],
-  level06: ['적이 2,300마리를 넘는다. 슬롯 여덟을 모두 채우고 모두 올려야 한다.',
+  level06: ['적이 2,300마리를 넘는다. 망루 여덟 기를 모두 세우고 모두 올려야 한다.',
     '촉한군은 화살·화염 저항을 고르게 갖췄다. 공성 피해의 비중을 가장 높게 잡는다.',
     '목우유마는 체력 460에 회복 오라 34, 감속 면역이다. 화포로 뒤에서 끊는다.',
     '제갈량은 성문을 불로 태운다. 성문을 6단계 화룡구까지 올려 최대 체력을 확보해 둔다.'],
@@ -731,7 +731,7 @@ for (let i = 0; i < D.levels.length; i++) {
         <dl class="opener__facts">
           <div><dt>성 체력</dt><dd>${n(l.castleHp)}</dd></div>
           <div><dt>시작 골드</dt><dd>${n(l.startGold)}</dd></div>
-          <div><dt>건설 슬롯</dt><dd>${l.slots}<small> 자리</small></dd></div>
+          <div><dt>망루 한도</dt><dd>${l.slots}<small> 기</small></dd></div>
           <div><dt>총 병력</dt><dd>${n(l.totalSpawns)}<small> 마리</small></dd></div>
         </dl>
       </div>
@@ -746,7 +746,7 @@ for (let i = 0; i < D.levels.length; i++) {
   ${levelMap(l)}
   <div class="map-key">
     <span><b>敵</b> 적 출현</span><span><b>城</b> 성문</span>
-    <span><b>①~${'①②③④⑤⑥⑦⑧'[l.slots - 1]}</b> 건설 슬롯 ${l.slots}자리</span>
+    <span><b>①~${'①②③④⑤⑥⑦⑧'[l.slots - 1]}</b> 추천 자리 · 망루는 빈 땅 어디든 ${l.slots}기까지</span>
     <span>1칸 = 50 · 전장 1200 × 700</span>
   </div>
 
@@ -851,7 +851,7 @@ mark('', '', '', page('부록', `
 
 <h3 class="h-sub">숫자로 보는 전 六장</h3>
 <table class="t-tight">
-  <thead><tr><th>장</th><th class="num">성 체력</th><th class="num">시작 골드</th><th class="num">슬롯</th><th class="num">웨이브</th><th class="num">총 병력</th><th class="num">보상 합계</th></tr></thead>
+  <thead><tr><th>장</th><th class="num">성 체력</th><th class="num">시작 골드</th><th class="num">망루</th><th class="num">웨이브</th><th class="num">총 병력</th><th class="num">보상 합계</th></tr></thead>
   <tbody>
     ${D.levels.map((l, i) => `<tr><td>제${HANZI[i]}장</td>
       <td class="num">${n(l.castleHp)}</td><td class="num">${n(l.startGold)}</td>

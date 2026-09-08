@@ -19,6 +19,14 @@ export interface WaveDef {
   isBossWave?: boolean;
 }
 
+/**
+ * 추천 자리.
+ *
+ * 예전에는 **여기에만** 지을 수 있었다. 지금은 빈 땅 아무 데나 지을 수 있으므로
+ * 이 목록은 두 가지 일만 한다 — 지형을 그 자리에서 평탄하게 깎고(Terrain),
+ * 레벨이 몇 기를 허용하는지의 기본값이 된다(maxTowers 를 적지 않은 레벨).
+ * 각 장의 "좋은 자리 / 나쁜 자리" 설계 의도도 여기 남아 있다.
+ */
 export interface BuildSlotDef {
   id: string;
   x: number;
@@ -102,6 +110,13 @@ export interface LevelDef {
   /** 폴리라인. y는 지형에서 샘플링한다. */
   path: [number, number][];
   buildSlots: BuildSlotDef[];
+  /**
+   * 이 전장에 세울 수 있는 타워의 총 수.
+   *
+   * 자유 배치가 되면서 레벨이 정하는 것은 "어디"가 아니라 "몇 기"가 되었다.
+   * 적지 않으면 buildSlots.length — 여섯 장의 밸런스가 그 수를 전제로 맞춰져 있다.
+   */
+  maxTowers?: number;
   waves: WaveDef[];
   environment: LevelEnvironment;
 }

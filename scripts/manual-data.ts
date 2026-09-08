@@ -27,7 +27,8 @@ const levels = LEVEL_ORDER.map((l) => {
     firstWaveDelay: l.firstWaveDelay ?? BALANCE.firstWaveDelay,
     earlyCallBonusPerSecond: l.earlyCallBonusPerSecond ?? BALANCE.earlyCallBonusPerSecond,
     stars: l.stars ?? BALANCE.stars,
-    slots: l.buildSlots.length,
+    // 세울 수 있는 망루의 수. 자유 배치라 자리는 자유고, 레벨이 정하는 것은 이 수다.
+    slots: l.maxTowers ?? l.buildSlots.length,
     waves: l.waves.length,
     bossWaves: l.waves.filter((w) => w.isBossWave).map((w) => ({ index: w.index, banner: w.banner })),
     totalSpawns,

@@ -108,6 +108,22 @@ async function boot(page: Page, url: string): Promise<void> {
   await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 20000 });
 }
 
+/**
+ * 추천 자리 i 번째의 **빈 땅**을 탭한다 = 건설 패널을 연다.
+ *
+ * 자유 배치가 된 뒤로 "슬롯을 고른다"가 없어졌다. 대신 지면을 눌러 그 좌표를
+ * 후보 자리로 삼는다 — 그래서 여기서도 실제 탭 경로(handleTap)를 그대로 탄다.
+ */
+function tapSpot(page: Page, index: number): Promise<void> {
+  return page.evaluate(`(function () {
+    var g = window.game;
+    var s = g.world.level.buildSlots[${index}];
+    var r = g.handle.domElement.getBoundingClientRect();
+    var p = g.scene.project(s.x, 0, s.z);
+    g.scene.handleTap(r.left + p.x, r.top + p.y, r);
+  })()`) as Promise<void>;
+}
+
 /** 지금 살아 있는 적 중 감속이 걸린 수 */
 function slowedCount(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -151,7 +167,7 @@ async function level1Pass(page: Page): Promise<void> {
   if (initial.hudButtons < 6) fail(`HUD 버튼이 너무 적다: ${initial.hudButtons}`);
 
   // 레벨 1에는 지을 수 있는 타워가 궁노 하나뿐이라 선택 행이 없어야 한다
-  await page.keyboard.press('1');
+  await tapSpot(page, 0);
   await page.waitForTimeout(200);
   const panel = await page.evaluate(() => {
     const p = document.querySelector('.panel') as HTMLElement | null;
@@ -161,9 +177,9 @@ async function level1Pass(page: Page): Promise<void> {
       picks: document.querySelectorAll('.towerpick button').length,
     };
   });
-  if (!panel.visible || !panel.hasArcher) fail('슬롯 선택 후 건설 패널이 뜨지 않았다');
+  if (!panel.visible || !panel.hasArcher) fail('빈 땅 탭 후 건설 패널이 뜨지 않았다');
   if (panel.picks !== 0) fail(`레벨 1에 타워 선택 행이 떴다 (${panel.picks}종) — 해금 필터가 새고 있다`);
-  console.log('[ok] 슬롯 선택 -> 건설 패널 표시 (타워 1종, 선택 행 없음)');
+  console.log('[ok] 빈 땅 탭 -> 건설 패널 표시 (타워 1종, 선택 행 없음)');
 
   // 보병 GLTF 모델이 실제로 붙었는지 — 프리미티브로 조용히 폴백하면 여기서 잡힌다
   const models = await page.evaluate(`(function () {
@@ -204,17 +220,17 @@ async function level1Pass(page: Page): Promise<void> {
   await page.waitForTimeout(200);
   const hitBox = await page.evaluate(`(function () {
     var g = window.game;
-    var id = g.world.level.buildSlots[0].id;
-    var hit = g.scene.slotHits.get(id);
+    var id = Array.from(g.world.towers.keys())[0];
+    var hit = g.scene.towerHits.get(id);
     return hit ? { h: hit.scale.y, r: hit.scale.x } : null;
   })()`) as { h: number; r: number } | null;
-  if (!hitBox) fail('슬롯 탭 판정 볼륨이 없다');
+  if (!hitBox) fail('타워 탭 판정 볼륨이 없다');
   if (hitBox.h < 40) fail(`탭 판정 높이가 타워를 못 덮는다: ${hitBox.h.toFixed(1)}u`);
   if (hitBox.r < 32 || hitBox.r > 64) fail(`탭 판정 반지름이 이상하다: ${hitBox.r.toFixed(1)}u`);
 
   const tapHeights = await page.evaluate(`(function () {
     var g = window.game;
-    var s = g.world.level.buildSlots[0];
+    var s = g.world.towers.values().next().value;
     return [0, 20, 40, 55].map(function (h) {
       var p = g.scene.project(s.x, h, s.z);
       return { h: h, x: Math.round(p.x), y: Math.round(p.y) };
@@ -226,25 +242,36 @@ async function level1Pass(page: Page): Promise<void> {
     await page.mouse.click(t.x, t.y);
     await page.waitForTimeout(180);
     const sel = await page.evaluate(`window.game.selectedSlot`);
-    if (!sel) fail(`망루 y=${t.h}u 지점을 눌렀는데 슬롯이 잡히지 않는다 (탭 판정이 몸통을 못 덮음)`);
+    if (!sel) fail(`망루 y=${t.h}u 지점을 눌렀는데 타워가 잡히지 않는다 (탭 판정이 몸통을 못 덮음)`);
   }
   console.log(`[ok] 망루 몸통 전 높이 탭 가능 — 판정 ${hitBox.h.toFixed(0)}u x r${hitBox.r.toFixed(0)}u`);
 
   /*
-   * 가로로 든 휴대폰에서 슬롯을 짚을 수 있는가.
+   * 가로로 든 휴대폰에서 세운 망루를 짚을 수 있는가.
    *
    * 판정 기둥은 월드 좌표라 화면에서의 크기가 시점에 따라 변한다. 전장 전체를 담는
-   * 가로 폰(844x390)에서는 슬롯 지름이 25px 밖에 안 돼서, 손가락 끝이 그보다 굵다 —
+   * 가로 폰(844x390)에서는 망루 지름이 25px 밖에 안 돼서, 손가락 끝이 그보다 굵다 —
    * 분명히 눌렀는데 아무 일도 안 일어나는 일이 생겼다. 그래서 빗나간 탭은
-   * 화면 좌표로 한 번 더 보고 가장 가까운 슬롯으로 끌어당긴다.
+   * 화면 좌표로 한 번 더 보고 가장 가까운 망루로 끌어당긴다.
+   *
+   * 스냅이 옆 망루를 훔치지 않는지도 같이 본다 — 그러려면 두 기 이상이 서 있어야
+   * 하므로 여기서 추천 자리 두 곳에 더 세운다(골드는 채워 넣는다).
    */
+  await page.evaluate(`(function () {
+    var g = window.game;
+    var total = g.world.economy.add(400);
+    g.world.bus.emit('gold:changed', { total: total, delta: 400, reason: 'smoke' });
+    g.world.build(g.world.level.buildSlots[1], 'archer_tower');
+    g.world.build(g.world.level.buildSlots[2], 'archer_tower');
+  })()`);
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(400);
   const tapSnap = await page.evaluate(`(function () {
     var g = window.game;
     var r = g.handle.domElement.getBoundingClientRect();
     var out = { 지름: 0, 맞은거리: [], 잘못잡힘: [] };
-    var s = g.world.level.buildSlots[0];
+    var towers = Array.from(g.world.towers.values());
+    var s = towers[0];
     var a = g.scene.project(s.x - 28, 0, s.z); var ax = a.x;
     var c = g.scene.project(s.x + 28, 0, s.z);
     out.지름 = Math.round(Math.abs(c.x - ax));
@@ -253,23 +280,23 @@ async function level1Pass(page: Page): Promise<void> {
     [0, 10, 18, 22].forEach(function (off) {
       g.scene.handleTap(r.left + 4, r.top + 4, r);  // 빈 땅을 눌러 선택을 푼다
       g.scene.handleTap(r.left + cx + off, r.top + cy, r);
-      if (g.selectedSlot === s.id) out.맞은거리.push(off);
+      if (g.selectedSlot === s.slotId) out.맞은거리.push(off);
     });
-    // 각 슬롯의 한복판을 눌렀을 때 제 것이 잡히는가 (스냅이 옆 슬롯을 훔치지 않는지)
-    g.world.level.buildSlots.forEach(function (q) {
+    // 각 망루의 한복판을 눌렀을 때 제 것이 잡히는가 (스냅이 옆 망루를 훔치지 않는지)
+    towers.forEach(function (q) {
       var pt = g.scene.project(q.x, 0, q.z); var qx = pt.x, qy = pt.y;
       g.scene.handleTap(r.left + qx, r.top + qy, r);
-      if (g.selectedSlot !== q.id) out.잘못잡힘.push(q.id + '->' + g.selectedSlot);
+      if (g.selectedSlot !== q.slotId) out.잘못잡힘.push(q.slotId + '->' + g.selectedSlot);
     });
     return out;
   })()`) as { 지름: number; 맞은거리: number[]; 잘못잡힘: string[] };
   if (tapSnap.맞은거리.length < 4) {
-    fail(`가로 폰에서 슬롯 탭이 빗나간다 — 지름 ${tapSnap.지름}px, 잡힌 거리 ${JSON.stringify(tapSnap.맞은거리)}`);
+    fail(`가로 폰에서 망루 탭이 빗나간다 — 지름 ${tapSnap.지름}px, 잡힌 거리 ${JSON.stringify(tapSnap.맞은거리)}`);
   }
   if (tapSnap.잘못잡힘.length > 0) {
-    fail(`탭 스냅이 옆 슬롯을 훔친다: ${tapSnap.잘못잡힘.join(', ')}`);
+    fail(`탭 스냅이 옆 망루를 훔친다: ${tapSnap.잘못잡힘.join(', ')}`);
   }
-  console.log(`[ok] 가로 폰 슬롯 탭 — 화면 지름 ${tapSnap.지름}px 인데 ±22px 까지 잡힌다`);
+  console.log(`[ok] 가로 폰 망루 탭 — 화면 지름 ${tapSnap.지름}px 인데 ±22px 까지 잡힌다`);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(400);
 
@@ -282,7 +309,7 @@ async function level1Pass(page: Page): Promise<void> {
   // 시뮬을 건드리지 않고 뷰만 레벨을 오르내리며 센다 (뒤 검사가 영향을 받지 않도록)
   const bowsByLevel = await page.evaluate(`(function () {
     var g = window.game;
-    var slot = g.world.level.buildSlots[0].id;
+    var slot = Array.from(g.world.towers.keys())[0];
     var v = g.scene.towerViews.get(slot);
     if (!v || !v.hasBows) return null;
     var origin = v.level;
@@ -476,7 +503,7 @@ async function level1Pass(page: Page): Promise<void> {
 
   const bowShot = await page.evaluate(`new Promise(function (res, rej) {
     var g = window.game, t0 = performance.now(), started = 0;
-    var slot = g.world.level.buildSlots[0].id;
+    var slot = Array.from(g.world.towers.keys())[0];
     var lo = [], hi = [], origins = {};
     function drawOf(b) {
       var a = b.string.geometry.getAttribute('position').array;
@@ -615,7 +642,7 @@ async function level2Pass(page: Page): Promise<void> {
   console.log('[ok] 성벽 수리 버튼 표시 (만피라 비활성)');
 
   // 타워 3종이 전부 뜨는지 — 해금 필터(unlockedIn)의 반대편 확인
-  await page.keyboard.press('1');
+  await tapSpot(page, 0);
   await page.waitForTimeout(250);
   const picks = await page.evaluate(() =>
     [...document.querySelectorAll('.towerpick__name')].map((n) => n.textContent),
@@ -636,7 +663,7 @@ async function level2Pass(page: Page): Promise<void> {
 
   const trap = await page.evaluate(`(function () {
     var g = window.game;
-    var v = g.scene.towerViews.get(g.world.level.buildSlots[0].id);
+    var v = g.scene.towerViews.get(Array.from(g.world.towers.keys())[0]);
     if (!v || !v.model.getObjectByName('spike1') || !v.idleAction || !v.triggerAction) return null;
     var spike = v.model.getObjectByName('spike1');
     var before = spike.position.y;
@@ -647,10 +674,10 @@ async function level2Pass(page: Page): Promise<void> {
   if (!trap || !trap.idle || trap.lift < 1 || trap.bounds.radius < 20 || trap.bounds.radius > 35) {
     fail('철질려 모델의 크기 또는 가시 애니메이션이 잘못됐다: ' + JSON.stringify(trap));
   }
-  console.log('[ok] 철질려 3D 모델 — 대기 회전과 감속 반응, 슬롯 크기 확인');
+  console.log('[ok] 철질려 3D 모델 — 대기 회전과 감속 반응, 자리 크기 확인');
 
   // 벽력거 (220G) — 새 프리미티브가 실제로 씬에 올라가는지
-  await page.keyboard.press('2');
+  await tapSpot(page, 1);
   await page.waitForTimeout(250);
   await pickTower(page, '벽력거');
   await page.locator('.panel button', { hasText: '건설' }).click();
@@ -666,7 +693,7 @@ async function level2Pass(page: Page): Promise<void> {
    */
   const cat = await page.evaluate(`(function () {
     var g = window.game;
-    var slotId = g.world.level.buildSlots[1].id;
+    var slotId = Array.from(g.world.towers.keys())[1];
     var v = g.scene.towerViews.get(slotId);
     if (!v || !v.hasBows) return null;
     var arm = v.bows[0].bone.getObjectByName('bow1_arm');
@@ -691,10 +718,10 @@ async function level2Pass(page: Page): Promise<void> {
     g.world.bus.emit('gold:changed', { total: total, delta: 200, reason: 'smoke' });
   })()`);
 
-  // 세 슬롯을 더 채워 전투가 실제로 벌어지게 한다 (질려는 혼자서 아무도 못 죽인다)
+  // 두 자리를 더 채워 전투가 실제로 벌어지게 한다 (질려는 혼자서 아무도 못 죽인다)
   await page.keyboard.press('Escape');
-  for (const key of ['3', '4']) {
-    await page.keyboard.press(key);
+  for (const index of [2, 3]) {
+    await tapSpot(page, index);
     await page.waitForTimeout(250);
     await pickTower(page, '궁노 망루');
     await page.locator('.panel button', { hasText: '건설' }).click();
@@ -737,7 +764,7 @@ async function level2Pass(page: Page): Promise<void> {
   // 던지는 팔이 실제로 도는지 + 돌이 팔 끝에서 떠나는지
   const throwCheck = await page.evaluate(`new Promise(function (res, rej) {
     var g = window.game, t0 = performance.now();
-    var slotId = g.world.level.buildSlots[1].id;
+    var slotId = Array.from(g.world.towers.keys())[1];
     var lo = Infinity, hi = -Infinity, launched = 0;
     function c() {
       var v = g.scene.towerViews.get(slotId);
@@ -975,15 +1002,35 @@ async function level3Pass(page: Page): Promise<void> {
   if (!(amount > 60)) fail(`조기 소집 보너스가 너무 작다: "${bonus}" — 계수 배선 확인`);
   console.log(`[ok] 조기 소집 보너스 표시 — ${bonus}`);
 
-  // 슬롯 7개를 키보드로 전부 고를 수 있는지 (레벨마다 슬롯 수가 다르다)
+  /*
+   * 이 전장의 예산(7기)을 다 세울 수 있고, 키보드 숫자가 **세운 순서대로**
+   * 그 망루들을 가리키는가. 자유 배치가 된 뒤 숫자 키가 가리키는 것은
+   * 슬롯 번호가 아니라 내가 세운 n번째 망루다.
+   */
+  const budget = await page.evaluate(`(function () {
+    var g = window.game;
+    var total = g.world.economy.add(3000);
+    g.world.bus.emit('gold:changed', { total: total, delta: 3000, reason: 'smoke' });
+    var built = 0;
+    g.world.level.buildSlots.forEach(function (s) {
+      if (g.world.build(s, 'archer_tower') === 'ok') built++;
+    });
+    // 예산을 넘겨 한 기 더 지어 보면 거절당해야 한다
+    var extra = g.world.build({ x: 250, z: 250 }, 'archer_tower');
+    return { built: built, max: g.world.maxTowers, extra: extra };
+  })()`) as { built: number; max: number; extra: string };
+  if (budget.built !== budget.max) fail(`추천 자리 ${budget.max}곳에 다 못 세웠다: ${budget.built}기`);
+  if (budget.extra !== 'limit') fail(`예산을 넘겨 더 지어졌다: ${budget.extra}`);
+  console.log(`[ok] 타워 예산 ${budget.max}기 — 다 세우면 그 이상은 'limit' 으로 막힌다`);
+
   await page.keyboard.press('7');
   await page.waitForTimeout(250);
   const seventh = await page.evaluate(() => {
     const p = document.querySelector('.panel') as HTMLElement | null;
     return !!p && p.style.display !== 'none';
   });
-  if (!seventh) fail('7번 슬롯이 키보드로 선택되지 않았다');
-  console.log('[ok] 7번 슬롯 선택 (슬롯 수만큼 키가 동작한다)');
+  if (!seventh) fail('7번 망루가 키보드로 선택되지 않았다');
+  console.log('[ok] 7번 망루 선택 (세운 수만큼 키가 동작한다)');
 
   // 조기 소집으로 골드를 앞당겨 벌고 그 돈으로 짓는다 — 레벨 3의 기본 루프
   await page.keyboard.press('Escape');

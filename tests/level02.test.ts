@@ -31,17 +31,19 @@ describe('레벨 레지스트리', () => {
   it('레벨 1에서는 벽력거·철질려를 지을 수 없다', () => {
     const w = new World({ level: LEVEL_01, seed: 1 });
     w.economy.add(10000);
-    expect(w.build('slot_a', 'catapult')).toBe('locked');
-    expect(w.build('slot_a', 'caltrop_camp')).toBe('locked');
-    expect(w.build('slot_a', 'archer_tower')).toBe('ok');
+    const spot1 = LEVEL_01.buildSlots[0];
+    expect(w.build(spot1, 'catapult')).toBe('locked');
+    expect(w.build(spot1, 'caltrop_camp')).toBe('locked');
+    expect(w.build(spot1, 'archer_tower')).toBe('ok');
   });
 
   it('레벨 2에서는 세 종류를 모두 지을 수 있다', () => {
     const w = new World({ level: LEVEL_02, seed: 1 });
     w.economy.add(10000);
-    expect(w.build('s2_a', 'archer_tower')).toBe('ok');
-    expect(w.build('s2_b', 'catapult')).toBe('ok');
-    expect(w.build('s2_c', 'caltrop_camp')).toBe('ok');
+    const at2 = (id: string) => LEVEL_02.buildSlots.find((s) => s.id === id)!;
+    expect(w.build(at2('s2_a'), 'archer_tower')).toBe('ok');
+    expect(w.build(at2('s2_b'), 'catapult')).toBe('ok');
+    expect(w.build(at2('s2_c'), 'caltrop_camp')).toBe('ok');
   });
 });
 
@@ -447,7 +449,7 @@ describe('계략', () => {
 
   it('원군은 타워 피해량을 올리고 시간이 지나면 원래대로 돌아온다', () => {
     const w = armed();
-    w.build(LEVEL_02.buildSlots[0].id, 'archer_tower');
+    w.build(LEVEL_02.buildSlots[0], 'archer_tower');
     const def = getStratagem('reinforcements');
     const dur = def.effect.type === 'rally' ? def.effect.params.duration : 0;
 

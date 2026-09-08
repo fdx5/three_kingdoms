@@ -17,7 +17,6 @@ import type { AssetRegistry } from './AssetRegistry';
 import { EnemyView } from './views/EnemyView';
 import { TowerView } from './views/TowerView';
 import { CastleView } from './views/CastleView';
-import { SlotMarker } from './views/SlotMarker';
 import { RangeRing } from './views/RangeRing';
 import { ProjectileView, createProjectileAssets, heatOf } from './views/ProjectileView';
 import { GroundFireView, createGroundFireAssets } from './views/GroundFireView';
@@ -26,9 +25,14 @@ import { ImpactWaves } from './vfx/ImpactWaves';
 import { BloodDecals } from './vfx/BloodDecals';
 
 export interface GameSceneCallbacks {
-  /** 슬롯을 탭했다 (건설 여부는 호출자가 판단) */
-  onSlotTapped: (slotId: string, screenX: number, screenY: number) => void;
-  /** 빈 곳을 탭했다 = 선택 해제 */
+  /** 세워진 타워를 탭했다 */
+  onTowerTapped: (slotId: string, screenX: number, screenY: number) => void;
+  /**
+   * 빈 땅을 탭했다 — 그 자리에 지을 수 있는지는 호출자(World.canBuildAt)가 판단한다.
+   * 자유 배치가 되면서 "탭한 곳이 곧 후보 자리"가 되었다.
+   */
+  onGroundTapped: (x: number, z: number, screenX: number, screenY: number) => void;
+  /** 하늘처럼 지면이 아닌 곳을 탭했다 = 선택 해제 */
   onEmptyTapped: () => void;
   /** 적이 죽어 코인이 날아가야 한다 (화면 좌표) */
   onKillReward: (screenX: number, screenY: number, gold: number, isBoss: boolean) => void;
@@ -73,7 +77,6 @@ export class GameScene {
   readonly impacts: ImpactWaves;
 
   private castleView: CastleView;
-  private slotMarkers = new Map<string, SlotMarker>();
   private towerViews = new Map<string, TowerView>();
 
   /** 살아있는 적 뷰 */
@@ -100,13 +103,16 @@ export class GameScene {
 
   private subs = new Subscriptions();
   private selectedSlot: string | null = null;
-  private previewRingSlot: string | null = null;
 
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
-  private slotHitPlanes: THREE.Mesh[] = [];
-  private slotHits = new Map<string, THREE.Mesh>();
-  /** 다음 프레임에 탭 판정을 다시 잴 슬롯 */
+  /** 세워진 타워마다 하나씩. 탭 판정용 투명 기둥이다. */
+  private towerHitList: THREE.Mesh[] = [];
+  private towerHits = new Map<string, THREE.Mesh>();
+  /** 지면 탭 판정용 수평면 (y=0). 지형 기복은 heightAt 으로 따로 얹는다. */
+  private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private groundHit = new THREE.Vector3();
+  /** 다음 프레임에 탭 판정을 다시 잴 타워 */
   private pendingHitFit = new Set<string>();
   private hitPlaneGeo: THREE.CylinderGeometry;
   private hitPlaneMat: THREE.Material;
@@ -140,6 +146,7 @@ export class GameScene {
     this.stage.root.add(this.storm.group);
 
     this.ribbon = new PathRibbon(world.path, this.terrain, assets);
+    this.ribbon.setSurfaceQuality(preset.postFx);
     this.stage.root.add(this.ribbon.group);
 
     const cpos = world.castlePosition();
@@ -157,28 +164,18 @@ export class GameScene {
     this.blood = new BloodDecals(preset);
     this.stage.root.add(this.blood.group);
 
-    // 슬롯 마커 + 탭 판정용 투명 기둥.
+    // 타워 탭 판정용 투명 기둥의 원형.
     //
-    // 예전에는 지면에 깔린 원판이었다. 그런데 모델을 붙이면서 망루가 60유닛 넘게
+    // 지면에 깔린 원판이 아니라 기둥인 이유: 모델을 붙이면서 망루가 60유닛 넘게
     // 솟았고, 45도 부감에서는 몸통 윗부분이 화면상 원판 **바깥**에 그려진다.
     // 그래서 눈에 가장 잘 띄는 망루 상단을 눌러도 아무 일도 일어나지 않았다.
-    // 이제 슬롯마다 세워둔 기둥의 높이를 실제 타워 크기에 맞춰 늘린다.
+    // 기둥의 높이는 타워가 서는 순간 실제 크기에 맞춰 늘린다(fitHitVolume).
+    //
+    // 자유 배치가 되면서 이 기둥은 **세워진 타워에만** 붙는다. 빈 땅은 판정할
+    // 물건이 없으므로 지면(groundPlane)에 광선을 직접 떨어뜨린다.
     this.hitPlaneGeo = new THREE.CylinderGeometry(1, 1, 1, 12, 1, false);
     this.hitPlaneGeo.translate(0, 0.5, 0); // 밑면이 원점 — scale.y 가 곧 높이
     this.hitPlaneMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
-    for (const slot of world.level.buildSlots) {
-      const marker = new SlotMarker(slot, this.terrain);
-      this.slotMarkers.set(slot.id, marker);
-      this.stage.root.add(marker.group);
-
-      const hit = new THREE.Mesh(this.hitPlaneGeo, this.hitPlaneMat);
-      hit.position.set(slot.x, this.terrain.heightAt(slot.x, slot.z), slot.z);
-      hit.userData.slotId = slot.id;
-      this.slotHitPlanes.push(hit);
-      this.slotHits.set(slot.id, hit);
-      this.setHitVolume(slot.id, EMPTY_SLOT_HIT.height, EMPTY_SLOT_HIT.radius);
-      this.stage.root.add(hit);
-    }
 
     this.projectilePool = new ObjectPool<ProjectileView>(
       () => {
@@ -193,12 +190,33 @@ export class GameScene {
     this.bindEvents();
   }
 
+  /** 타워가 선 자리에 탭 판정 기둥을 세운다. */
+  private addTowerHit(slotId: string, x: number, z: number): void {
+    const hit = new THREE.Mesh(this.hitPlaneGeo, this.hitPlaneMat);
+    hit.position.set(x, this.terrain.heightAt(x, z), z);
+    hit.userData.slotId = slotId;
+    this.towerHits.set(slotId, hit);
+    this.towerHitList.push(hit);
+    this.setHitVolume(slotId, EMPTY_SLOT_HIT.height, EMPTY_SLOT_HIT.radius);
+    this.stage.root.add(hit);
+  }
+
+  /** 판 타워의 판정 기둥을 걷는다. */
+  private removeTowerHit(slotId: string): void {
+    const hit = this.towerHits.get(slotId);
+    if (!hit) return;
+    hit.removeFromParent();
+    this.towerHits.delete(slotId);
+    const i = this.towerHitList.indexOf(hit);
+    if (i >= 0) this.towerHitList.splice(i, 1);
+  }
+
   /**
    * 슬롯 탭 판정 기둥의 크기를 바꾼다.
    * 높이는 바닥부터, 반지름은 최소 EMPTY_SLOT_HIT.radius 를 보장한다.
    */
   private setHitVolume(slotId: string, height: number, radius: number): void {
-    const hit = this.slotHits.get(slotId);
+    const hit = this.towerHits.get(slotId);
     if (!hit) return;
     const r = THREE.MathUtils.clamp(radius, EMPTY_SLOT_HIT.radius, MAX_SLOT_HIT.radius);
     const h = THREE.MathUtils.clamp(height, EMPTY_SLOT_HIT.height, MAX_SLOT_HIT.height);
@@ -528,7 +546,7 @@ export class GameScene {
         const view = new TowerView(getTower(towerId), tower.x, tower.z, tower.level, this.terrain, this.assets);
         view.mount(this.stage.root);
         this.towerViews.set(slotId, view);
-        this.slotMarkers.get(slotId)?.setVisible(false);
+        this.addTowerHit(slotId, tower.x, tower.z);
         this.fitHitVolume(slotId);
         this.particles.emit('upgrade_ray', tower.x, 10, tower.z, 0.6);
       }),
@@ -550,9 +568,8 @@ export class GameScene {
           view.dispose();
           this.towerViews.delete(slotId);
         }
-        this.slotMarkers.get(slotId)?.setVisible(true);
         this.pendingHitFit.delete(slotId);
-        this.setHitVolume(slotId, EMPTY_SLOT_HIT.height, EMPTY_SLOT_HIT.radius);
+        this.removeTowerHit(slotId);
         if (this.selectedSlot === slotId) this.setSelected(null);
       }),
     );
@@ -560,7 +577,6 @@ export class GameScene {
     this.subs.add(
       bus.on('wave:started', ({ index }) => {
         if (index === 1) this.ribbon.setArrowsHighlighted(false);
-        for (const m of this.slotMarkers.values()) m.setHighlighted(false);
       }),
     );
   }
@@ -743,13 +759,6 @@ export class GameScene {
 
     this.castleView.sync(this.world.castle, alpha, dt);
 
-    const gold = this.world.economy.gold;
-    const cost = getTower('archer_tower').buildCost;
-    for (const m of this.slotMarkers.values()) {
-      m.setAffordable(gold >= cost);
-      m.update(dt);
-    }
-
     this.particles.update(dt);
     this.impacts.update(dt);
     this.blood.update(dt);
@@ -839,24 +848,38 @@ export class GameScene {
     this.stage.resize(width, height);
   }
 
-  /** 캔버스 탭 -> 슬롯 판정 */
+  /**
+   * 캔버스 탭 판정. 순서가 곧 우선순위다.
+   *   1) 세워진 타워를 눌렀나 (기둥 판정)
+   *   2) 화면에서 타워 코앞을 눌렀나 (손가락 보정)
+   *   3) 그 외에는 전부 "빈 땅을 눌렀다" — 그 좌표가 새 타워의 후보 자리다
+   */
   handleTap(clientX: number, clientY: number, rect: DOMRect): void {
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
     this.pointer.set((localX / rect.width) * 2 - 1, -(localY / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.stage.camera);
-    const hits = this.raycaster.intersectObjects(this.slotHitPlanes, false);
+    const hits = this.raycaster.intersectObjects(this.towerHitList, false);
     if (hits.length > 0) {
       const slotId = hits[0].object.userData.slotId as string;
       const world = hits[0].point;
       this.project(world.x, world.y, world.z);
-      this.cb.onSlotTapped(slotId, this.screenBuf.x, this.screenBuf.y);
+      this.cb.onTowerTapped(slotId, this.screenBuf.x, this.screenBuf.y);
       return;
     }
-    // 정확히는 빗나갔지만 코앞이면 그 슬롯으로 쳐 준다.
-    const near = this.nearestSlotOnScreen(localX, localY);
+    // 정확히는 빗나갔지만 코앞이면 그 타워로 쳐 준다.
+    const near = this.nearestTowerOnScreen(localX, localY);
     if (near) {
-      this.cb.onSlotTapped(near.slotId, near.x, near.y);
+      this.cb.onTowerTapped(near.slotId, near.x, near.y);
+      return;
+    }
+    // 지면. 광선을 y=0 평면에 떨어뜨린다 — 지형 기복은 최대 10 유닛이라
+    // 여기서 생기는 오차(수 유닛)는 타워 간격 규칙(44)에 비하면 무시할 수 있고,
+    // 대신 어떤 지형·어떤 각도에서도 반드시 한 점이 나온다.
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, this.groundHit)) {
+      const { x, z } = this.groundHit;
+      this.project(x, this.terrain.heightAt(x, z), z);
+      this.cb.onGroundTapped(x, z, this.screenBuf.x, this.screenBuf.y);
       return;
     }
     this.cb.onEmptyTapped();
@@ -874,11 +897,11 @@ export class GameScene {
    * **가장 가까운 하나**만 고르므로, 옆 슬롯이 잘못 잡히지 않는다
    * (가장 붙어 있는 두 슬롯도 화면에서 37px 은 떨어져 있다).
    */
-  private nearestSlotOnScreen(localX: number, localY: number):
+  private nearestTowerOnScreen(localX: number, localY: number):
     { slotId: string; x: number; y: number } | null {
     let best: { slotId: string; x: number; y: number } | null = null;
     let bestDist = TAP_SNAP_PX;
-    for (const hit of this.slotHitPlanes) {
+    for (const hit of this.towerHitList) {
       const p = hit.position;
       this.project(p.x, p.y, p.z);
       const d = Math.hypot(this.screenBuf.x - localX, this.screenBuf.y - localY);
@@ -890,36 +913,36 @@ export class GameScene {
     return best;
   }
 
-  /** 선택 표시: 건설된 타워는 사거리 링을 흰색으로, 미건설 슬롯은 미리보기 링을 띄운다. */
+  /** 선택 표시: 고른 타워의 사거리 링을 흰색으로 켠다. */
   setSelected(slotId: string | null): void {
-    // 이전 선택 정리
     if (this.selectedSlot) this.towerViews.get(this.selectedSlot)?.ring.setVisible(false);
-    if (this.previewRingSlot) {
-      this.previewRing?.setVisible(false);
-    }
     this.selectedSlot = slotId;
-    this.previewRingSlot = null;
-
     if (!slotId) return;
 
     const towerView = this.towerViews.get(slotId);
-    if (towerView) {
-      towerView.ring.setMode('selected');
-      towerView.ring.setVisible(true);
-      return;
-    }
+    if (!towerView) return;
+    towerView.ring.setMode('selected');
+    towerView.ring.setVisible(true);
+  }
 
-    // 미건설 슬롯 — 패널이 열린 동안 사거리 미리보기
-    const slot = this.world.slots.get(slotId);
-    if (!slot) return;
-    const def = getTower('archer_tower');
-    const affordable = this.world.economy.canAfford(def.buildCost);
+  /**
+   * 건설 후보 자리 미리보기 — 그 자리에 세울 타워의 사거리를 그린다.
+   *
+   * 색이 곧 대답이다: 청록이면 지어진다, 붉으면 안 된다(골드 부족이거나 못 짓는 자리).
+   * 판정 자체는 시뮬(World.canBuildAt)이 하고 여기서는 그리기만 한다.
+   */
+  showBuildPreview(x: number, z: number, towerId: string, ok: boolean): void {
+    const def = getTower(towerId);
     this.ensurePreviewRing(def.levels[0].range);
-    this.previewRing!.group.position.set(slot.x, 0, slot.z);
+    this.previewRing!.setRadius(def.levels[0].range);
+    this.previewRing!.group.position.set(x, 0, z);
     this.previewRing!.refresh();
-    this.previewRing!.setMode(affordable ? 'buildable' : 'insufficient');
+    this.previewRing!.setMode(ok ? 'buildable' : 'insufficient');
     this.previewRing!.setVisible(true);
-    this.previewRingSlot = slotId;
+  }
+
+  hideBuildPreview(): void {
+    this.previewRing?.setVisible(false);
   }
 
   private previewRing: RangeRing | null = null;
@@ -933,15 +956,11 @@ export class GameScene {
     this.stage.root.add(this.previewRing.group);
   }
 
-  /** 첫 웨이브 전 튜토리얼 강조 */
-  highlightSlots(on: boolean): void {
-    for (const m of this.slotMarkers.values()) m.setHighlighted(on);
-  }
-
   applyPreset(preset: PerformancePreset, renderer: THREE.WebGLRenderer): void {
     this.stage.applyPreset(preset, renderer);
     this.terrain.buildDecor(preset);
     this.storm.applyPreset(preset);
+    this.ribbon.setSurfaceQuality(preset.postFx);
     this.particles.setPreset(preset);
     this.impacts.setPreset(preset);
     this.blood.setPreset(preset);
@@ -976,11 +995,10 @@ export class GameScene {
 
     for (const v of this.towerViews.values()) v.dispose();
     this.towerViews.clear();
-    for (const m of this.slotMarkers.values()) m.dispose();
-    this.slotMarkers.clear();
 
-    for (const p of this.slotHitPlanes) p.removeFromParent();
-    this.slotHitPlanes.length = 0;
+    for (const p of this.towerHitList) p.removeFromParent();
+    this.towerHitList.length = 0;
+    this.towerHits.clear();
     this.hitPlaneGeo.dispose();
     this.hitPlaneMat.dispose();
 

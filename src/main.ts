@@ -3,6 +3,7 @@ import { Loop, FIXED_DT } from './core/Loop';
 import { World } from './sim/World';
 import { getLevel, nextLevelId, isTowerAvailable, LEVELS } from './data/levels';
 import { BALANCE, type PerformancePresetName } from './data/balance';
+import { placementReason, spotKey } from './sim/Placement';
 import { TOWER_LIST } from './data/towers';
 import { getStratagem } from './data/stratagems';
 import { getUnit } from './data/units';
@@ -60,7 +61,13 @@ class Game {
   private level: LevelDef;
   /** ?level= 로 직접 지정된 경우. 지정됐으면 레벨 선택 화면을 건너뛴다. */
   private readonly forcedLevelId: string | null;
+  /** 지금 고른 타워의 자리 id. 없으면 null. */
   private selectedSlot: string | null = null;
+  /**
+   * 아직 안 지은 후보 자리 — 빈 땅을 눌렀을 때의 좌표다.
+   * 자유 배치라 "고른 자리"가 곧 좌표이고, 지어지는 순간 자리 id 를 얻는다.
+   */
+  private pendingSpot: { x: number; z: number } | null = null;
   private frames = 0;
   private fpsAccum = 0;
   private fps = 0;
@@ -372,13 +379,17 @@ class Game {
     );
 
     this.panel = new TowerPanel(this.hudRoot, this.buildableTowers(), {
-      onBuild: (slotId, towerId) => {
-        const r = this.world.build(slotId, towerId);
+      onBuild: (_key, towerId) => {
+        const spot = this.pendingSpot;
+        if (!spot) return;
+        const r = this.world.build(spot, towerId);
         if (r === 'ok') {
           this.audio.play('tower:built');
-          this.selectSlot(null);
+          this.clearSelection();
         } else if (r === 'no_gold') {
           this.hud.announce('골드가 부족합니다');
+        } else if (r !== 'game_over' && r !== 'locked') {
+          this.hud.announce(placementReason(r));
         }
       },
       onUpgrade: (slotId) => {
@@ -394,13 +405,13 @@ class Game {
         const refund = this.world.sell(slotId);
         this.audio.play('tower:sold');
         this.hud.announce(`망루를 판매해 ${refund} 골드를 회수했습니다`);
-        this.selectSlot(null);
+        this.clearSelection();
       },
       onTargeting: (slotId, mode: TargetingMode) => {
         this.world.setTargeting(slotId, mode);
         this.refreshPanel();
       },
-      onClose: () => this.selectSlot(null),
+      onClose: () => this.clearSelection(),
     });
   }
 
@@ -410,12 +421,17 @@ class Game {
     this.world = new World({ level: this.level, seed: 1 });
 
     this.scene = new GameScene(this.world, this.assets, BALANCE.presets[this.preset], {
-      onSlotTapped: (slotId, sx, sy) => {
+      onTowerTapped: (slotId, sx, sy) => {
         void this.audio.unlock();
         this.audio.play('ui:tap');
-        this.selectSlot(slotId, sx, sy);
+        this.selectTower(slotId, sx, sy);
       },
-      onEmptyTapped: () => this.selectSlot(null),
+      onGroundTapped: (x, z, sx, sy) => {
+        void this.audio.unlock();
+        this.audio.play('ui:tap');
+        this.selectSpot(x, z, sx, sy);
+      },
+      onEmptyTapped: () => this.clearSelection(),
       onKillReward: (sx, sy, gold, isBoss) => {
         const dest = this.hud.goldScreenPos();
         // 코인이 도착하는 순간 골드 숫자가 오른다.
@@ -445,13 +461,18 @@ class Game {
 
     this.scene.applyPreset(BALANCE.presets[this.preset], this.handle.renderer);
     this.ambientVignette.hidden = !BALANCE.presets[this.preset].postFx;
-    this.scene.highlightSlots(true);
     this.bindWorldEvents();
 
     this.hud.setGold(this.world.economy.gold, true);
     this.hud.setCastle(this.world.castle.hp, this.world.castle.maxHp);
     this.hud.setWave(0, this.world.waveRunner.totalWaves);
+    this.hud.setTowers(this.world.towerCount, this.world.maxTowers);
     this.hud.setLevelTitle(this.level.title);
+    /*
+     * 자리 표시가 사라졌으므로 "어디에 지으라"는 안내도 사라졌다.
+     * 첫 웨이브 전에 한 줄로 대신한다 — 규칙은 하나뿐이라 한 줄이면 된다.
+     */
+    this.hud.announce(`빈 땅을 눌러 망루를 세우세요 (최대 ${this.world.maxTowers}기)`);
     this.hud.setRepairAvailable(!!this.level.allowRepair);
     this.hud.setCastleUpgradeAvailable(!!this.level.castleUpgrade);
     this.hud.setStratagems(this.world.stratagems);
@@ -548,6 +569,10 @@ class Game {
       this.audio.play('castle:fired', kind, this.panOf(gate.x));
     });
 
+    // 망루 수는 짓거나 팔 때만 바뀐다.
+    bus.on('tower:built', () => this.hud.setTowers(this.world.towerCount, this.world.maxTowers));
+    bus.on('tower:sold', () => this.hud.setTowers(this.world.towerCount, this.world.maxTowers));
+
     bus.on('wave:started', ({ index, total, banner, isBossWave }) => {
       this.hud.setWave(index, total);
       this.hud.showBanner(banner, isBossWave);
@@ -595,26 +620,62 @@ class Game {
     return Math.max(-1, Math.min(1, (worldX / BALANCE.mapWidth - 0.5) * 2));
   }
 
-  // ── 슬롯 선택 ──────────────────────────────────────────────────────
+  // ── 자리 선택 ──────────────────────────────────────────────────────
 
-  private selectSlot(slotId: string | null, sx = 0, sy = 0): void {
+  /** 세워진 타워를 고른다 (업그레이드·판매·타게팅 패널) */
+  private selectTower(slotId: string, sx = 0, sy = 0): void {
+    this.pendingSpot = null;
+    this.scene.hideBuildPreview();
     this.selectedSlot = slotId;
     this.scene.setSelected(slotId);
-    if (!slotId) {
-      this.panel.close();
-      return;
-    }
     if (sx || sy) this.panel.place(sx, sy);
     this.refreshPanel();
   }
 
+  /**
+   * 빈 땅을 고른다 = 그 자리에 지을지 묻는다.
+   *
+   * 못 짓는 자리면 패널을 열지 않고 **왜 안 되는지**만 말한다 — 길 위를 누르고
+   * 건설 버튼이 회색으로 떠 있는 것보다, 누른 즉시 이유를 듣는 편이 빠르다.
+   */
+  private selectSpot(x: number, z: number, sx = 0, sy = 0): void {
+    const check = this.world.canBuildAt(x, z);
+    if (check !== 'ok') {
+      this.clearSelection();
+      this.hud.announce(placementReason(check));
+      return;
+    }
+    this.selectedSlot = null;
+    this.scene.setSelected(null);
+    this.pendingSpot = { x, z };
+    if (sx || sy) this.panel.place(sx, sy);
+    this.refreshPanel();
+  }
+
+  private clearSelection(): void {
+    this.selectedSlot = null;
+    this.pendingSpot = null;
+    this.scene.setSelected(null);
+    this.scene.hideBuildPreview();
+    this.panel.close();
+  }
+
   private refreshPanel(): void {
     const slotId = this.selectedSlot;
-    if (!slotId) return;
-    const tower = this.world.towers.get(slotId);
-    if (tower) this.panel.showTower(tower, this.world.economy.gold);
-    else this.panel.showBuild(slotId, this.world.economy.gold);
-    this.scene.setSelected(slotId);
+    if (slotId) {
+      const tower = this.world.towers.get(slotId);
+      if (!tower) return;
+      this.panel.showTower(tower, this.world.economy.gold);
+      this.scene.setSelected(slotId);
+      this.scene.hideBuildPreview();
+      return;
+    }
+    const spot = this.pendingSpot;
+    if (!spot) return;
+    this.panel.showBuild(spotKey(spot.x, spot.z), this.world.economy.gold);
+    // 고른 타워의 사거리를 그 자리에 그려 준다. 골드가 모자라면 붉게.
+    const def = this.panel.pickedTower;
+    this.scene.showBuildPreview(spot.x, spot.z, def.id, this.world.economy.canAfford(def.buildCost));
   }
 
   // ── 입력 ───────────────────────────────────────────────────────────
@@ -645,13 +706,13 @@ class Game {
     // 방명록에 글을 쓰는 중이라면 이 키들은 그 사람의 글자다.
     // 특히 스페이스 — 이 가드가 없으면 띄어쓰기가 일시정지가 된다.
     if (isTypingTarget(e.target)) return;
-    const slots = this.world.level.buildSlots;
-    // 슬롯 수는 레벨마다 다르다 (레벨 1은 5개, 레벨 2는 6개). 있는 만큼만 잡힌다.
+    // 1~9 는 **세운 순서대로** 타워를 고른다. 자리가 고정이 아니게 되면서
+    // "슬롯 번호"가 사라졌으므로, 번호가 가리키는 것은 내가 세운 n번째 망루다.
     if (e.key >= '1' && e.key <= '9') {
-      const slot = slots[Number(e.key) - 1];
-      if (slot) {
-        const p = this.scene.project(slot.x, 40, slot.z);
-        this.selectSlot(slot.id, p.x, p.y);
+      const tower = [...this.world.towers.values()][Number(e.key) - 1];
+      if (tower) {
+        const p = this.scene.project(tower.x, 40, tower.z);
+        this.selectTower(tower.slotId, p.x, p.y);
       }
       return;
     }
@@ -683,7 +744,7 @@ class Game {
         this.changeSpeed(-1);
         break;
       case 'escape':
-        this.selectSlot(null);
+        this.clearSelection();
         break;
     }
   };
@@ -943,6 +1004,7 @@ class Game {
     this.hud.setGold(this.world.economy.gold, true);
     this.hud.setCastle(this.world.castle.hp, this.world.castle.maxHp);
     this.hud.setWave(0, this.world.waveRunner.totalWaves);
+    this.hud.setTowers(this.world.towerCount, this.world.maxTowers);
     this.hud.setSpeed(this.loop.getSpeed());
     this.loop.setPaused(false);
     this.hud.setPaused(false);

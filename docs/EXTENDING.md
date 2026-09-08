@@ -123,7 +123,8 @@ export const LEVEL_03: LevelDef = {
   allowRepair: true,       // 성벽 수리 해금
   stars: { three: 0.6, two: 0.35 },        // 없으면 BALANCE.stars
   path: [[0, 350], /* ... */],
-  buildSlots: [{ id: 's3_a', x: 210, z: 220 }, /* ... */],
+  buildSlots: [{ id: 's3_a', x: 210, z: 220 }, /* ... */],  // 추천 자리(지형 평탄화 + 한도 기본값)
+  maxTowers: 7,            // 없으면 buildSlots.length. 자리는 자유, 개수만 레벨이 정한다
   waves: generateWaves({ /* ... */ }),
   environment: { skyColor: '...', groundColor: '...', /* ... */ },
 };
@@ -137,9 +138,15 @@ export const LEVEL_03: LevelDef = {
 - 총 길이 1800~2200 u (보병이 40초 안팎에 통과한다)
 - 최소 4회 크게 꺾을 것
 - **좋은 자리를 만들려면 헤어핀(U턴)이 필요하다.** 두 평행 구간의 간격을
-  120 u 로 두고 그 사이에 슬롯을 놓으면 약 380 u 를 덮는다.
+  120 u 로 두고 그 사이에 망루를 놓으면 약 380 u 를 덮는다.
   직각 모퉁이는 이론상 최대 283 u 라 300 u 기준을 넘지 못한다
-- 슬롯은 경로에서 최소 23 u (리본 반폭) 떨어뜨릴 것
+- 타워는 이제 **빈 땅 아무 데나** 세운다. 레벨이 정하는 것은 자리가 아니라 개수(`maxTowers`)이고,
+  어디가 빈 땅인지는 `BALANCE.placement` 가 정한다(길에서 46 u, 성문에서 100 u,
+  타워끼리 44 u, 가장자리 40 u). 그러므로 경로를 설계할 때 생각할 것은
+  "좋은 자리를 몇 개 만들 것인가"가 아니라 **"몇 기로 이 길을 감당하게 할 것인가"**다.
+- `buildSlots` 는 남아 있다 — 추천 자리이자 지형을 평탄하게 깎는 지점이고,
+  헤드리스 시뮬(`npm run sim`)의 기본 배치이기도 하다. 여기 적은 자리는
+  `tests/placement.test.ts` 가 전부 실제로 지을 수 있는지 검사한다.
 
 `tests/data.test.ts` 를 새 레벨에도 돌리면 이 규칙들이 자동으로 검사된다.
 

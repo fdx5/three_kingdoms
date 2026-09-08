@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { World } from '../src/sim/World';
 import { LEVEL_01 } from '../src/data/levels/level01';
+import { spotKey } from '../src/sim/Placement';
 import { EventBus, Subscriptions } from '../src/core/EventBus';
 import { FIXED_DT } from '../src/core/Loop';
 import { BALANCE } from '../src/data/balance';
@@ -14,8 +15,8 @@ describe('풀링 / 메모리', () => {
   it('20웨이브를 끝까지 돌려도 살아있는 엔티티 배열이 무한히 늘지 않는다', () => {
     const world = new World({ level: LEVEL_01, seed: 1 });
     world.economy.add(100000);
-    for (const s of LEVEL_01.buildSlots) world.build(s.id);
-    for (const s of LEVEL_01.buildSlots) for (let i = 0; i < 4; i++) world.upgrade(s.id);
+    for (const s of LEVEL_01.buildSlots) world.build(s);
+    for (const s of LEVEL_01.buildSlots) for (let i = 0; i < 4; i++) world.upgrade(spotKey(s.x, s.z));
 
     let peakEnemies = 0;
     let peakProjectiles = 0;
@@ -39,8 +40,8 @@ describe('풀링 / 메모리', () => {
   it('투사체가 상한을 넘지 않는다', () => {
     const world = new World({ level: LEVEL_01, seed: 7 });
     world.economy.add(100000);
-    for (const s of LEVEL_01.buildSlots) world.build(s.id);
-    for (const s of LEVEL_01.buildSlots) for (let i = 0; i < 4; i++) world.upgrade(s.id);
+    for (const s of LEVEL_01.buildSlots) world.build(s);
+    for (const s of LEVEL_01.buildSlots) for (let i = 0; i < 4; i++) world.upgrade(spotKey(s.x, s.z));
     for (let i = 0; i < 60 * 600; i++) {
       world.step(FIXED_DT);
       expect(world.liveProjectileCount).toBeLessThanOrEqual(BALANCE.maxProjectiles);
@@ -51,8 +52,9 @@ describe('풀링 / 메모리', () => {
   it('죽은 적을 노리던 투사체는 목표를 잃고 정리된다', () => {
     const world = new World({ level: LEVEL_01, seed: 3 });
     world.economy.add(100000);
-    world.build('slot_a');
-    for (let i = 0; i < 4; i++) world.upgrade('slot_a');
+    const first = LEVEL_01.buildSlots[0];
+    world.build(first);
+    for (let i = 0; i < 4; i++) world.upgrade(spotKey(first.x, first.z));
 
     for (let i = 0; i < 60 * 200; i++) {
       world.step(FIXED_DT);

@@ -1,4 +1,4 @@
-import type { LevelDef, WaveSpawn, BuildSlotDef } from '../types/level';
+import type { LevelDef, WaveSpawn } from '../types/level';
 import type { UnitDef } from '../types/units';
 import type { TowerDef, TargetingMode } from '../types/towers';
 import type { GameEvents, RunStats, WorldPos } from '../types/events';
@@ -17,6 +17,7 @@ import { MAX_CASTLE_LEVEL } from '../data/castle';
 import { getStratagem, findStratagem } from '../data/stratagems';
 import { isTowerAvailable } from '../data/levels';
 import { Path } from './Path';
+import { checkPlacement, spotKey, type PlacementCheck, type Spot } from './Placement';
 import { Enemy } from './Enemy';
 import { Projectile } from './Projectile';
 import { FireZone } from './FireZone';
@@ -26,7 +27,11 @@ import { Economy } from './Economy';
 import { Castle } from './Castle';
 import { WaveRunner } from './WaveRunner';
 
-export type BuildResult = 'ok' | 'occupied' | 'no_gold' | 'no_slot' | 'locked' | 'game_over';
+/**
+ * 건설 결과. 자리 문제(길 위·너무 가까움·성문 앞·맵 밖·개수 초과)는
+ * PlacementCheck 가 그대로 넘어온다 — 왜 안 되는지를 UI 가 그대로 말할 수 있게.
+ */
+export type BuildResult = 'ok' | 'no_gold' | 'locked' | 'game_over' | PlacementCheck;
 export type UpgradeResult = 'ok' | 'max_level' | 'no_gold' | 'no_tower' | 'game_over';
 export type CastleUpgradeStatus = 'ok' | 'disabled' | 'max_level' | 'no_gold';
 
@@ -61,8 +66,8 @@ export class World {
   readonly enemies: Enemy[] = [];
   readonly projectiles: Projectile[] = [];
   readonly fireZones: FireZone[] = [];
+  /** 자리 id(좌표) -> 타워. id 는 Placement.spotKey 가 만든다. */
   readonly towers = new Map<string, Tower>();
-  readonly slots = new Map<string, BuildSlotDef>();
 
   private enemyPool: ObjectPool<Enemy>;
   private projectilePool: ObjectPool<Projectile>;
@@ -110,8 +115,6 @@ export class World {
     this.economy = new Economy(opts.level.startGold);
     this.castle = new Castle(opts.level.castle.id, opts.level.castle.hp);
     this.rng = new Rng(opts.seed ?? 1);
-
-    for (const s of opts.level.buildSlots) this.slots.set(s.id, s);
 
     this.enemyPool = new ObjectPool<Enemy>(
       () => new Enemy(),
@@ -821,20 +824,61 @@ export class World {
   }
 
   // 플레이어 액션
-  build(slotId: string, towerId = 'archer_tower'): BuildResult {
+
+  /**
+   * 이 레벨에 세울 수 있는 타워의 총 수.
+   *
+   * 자유 배치가 되면서 레벨이 정하는 것은 "어디"가 아니라 "몇 기"가 되었다.
+   * 값을 적지 않은 레벨은 예전 슬롯 수를 그대로 쓴다 — 여섯 장의 밸런스가
+   * 그 수를 전제로 맞춰져 있기 때문이다.
+   */
+  get maxTowers(): number {
+    return this.level.maxTowers ?? this.level.buildSlots.length;
+  }
+
+  /** 지금 몇 기를 세웠는가 */
+  get towerCount(): number {
+    return this.towers.size;
+  }
+
+  /**
+   * 이 지점에 지을 수 있는지 묻는다. 뷰의 건설 미리보기가 매 탭 이걸 부른다 —
+   * 판정이 한 곳에 있어야 "지어질 것처럼 보이는데 안 지어지는" 자리가 없다.
+   */
+  canBuildAt(x: number, z: number): PlacementCheck {
+    return checkPlacement(
+      {
+        path: this.path,
+        taken: this.towers.values() as Iterable<Spot>,
+        built: this.towers.size,
+        maxTowers: this.maxTowers,
+        castle: this.castlePosition(),
+      },
+      x,
+      z,
+    );
+  }
+
+  /**
+   * 빈 땅에 타워를 세운다. 자리 id 는 좌표에서 만들어진다 (Placement.spotKey).
+   * 예전 슬롯 객체({id,x,z})를 그대로 넘겨도 된다 — x,z 만 본다.
+   */
+  build(spot: Spot, towerId = 'archer_tower'): BuildResult {
     if (this.over !== 'none') return 'game_over';
-    const slot = this.slots.get(slotId);
-    if (!slot) return 'no_slot';
-    if (this.towers.has(slotId)) return 'occupied';
     const def: TowerDef = getTower(towerId);
     // 레벨 2에서 해금되는 타워를 레벨 1에서 지을 수는 없다.
     if (!isTowerAvailable(def.unlockedIn, this.level.id)) return 'locked';
-    const pos: WorldPos = { x: slot.x, y: 0, z: slot.z };
+
+    const check = this.canBuildAt(spot.x, spot.z);
+    if (check !== 'ok') return check;
+
+    const id = spotKey(spot.x, spot.z);
+    const pos: WorldPos = { x: spot.x, y: 0, z: spot.z };
     if (!this.spendGold(def.buildCost, 'build', pos)) return 'no_gold';
 
-    const tower = new Tower(slotId, def, slot.x, slot.z);
-    this.towers.set(slotId, tower);
-    this.bus.emit('tower:built', { slotId, towerId: def.id, cost: def.buildCost, worldPos: pos });
+    const tower = new Tower(id, def, spot.x, spot.z);
+    this.towers.set(id, tower);
+    this.bus.emit('tower:built', { slotId: id, towerId: def.id, cost: def.buildCost, worldPos: pos });
     return 'ok';
   }
 

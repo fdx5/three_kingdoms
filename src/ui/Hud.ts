@@ -50,6 +50,7 @@ export class Hud {
   private castleFill: HTMLElement;
   private castleLag: HTMLElement;
   private waveValue: HTMLElement;
+  private towerValue: HTMLElement;
   private ringBar: SVGElement;
   private speedButtons: HTMLElement[] = [];
   private pauseButton: HTMLElement;
@@ -131,11 +132,23 @@ export class Hud {
       ring as unknown as Node,
     ]);
 
+    /*
+     * 망루 한도. 자유 배치가 된 뒤로 "몇 기까지 세울 수 있나"가 이 게임의
+     * 유일한 배치 제약이 되었다 — 그 수가 화면에 없으면 다 짓고 나서야 안다.
+     */
+    this.towerValue = el('span', { class: 'chip__value', text: '0/0' });
+    const towerChip = el('div', { class: 'chip', id: 'tower-chip', title: '세운 망루 / 이 전장의 한도' }, [
+      el('span', { class: 'chip__icon', text: '🏹' }),
+      el('span', { class: 'chip__label', text: '망루' }),
+      this.towerValue,
+    ]);
+
     this.levelTitle = el('div', { class: 'leveltitle', text: '' });
 
     const topbar = el('div', { class: 'topbar' }, [
       this.goldChip,
       this.castleChip,
+      towerChip,
       waveChip,
       el('div', { class: 'topbar__spacer' }),
     ]);
@@ -277,6 +290,12 @@ export class Hud {
 
   setWave(index: number, total: number): void {
     this.waveValue.textContent = `${index}/${total}`;
+  }
+
+  // ── 망루 한도 ──────────────────────────────────────────────────────
+
+  setTowers(built: number, max: number): void {
+    this.towerValue.textContent = `${built}/${max}`;
   }
 
   setLevelTitle(title: string): void {

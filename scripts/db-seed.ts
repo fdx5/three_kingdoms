@@ -38,7 +38,8 @@ const levelRows = LEVEL_ORDER.map((level, i) => {
     three_star: stars.three,
     two_star: stars.two,
     path_length: Math.round(new Path(level.path).totalLength * 10) / 10,
-    slot_count: level.buildSlots.length,
+    // 자유 배치가 된 뒤로 이 값은 '슬롯 수'가 아니라 '세울 수 있는 망루 수'다.
+    slot_count: level.maxTowers ?? level.buildSlots.length,
     stratagems: JSON.stringify(level.stratagems ?? []),
     castle_upgrade: level.castleUpgrade ? 1 : 0,
   };

@@ -2,7 +2,7 @@
 
 const MAP_W = 1200, MAP_D = 700, RIBBON = 88;
 
-/** 장의 지도. 경로·건설 슬롯·성문·적 출현 지점을 한 장에 담는다. */
+/** 장의 지도. 경로·추천 자리·성문·적 출현 지점을 한 장에 담는다. */
 export function levelMap(level) {
   const pts = level.path;
   const d = pts.map(([x, z], i) => `${i ? 'L' : 'M'}${x} ${z}`).join(' ');

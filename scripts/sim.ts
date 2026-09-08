@@ -14,6 +14,9 @@
  *                       auto   = 좋은 자리에 궁노, 기병 직선에 철질려, 나머지에 벽력거
  *                       archer = 전부 궁노 망루 (속성을 무시했을 때를 재현)
  *                       또는 슬롯 순서대로 타워 id를 직접 나열
+ *   --spots recommended|best
+ *                       recommended = 레벨의 추천 자리 (기본)
+ *                       best        = 자유 배치에서 커버리지가 가장 큰 자리를 스스로 고른다
  *   --upgrade greedy|none
  *   --no-repair         성벽 수리를 하지 않는다 (골드 소비처 효과 측정용)
  *   --cards greedy|boss|none
@@ -25,12 +28,20 @@ import { getLevel, DEFAULT_LEVEL_ID, isTowerAvailable } from '../src/data/levels
 import { getTower, TOWERS } from '../src/data/towers';
 import { getStratagem } from '../src/data/stratagems';
 import { UNITS } from '../src/data/units';
+import { BALANCE } from '../src/data/balance';
 import { FIXED_DT } from '../src/core/Loop';
+import { spotKey } from '../src/sim/Placement';
 
 interface Args {
   level: string;
   towers: number;
   slots: string[] | null;
+  /**
+   * 어느 자리에 지을 것인가.
+   *   recommended  레벨이 적어 둔 추천 자리 (기본값 — 과거 실측치와 비교 가능)
+   *   best         자유 배치에서 커버리지가 가장 큰 자리를 스스로 고른다
+   */
+  spots: 'recommended' | 'best';
   build: string;
   upgrade: 'greedy' | 'none';
   repair: boolean;
@@ -59,6 +70,7 @@ const DEFAULTS: Args = {
   level: DEFAULT_LEVEL_ID,
   towers: 99,
   slots: null,
+  spots: 'recommended',
   build: 'auto',
   upgrade: 'greedy',
   repair: true,
@@ -85,22 +97,26 @@ function parseArgs(argv: string[]): Args {
     else if (k === '--cards') { a.cards = v === 'greedy' ? 'greedy' : v === 'boss' ? 'boss' : 'none'; i++; }
     else if (k === '--gate') { a.gate = v === 'greedy' ? 'greedy' : v === 'none' ? 'none' : 'after'; i++; }
     else if (k === '--no-gate') { a.gate = 'none'; }
+    else if (k === '--spots') { a.spots = v === 'best' ? 'best' : 'recommended'; i++; }
     else if (k === '--seed') { a.seed = Number(v); i++; }
   }
   return a;
 }
 
-/** 슬롯 id를 관대하게 해석한다 (레벨1의 'a' -> 'slot_a') */
+/** 추천 자리 id를 관대하게 해석한다 (레벨1의 'a' -> 'slot_a') */
 function resolveSlotId(world: World, raw: string): string {
-  if (world.slots.has(raw)) return raw;
-  for (const id of world.slots.keys()) {
+  const ids = world.level.buildSlots.map((s) => s.id);
+  if (ids.includes(raw)) return raw;
+  for (const id of ids) {
     if (id.endsWith(`_${raw}`)) return id;
   }
   return raw;
 }
 
-interface SlotRank {
+interface SpotRank {
   id: string;
+  x: number;
+  z: number;
   cover: number;
   /** 사거리 175(화포) 기준 커버리지. 사거리가 곧 성능인 자리를 가려낸다. */
   coverLong: number;
@@ -108,20 +124,83 @@ interface SlotRank {
   along: number;
 }
 
-/** 사거리 100 기준 커버리지가 큰 슬롯부터 = 좋은 자리부터 */
-function rankSlots(world: World): SlotRank[] {
-  return [...world.level.buildSlots]
-    .map((s) => ({
-      id: s.id,
-      cover: world.path.lengthWithinRadius(s.x, s.z, 100),
-      coverLong: world.path.lengthWithinRadius(s.x, s.z, 175),
-      along: world.path.nearestDistance(s.x, s.z),
-    }))
+function rankOf(world: World, id: string, x: number, z: number): SpotRank {
+  return {
+    id,
+    x,
+    z,
+    cover: world.path.lengthWithinRadius(x, z, 100),
+    coverLong: world.path.lengthWithinRadius(x, z, 175),
+    along: world.path.nearestDistance(x, z),
+  };
+}
+
+/** 사거리 100 기준 커버리지가 큰 자리부터 = 좋은 자리부터 */
+function rankRecommended(world: World): SpotRank[] {
+  return world.level.buildSlots
+    .map((s) => rankOf(world, s.id, s.x, s.z))
     .sort((p, q) => q.cover - p.cover || p.id.localeCompare(q.id));
 }
 
 /**
- * 슬롯별로 지을 타워를 정한다.
+ * 자유 배치에서 "사람이 고를 만한 가장 좋은 자리들"을 뽑는다.
+ *
+ * 커버리지가 큰 자리부터 집으면 안 된다 — 경로가 가장 굽은 한 곳에 전부 몰려서,
+ * 그 구간만 두껍고 나머지는 텅 빈 배치가 나온다(실측: 그렇게 뽑으면 2·3장이
+ * 오히려 추천 자리보다 일찍 무너진다). 사람은 그렇게 짓지 않는다.
+ *
+ * 그래서 **아직 아무도 못 덮은 길을 가장 많이 덮는 자리**를 차례로 집는다
+ * (탐욕적 집합 덮기). 앞의 타워가 이미 덮은 구간은 다음 자리를 고를 때
+ * 값이 깎이므로, 자연히 경로를 따라 퍼진다.
+ */
+function rankBest(world: World, count: number): SpotRank[] {
+  const step = 20;
+  const range = 100;
+  // 경로를 10유닛 간격으로 찍은 점들 — 이 점들을 덮는 문제로 바꾼다.
+  const samples: { x: number; z: number }[] = [];
+  for (let d = 0; d <= world.path.totalLength; d += 10) {
+    const p = world.path.positionAt(d, { x: 0, z: 0 });
+    samples.push({ x: p.x, z: p.z });
+  }
+  const covered = new Array<boolean>(samples.length).fill(false);
+
+  const candidates: SpotRank[] = [];
+  for (let x = step; x < BALANCE.mapWidth; x += step) {
+    for (let z = step; z < BALANCE.mapDepth; z += step) {
+      if (world.canBuildAt(x, z) !== 'ok') continue;
+      const r = rankOf(world, `${x},${z}`, x, z);
+      if (r.cover > 0) candidates.push(r);
+    }
+  }
+
+  const picked: SpotRank[] = [];
+  while (picked.length < count) {
+    let best: SpotRank | null = null;
+    let bestGain = 0;
+    for (const c of candidates) {
+      if (picked.some((p) => Math.hypot(p.x - c.x, p.z - c.z) < BALANCE.placement.towerSpacing)) continue;
+      let gain = 0;
+      for (let i = 0; i < samples.length; i++) {
+        if (covered[i]) continue;
+        if (Math.hypot(samples[i].x - c.x, samples[i].z - c.z) <= range) gain++;
+      }
+      // 동률이면 커버리지가 큰 쪽, 그다음 id 순 — 결정론을 지킨다.
+      if (gain > bestGain || (gain === bestGain && best && gain > 0 && c.cover > best.cover)) {
+        bestGain = gain;
+        best = c;
+      }
+    }
+    if (!best || bestGain === 0) break;
+    for (let i = 0; i < samples.length; i++) {
+      if (!covered[i] && Math.hypot(samples[i].x - best.x, samples[i].z - best.z) <= range) covered[i] = true;
+    }
+    picked.push(best);
+  }
+  return picked;
+}
+
+/**
+ * 자리별로 지을 타워를 정한다.
  * auto 전략: 커버리지가 높은 자리에는 궁노 망루(지속 피해),
  * 낮은 자리에는 벽력거와 철질려를 번갈아 — 나쁜 자리는 "오래 때리는" 값이 낮으므로
  * 한 방이 크거나(투석) 남을 돕는(감속) 타워가 맞다.
@@ -143,7 +222,7 @@ function resolveTowerId(raw: string): string {
   return TOWER_ALIAS[raw] ?? raw;
 }
 
-function planBuilds(ranked: SlotRank[], build: string, levelId: string): Map<string, string> {
+function planBuilds(ranked: SpotRank[], build: string, levelId: string): Map<string, string> {
   const plan = new Map<string, string>();
   // 그 레벨에서 아직 해금되지 않은 타워는 계획에 넣지 않는다 —
   // 넣으면 World.build가 'locked'를 돌려주고 건설 큐가 그대로 막힌다.
@@ -289,10 +368,20 @@ export function runSim(args: Partial<Args> = {}): SimResult {
   const level = getLevel(a.level);
   const world = new World({ level, seed: a.seed });
 
-  const ranked = rankSlots(world);
-  const chosenIds = a.slots
-    ? a.slots.map((s) => resolveSlotId(world, s))
-    : ranked.slice(0, a.towers).map((r) => r.id);
+  /*
+   * 어디에 지을 것인가. 자유 배치가 된 뒤로도 기본값은 **추천 자리**다 —
+   * 여섯 장의 밸런스 실측치가 전부 그 자리를 전제로 쌓여 있어서, 기본값을
+   * 바꾸면 과거 수치와 비교할 수 없게 된다. `--spots best` 는 자유 배치에서
+   * 최선을 다한 배치가 얼마나 더 센지를 재는 쪽이다.
+   */
+  const budget = Math.min(a.towers, world.maxTowers);
+  const ranked = a.spots === 'best' ? rankBest(world, budget) : rankRecommended(world);
+  const chosen = a.slots
+    ? a.slots
+        .map((raw) => resolveSlotId(world, raw))
+        .map((id) => ranked.find((r) => r.id === id))
+        .filter((r): r is SpotRank => !!r)
+    : ranked.slice(0, budget);
   const plan = planBuilds(ranked, a.build, level.id);
 
   const rows: WaveRow[] = [];
@@ -326,11 +415,21 @@ export function runSim(args: Partial<Args> = {}): SimResult {
     leaksAtWaveStart = world.leaks;
   });
 
-  const buildQueue = [...chosenIds];
+  const buildQueue = [...chosen];
   const cardsUsed: Record<string, number> = {};
   let goldOnCards = 0;
   let gateUpgrades = 0;
   let goldOnGate = 0;
+
+  /**
+   * 타워의 자리 id(좌표) -> 계획상의 이름.
+   *
+   * 자유 배치에서 타워 id 는 좌표라 문자열 순서에 의미가 없다. 업그레이드 순서의
+   * 동률은 예전처럼 **계획의 이름 순**으로 가른다 — 추천 자리를 쓰면 그 이름이
+   * 곧 슬롯 id(s2_a, s2_b...)이므로, 여섯 장의 과거 실측치가 그대로 재현된다.
+   */
+  const planName = new Map<string, string>();
+  for (const r of ranked) planName.set(spotKey(r.x, r.z), r.id);
 
   // 도사 대응: 궁노 망루를 strongest로 바꾸면 체력이 높은 도사·방패병을 먼저 노린다.
   if (a.focusHealer) {
@@ -344,10 +443,10 @@ export function runSim(args: Partial<Args> = {}): SimResult {
   while (world.over === 'none' && steps < maxSteps) {
     // 1) 건설 — 계획된 타워를 살 수 있게 되면 짓는다
     while (buildQueue.length > 0) {
-      const slotId = buildQueue[0];
-      const towerId = plan.get(slotId) ?? 'archer_tower';
+      const spot = buildQueue[0];
+      const towerId = plan.get(spot.id) ?? 'archer_tower';
       if (!world.economy.canAfford(getTower(towerId).buildCost)) break;
-      if (world.build(slotId, towerId) !== 'ok') break;
+      if (world.build(spot, towerId) !== 'ok') break;
       buildQueue.shift();
     }
 
@@ -358,7 +457,11 @@ export function runSim(args: Partial<Args> = {}): SimResult {
         progressed = false;
         const towers = [...world.towers.values()]
           .filter((t) => !t.isMaxLevel)
-          .sort((p, q) => p.level - q.level || p.slotId.localeCompare(q.slotId));
+          .sort(
+            (p, q) =>
+              p.level - q.level ||
+              (planName.get(p.slotId) ?? p.slotId).localeCompare(planName.get(q.slotId) ?? q.slotId),
+          );
         for (const t of towers) {
           const cost = t.nextUpgradeCost;
           if (cost !== null && world.economy.canAfford(cost) && world.upgrade(t.slotId) === 'ok') {
