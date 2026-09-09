@@ -215,11 +215,21 @@ describe('레벨 3 밸런스 (헤드리스 15웨이브)', () => {
     expect(r.leaksByUnit.ys_spear ?? 0).toBeGreaterThan(r.leaksByUnit.ys_infantry ?? 0);
   });
 
-  it('수리에 의존하지 않아도 숙련된 조기 소집으로 클리어할 수 있다', () => {
+  /*
+   * 예전에는 여기서 "수리에 의존하지 않아도 클리어할 수 있다"를 봤다 —
+   * 조기 소집만 잘하면 수리는 편의였지 필수가 아니었다.
+   *
+   * 유닛이 망루에 주는 피해를 세 배로 올리면서 그 전제가 깨졌다. 한 부대가 붙으면
+   * 20초 안에 1레벨 망루가 결판나므로, 안 고치면 방어선이 통째로 녹는다
+   * (실측: 수리 on 은 망루 3기를 잃고 이기고, off 는 14기를 잃고 13파에서 진다).
+   * 수리비를 크게 내려 둔 것이 그래서다 — 치르는 값은 골드가 아니라 주의력이다.
+   */
+  it('망루 수리는 이제 선택이 아니다 — 안 고치면 방어선이 녹는다', () => {
     const withRepair = runSim({ level: 'level03', early: true });
     const without = runSim({ level: 'level03', early: true, repair: false });
     expect(withRepair.won).toBe(true);
-    expect(without.won).toBe(true);
+    expect(without.won).toBe(false);
+    expect(without.towersLost).toBeGreaterThan(withRepair.towersLost * 3);
   });
 
   it('별 등급 기준이 실제 도달 가능한 범위에 있다', () => {

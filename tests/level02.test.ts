@@ -506,7 +506,20 @@ describe('레벨 2 밸런스 (헤드리스 14웨이브)', () => {
      * "언제 무너졌나"와 "무엇에 뚫렸나"가 이 장의 교훈이다 (실측: 10파 패배, 누수 43 중 방패병 37).
      */
     expect(r.lastWave).toBeLessThan(mixed.rows.length);
-    expect(r.leaksByUnit.xl_shield).toBeGreaterThan(r.leaks * 0.6);
+    /*
+     * 방패병이 단일 유닛으로는 가장 많이 뚫는다 (실측 66 중 36, 다음이 보병 18).
+     * 예전에는 "누수의 60% 이상"으로 봤는데, 망루가 실제로 무너지게 된 뒤로는
+     * 방어선이 통째로 열려 나머지 유닛의 누수도 같이 늘어 비중이 55% 로 내려왔다.
+     * 비중이 아니라 **순위**가 이 장의 교훈이다 — 답을 요구하는 것은 방패병이다.
+     */
+    const worst = Object.entries(r.leaksByUnit).sort((a, b) => b[1] - a[1])[0];
+    expect(worst[0]).toBe('xl_shield');
+    /*
+     * 조합을 틀리면 성만 뚫리는 게 아니라 **망루도 잃는다.** 궁노는 방패병을 제때
+     * 못 죽이므로 습격조가 망루에 붙어 있는 시간이 길어지고, 그동안 화력이 묶여
+     * 다음 무리가 또 붙는다 (실측 8기 손실 vs 혼합 0기).
+     */
+    expect(r.towersLost).toBeGreaterThan(mixed.towersLost);
   });
 
   it('벽력거를 섞으면 이긴다 (속성에는 답이 따로 있다)', () => {
