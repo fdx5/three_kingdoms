@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BALANCE, type PerformancePreset } from '../data/balance';
 import type { LevelEnvironment } from '../types/level';
+import { maxShadowMapSize } from './Renderer';
 
 /** 줌 한계 — 1은 맵 전체가 들어오는 거리 */
 const ZOOM_MIN = 0.42;
@@ -113,8 +114,10 @@ export class Stage {
   applyPreset(preset: PerformancePreset, renderer: THREE.WebGLRenderer): void {
     renderer.shadowMap.enabled = preset.shadows;
     this.sun.castShadow = preset.shadows;
-    if (!preset.shadows || this.sun.shadow.mapSize.x !== preset.shadowMapSize) {
-      this.sun.shadow.mapSize.set(preset.shadowMapSize, preset.shadowMapSize);
+    // 표의 값을 그대로 쓰지 않는다 — 저사양 기기에서는 여기서 눌린다 (maxShadowMapSize 주석 참조)
+    const size = Math.min(preset.shadowMapSize, maxShadowMapSize());
+    if (!preset.shadows || this.sun.shadow.mapSize.x !== size) {
+      this.sun.shadow.mapSize.set(size, size);
       // Free disabled/resized maps, but keep an unchanged map on repeated settings.
       this.sun.shadow.map?.dispose();
       this.sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;

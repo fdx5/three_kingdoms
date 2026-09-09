@@ -23,14 +23,41 @@ export function detectLowEnd(): boolean {
   return mobile || cores <= 4 || mem <= 4;
 }
 
-/** 초기 프리셋 추정 (실측 fps로 나중에 보정된다) */
+/**
+ * 처음 켰을 때의 그래픽 프리셋 — **모두 '높음'에서 시작한다.**
+ *
+ * 예전에는 userAgent 와 코어 수로 짐작했다(모바일이면 보통, 코어 4개 이하도 보통).
+ * 그 짐작은 늘 아래로 틀렸다. 코어 수는 GPU 성능과 상관이 거의 없고 — 요즘 폰은
+ * 코어가 여덟인데 데스크톱 i5 는 넷이다 — userAgent 는 아이패드 프로와 보급형
+ * 안드로이드를 구별하지 못한다. 결과적으로 멀쩡히 60fps 를 낼 기기들이 이유 없이
+ * 흐린 화면으로 시작했고, 설정을 열어 본 사람만 제 성능을 봤다.
+ *
+ * 짐작을 지울 수 있는 이유는 **실측이 이미 있기 때문**이다 (main.ts updateFps):
+ *   - 3초간 재서 26fps 미만이면 '낮음', 45fps 미만이면 '보통'으로 내린다.
+ *   - 그 뒤에도 적이 나와 있는 동안 38fps 아래가 5초 쌓이면 한 단계 더 내린다.
+ *   - 내려간 값은 localStorage 에 남으므로 다음 실행부터는 그 자리에서 시작한다.
+ * 그래서 못 버티는 기기가 치르는 값은 "처음 3초"뿐이고, 버틸 수 있는 기기는
+ * 아무것도 잃지 않는다. 짐작보다 실측이 낫다.
+ *
+ * 모바일이라고 예외를 두지 않는다. 다만 프리셋과 무관하게 걸려 있는 하드웨어
+ * 안전장치는 그대로다 — detectLowEnd() 가 안티에일리어싱을 끄고 픽셀 비율을
+ * 1.5 로 묶으며, 그림자 맵도 아래 maxShadowMapSize() 로 눌린다.
+ */
 export function guessPreset(): PerformancePresetName {
-  const nav = navigator as Navigator & { deviceMemory?: number };
-  const cores = nav.hardwareConcurrency ?? 4;
-  const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(nav.userAgent);
-  if (mobile && cores <= 4) return 'low';
-  if (mobile || cores <= 4) return 'medium';
   return 'high';
+}
+
+/**
+ * 이 기기가 감당할 그림자 맵의 한 변 — '높음'의 4096 을 저사양에서 눌러 준다.
+ *
+ * 프리셋과 따로 두는 이유: 프레임이 느려지는 것과 **할당이 실패하는 것**은 다르다.
+ * 4096 x 4096 깊이 맵 하나가 67MB 다. 느린 것은 위의 실측이 3초 안에 잡아 내리지만,
+ * 메모리가 모자라 컨텍스트가 날아가면 fps 를 잴 기회조차 없다 — 화면이 검게 남는다.
+ * 그래서 이쪽만은 짐작이 아니라 보수적으로 간다. 2048 은 같은 맵의 1/4(17MB)이고,
+ * 위에서 내려다보는 이 카메라 거리에서는 4096 과 눈으로 구별되지 않는다.
+ */
+export function maxShadowMapSize(): number {
+  return detectLowEnd() ? 2048 : 4096;
 }
 
 /**
