@@ -30,6 +30,27 @@ const PRESET_KEY = 'samtd.preset';
 const SETTINGS_KEY = 'samtd.settings';
 
 /**
+ * 저장된 프리셋을 **한 번만** 버리게 하는 표식.
+ *
+ * 기본 프리셋을 '높음'으로 바꿨는데, 그것만으로는 이미 플레이한 기기에 닿지 않는다.
+ * 예전에는 userAgent 와 코어 수로 짐작해 시작 프리셋을 정했고(모바일이면 보통,
+ * 코어 넷 이하도 보통), 그 짐작이 곧 localStorage 에 저장돼 굳었다. 그래서
+ * 60fps 를 낼 수 있는 기기가 "한 번 흐리게 시작했다"는 이유만으로 계속 흐렸다.
+ * 좋아진 화면을 보여 주려면 그 굳은 값을 한 번은 놓아 줘야 한다.
+ *
+ * 영구히 무시하지 않고 표식을 쓰는 이유: 무시해 버리면 "낮음이 좋다"고 직접 고른
+ * 사람의 선택도, 실측으로 내려간 결과도 매번 덮어쓴다. 표식이 맞은 뒤부터는
+ * 저장값이 다시 이긴다 — 딱 한 번만 비운다.
+ *
+ * 느린 기기가 손해 보지 않는 것도 같은 이유다. 비워도 3초 실측이 다시 돌아
+ * 제자리로 내려가고(updateFps), 그 값이 새 표식과 함께 저장된다.
+ *
+ * 기본값을 또 크게 바꿀 때만 이 문자열을 올린다.
+ */
+const PRESET_EPOCH_KEY = 'samtd.preset.epoch';
+const PRESET_EPOCH = '2';
+
+/**
  * 열어 둔 망루 패널을 다시 그리는 주기(초).
  *
  * 짧으면 손가락 밑에서 버튼이 다시 만들어져 탭이 씹히고, 길면 수리비를 낼 수
@@ -37,6 +58,28 @@ const SETTINGS_KEY = 'samtd.settings';
  * 한 번보다 길고, 내구도가 눈에 띄게 달라지기 전에 한 번은 돈다.
  */
 const PANEL_REFRESH_SEC = 0.35;
+
+/**
+ * 이번 실행을 시작할 프리셋 — 저장값이 있으면 그것, 없으면 guessPreset().
+ *
+ * PRESET_EPOCH 가 바뀐 첫 실행에서는 저장값을 버리고 기본값으로 되돌린다
+ * (위 PRESET_EPOCH_KEY 주석 참조). localStorage 를 아예 못 쓰는 환경
+ * (사생활 보호 모드 등)에서는 접근 자체가 던지므로 기본값으로 넘어간다.
+ */
+function startingPreset(): PerformancePresetName {
+  let stored: string | null = null;
+  try {
+    if (localStorage.getItem(PRESET_EPOCH_KEY) === PRESET_EPOCH) {
+      stored = localStorage.getItem(PRESET_KEY);
+    } else {
+      localStorage.setItem(PRESET_EPOCH_KEY, PRESET_EPOCH);
+      localStorage.removeItem(PRESET_KEY);
+    }
+  } catch {
+    /* 저장소를 못 읽으면 짐작 없이 기본값으로 간다 */
+  }
+  return stored === 'low' || stored === 'medium' || stored === 'high' ? stored : guessPreset();
+}
 
 class Game {
   private container: HTMLElement;
@@ -98,8 +141,7 @@ class Game {
     this.fxLayer = document.getElementById('fx-layer')!;
     this.debugPanel = document.getElementById('debug-panel')!;
 
-    const stored = localStorage.getItem(PRESET_KEY) as PerformancePresetName | null;
-    this.preset = stored === 'low' || stored === 'medium' || stored === 'high' ? stored : guessPreset();
+    this.preset = startingPreset();
     this.settings = this.loadSettings();
 
     // ?level=2 로 직접 지정할 수 있다 (개발·테스트용). 없으면 진행도가 정한다.
