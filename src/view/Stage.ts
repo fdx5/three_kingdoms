@@ -24,6 +24,7 @@ export class Stage {
   private skyDome: THREE.Mesh;
   private skyTexture: THREE.Texture | null = null;
   private disposed = false;
+  private weatherSkyTime = { value: 0 };
 
   /** 카메라가 바라보는 월드 중심 */
   readonly target = new THREE.Vector3(BALANCE.mapWidth / 2, 0, BALANCE.mapDepth / 2);
@@ -70,6 +71,19 @@ export class Stage {
       fog: false,
     });
     this.skyDome = new THREE.Mesh(skyGeo, skyMat);
+    if (env.weather?.kind === 'wind') {
+      skyMat.onBeforeCompile = shader => {
+        shader.uniforms.weatherSkyTime = this.weatherSkyTime;
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float weatherSkyTime;')
+          .replace('#include <color_fragment>', `#include <color_fragment>
+            #ifdef USE_MAP
+              float cloud = sin(vMapUv.x * 30.0 - weatherSkyTime * ${BALANCE.fx.weather.cloudSpeed})
+                + sin(vMapUv.y * 24.0 + vMapUv.x * 13.0);
+              diffuseColor.rgb *= 1.0 - smoothstep(-.5, 1.5, cloud) * ${BALANCE.fx.weather.cloudShade};
+            #endif`);
+      };
+      skyMat.customProgramCacheKey = () => 'moving-plateau-clouds';
+    }
     if (env.weather?.fireGlow) {
       const glow = new THREE.Color(env.weather.fireGlow);
       skyMat.onBeforeCompile = shader => {
@@ -126,11 +140,12 @@ export class Stage {
     this.sun.shadow.normalBias = 0.3;
   }
 
-  setWeatherSky(color: string, flash: number): void {
+  setWeatherSky(color: string, flash: number, time = 0): void {
     // Tint the panorama too: changing background alone is hidden by the existing dome.
     const material = this.skyDome.material as THREE.MeshBasicMaterial;
     material.color.set(color).multiplyScalar(1 + flash);
     this.hemi.intensity = .65 + flash;
+    this.weatherSkyTime.value = time;
   }
 
   applyPreset(preset: PerformancePreset, renderer: THREE.WebGLRenderer): void {

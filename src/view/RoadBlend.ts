@@ -11,6 +11,7 @@ export interface RoadBlend {
   vegetation: THREE.Color;
   wetness: number;
   rain: number;
+  cloud?: { time: { value: number }; strength: { value: number } };
 }
 
 /** World-space distance, not ribbon UVs: corners and shoulders share one opaque ground. */
@@ -42,7 +43,7 @@ export function roadDistanceField(path: Path): THREE.DataTexture {
 
 type Shader = Parameters<THREE.MeshStandardMaterial['onBeforeCompile']>[0];
 
-export function blendRoad(shader: Shader, road: RoadBlend): void {
+export function blendRoad(shader: Shader, road: RoadBlend, weatherDetail = true): void {
   Object.assign(shader.uniforms, {
     roadField: { value: road.field }, roadMap: { value: road.map },
     roadNormal: { value: road.normal }, roadRoughness: { value: road.roughness },
@@ -51,6 +52,15 @@ export function blendRoad(shader: Shader, road: RoadBlend): void {
     landscapeRain: { value: road.rain },
   });
   shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 landscapePosition; varying float landscapeHeight;');
+  if (road.cloud && weatherDetail) {
+    shader.uniforms.cloudTime = road.cloud.time; shader.uniforms.cloudStrength = road.cloud.strength;
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float cloudTime, cloudStrength;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', `
+      float cloud = sin(landscapePosition.x * ${BALANCE.fx.weather.cloudScale} - cloudTime * ${BALANCE.fx.weather.cloudSpeed})
+        + sin(landscapePosition.y * ${BALANCE.fx.weather.cloudScale} + landscapePosition.x * ${BALANCE.fx.weather.cloudScale / 2});
+      outgoingLight *= 1.0 - smoothstep(-.5, 1.5, cloud) * cloudStrength;
+      #include <opaque_fragment>`);
+  }
   shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
     '#include <begin_vertex>\nlandscapePosition = (modelMatrix * vec4(position, 1.0)).xz; landscapeHeight = position.y;');
   shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `

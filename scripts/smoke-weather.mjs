@@ -83,6 +83,19 @@ try {
       assert.ok(dawn.late > dawn.early && dawn.clearing > .99);
       await page.screenshot({ path: 'artifacts/weather-4-cleared.png' });
     }
+    if (level === '2') {
+      const cloud = await page.evaluate(() => {
+        const g = window.game, w = g.scene.weather;
+        g.applyPreset('high'); w.update(0);
+        const before = g.scene.terrain.cloudStrength.value;
+        g.world.spawnEnemy({ unitId: 'lubu', hpMul: 1, speedMul: 1 });
+        for (let i = 0; i < 25; i++) w.update(.1);
+        g.render(1, 0);
+        return { before, after: g.scene.terrain.cloudStrength.value };
+      });
+      assert.ok(cloud.after > cloud.before);
+      await page.screenshot({ path: 'artifacts/weather-2-lubu.png' });
+    }
     assert.deepEqual(errors, []);
     report.push({ level, snapshots });
     console.log(`Chapter ${level}: 3 presets, resource lifetime, batching, low timing passed`);

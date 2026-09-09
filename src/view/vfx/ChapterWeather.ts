@@ -18,6 +18,7 @@ export class ChapterWeather {
   private enabled = false;
   private clearing = { value: 0 };
   private targetClearing = 0;
+  private bossCloud = 0;
 
   constructor(private env: LevelEnvironment, private stage: Stage, preset: PerformancePreset,
     private onThunder: () => void, private terrain: Terrain) {
@@ -31,6 +32,7 @@ export class ChapterWeather {
     const w = this.env.weather!;
     const ash = w.kind === 'ash';
     const mist = w.kind === 'mist';
+    const wind = w.kind === 'wind';
     const geometry = new THREE.PlaneGeometry(1, 1);
     const rng = new Rng(C.seed);
     const seeds = new Float32Array(C.capacity * 4);
@@ -73,6 +75,10 @@ export class ChapterWeather {
           }
           vAge = age;
           ` : ''}
+          ${wind ? `
+          p.x = mod(weatherSeed.x * ${BALANCE.mapWidth}.0 + weatherTime * ${w.wind}.0, ${BALANCE.mapWidth}.0);
+          p.y = weatherSeed.y * ${C.dustHeight}.0;
+          ` : ''}
           ${mist ? `
           age = fract(weatherSeed.y + weatherTime / ${C.mistCycle}.0);
           p = vec3(weatherSeed.x * ${BALANCE.mapWidth}.0 + sin(age * 6.283185) * ${w.wind}.0,
@@ -81,7 +87,8 @@ export class ChapterWeather {
           ` : ''}
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           vec2 direction = normalize((modelViewMatrix * vec4(${w.wind.toFixed(1)}, -${C.ceiling}.0, 0.0, 0.0)).xy);
-          ${mist ? `mv.xy += position.xy * vec2(${C.mistWidth}.0, ${C.mistHeight}.0);`
+          ${wind ? `mv.xy += position.xy * vec2(${C.dustWidth}.0, ${C.dustThickness}.0);`
+            : mist ? `mv.xy += position.xy * vec2(${C.mistWidth}.0, ${C.mistHeight}.0);`
             : ash ? `mv.xy += position.xy * mix(${C.ashSize}, ${C.smokeSize}.0 * (.5 + age), vSmoke);`
             : `mv.xy += direction * position.y * ${C.rainLength}.0
             + vec2(-direction.y, direction.x) * position.x * ${C.rainWidth};`}
@@ -100,6 +107,7 @@ export class ChapterWeather {
           gl_FragColor = vec4(mix(tint, smokeTint, vSmoke), a * vFade
             * mix(${C.ashOpacity}, ${C.smokeOpacity} * sin(vAge * 3.14159265), vSmoke));
           ` : ''}
+          ${wind ? `gl_FragColor = vec4(tint, pow(max(0.0, 1.0 - length(vUv * 2.0 - 1.0)), 2.0) * ${C.dustOpacity} * vFade);` : ''}
           ${mist ? `
           float soft = pow(max(0.0, 1.0 - length(vUv * 2.0 - 1.0)), 2.0);
           gl_FragColor = vec4(tint, soft * sin(vAge * 3.14159265) * ${C.mistOpacity} * (1.0-clearing) * vFade);
@@ -117,7 +125,7 @@ export class ChapterWeather {
   applyPreset(preset: PerformancePreset): void {
     this.enabled = preset.particleScale > BALANCE.presets.low.particleScale;
     if (this.mesh) {
-      const capacity = this.env.weather?.kind === 'mist' ? C.mistCount : this.env.weather?.kind === 'ash' ? C.ashCount : C.capacity;
+      const capacity = this.env.weather?.kind === 'wind' ? C.windCount : this.env.weather?.kind === 'mist' ? C.mistCount : this.env.weather?.kind === 'ash' ? C.ashCount : C.capacity;
       this.mesh.count = this.enabled ? Math.round(capacity * preset.particleScale) : 0;
       this.mesh.visible = this.enabled;
     }
@@ -133,6 +141,10 @@ export class ChapterWeather {
     if (this.enabled) { this.flash = C.flashSec; this.thunder = C.thunderDelay; }
   }
 
+  enemySpawned(unitId: string): void {
+    if (this.env.weather?.kind === 'wind' && unitId === 'lubu' && this.enabled) this.bossCloud = C.bossCloudSec;
+  }
+
   update(dt: number): void {
     const w = this.env.weather;
     if (!w) return;
@@ -140,6 +152,7 @@ export class ChapterWeather {
     this.time.value += dt;
     this.clearing.value = THREE.MathUtils.lerp(this.clearing.value, this.targetClearing, 1 - Math.exp(-dt * C.mistClearRate));
     this.flash = Math.max(0, this.flash - dt);
+    this.bossCloud = Math.max(0, this.bossCloud - dt);
     if (this.thunder > 0) {
       this.thunder -= dt;
       if (this.thunder <= 0) this.onThunder();
@@ -147,7 +160,13 @@ export class ChapterWeather {
     const flash = Math.pow(this.flash / C.flashSec, 2) * C.flashStrength;
     this.stage.sun.color.set(w.sun);
     this.stage.sun.intensity = w.sunIntensity + flash + this.clearing.value * C.mistSunrise;
-    this.stage.setWeatherSky(w.sky, flash);
+    if (w.kind === 'wind' && this.enabled) {
+      const cover = (1 + Math.sin(this.time.value * C.cloudSpeed)) / 2;
+      const boss = Math.sin(this.bossCloud / C.bossCloudSec * Math.PI);
+      this.stage.sun.intensity *= 1 - cover * C.cloudSunShade - boss * C.bossCloudShade;
+      this.terrain.cloudStrength.value = C.cloudShade + boss * C.bossCloudShade;
+    }
+    this.stage.setWeatherSky(w.sky, flash, this.enabled ? this.time.value : 0);
     const fog = this.stage.scene.fog as THREE.Fog;
     fog.near = THREE.MathUtils.lerp(w.fogNear, C.clearFogNear, this.clearing.value);
     fog.far = THREE.MathUtils.lerp(w.fogFar, C.clearFogFar, this.clearing.value);

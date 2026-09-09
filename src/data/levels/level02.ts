@@ -188,6 +188,9 @@ export const LEVEL_02: LevelDef = {
   }),
 
   environment: {
+    // Sparse plateau vegetation cannot carry the wind alone; sand and cloud shadows share its direction.
+    weather: { kind: 'wind', color: '#b5a080', sky: '#abb4bd', sun: '#e0e4e4', sunIntensity: 2.25,
+      fogNear: 1650, fogFar: 3350, wind: 75 },
     // 레벨 1의 마른 황토에서 서늘한 관문 앞 산지로
     skyColor: '#9aa8bb',
     groundColor: '#5d6350',

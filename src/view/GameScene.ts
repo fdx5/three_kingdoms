@@ -286,6 +286,7 @@ export class GameScene {
 
     this.subs.add(
       bus.on('enemy:spawned', ({ enemyId, unitId }) => {
+        this.weather.enemySpawned(unitId);
         const view = this.acquireEnemyView(unitId);
         this.enemyViews.set(enemyId, view);
         if (getUnit(unitId).kind !== 'minion') this.bossEnemyId = enemyId;

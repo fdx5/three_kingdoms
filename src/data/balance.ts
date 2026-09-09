@@ -412,6 +412,10 @@ export const BALANCE = {
       mistCycle: 18, mistClearRate: .4, mistSunrise: .65, clearFogNear: 1550, clearFogFar: 3700,
       mistNearOffset: 80, mistFarSpan: 750,
       waterline: -1.1, waterUvScale: 70, waterSearchAttempts: 100,
+      // Thin, low dust streaks communicate the plateau wind without a full-screen veil.
+      windCount: 240, dustHeight: 14, dustWidth: 54, dustThickness: 5, dustOpacity: .12,
+      cloudScale: .006, cloudSpeed: .12, cloudShade: .22, cloudSunShade: .12,
+      bossCloudSec: 5, bossCloudShade: .25, grassLean: 3.5, flagFlutter: 3.0, gustSpeed: 3.8,
     },
     deathAnimDuration: 0.35,
     /**

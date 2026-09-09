@@ -32,6 +32,7 @@ export class Terrain {
   private groundCover?: GroundCover;
   private roadBlend?: RoadBlend;
   private windTime = { value: 0 };
+  readonly cloudStrength = { value: BALANCE.fx.weather.cloudShade as number };
   get hasIntegratedRoad(): boolean { return !!this.roadBlend; }
   get landscape(): LevelEnvironment['landscape'] { return this.env.landscape; }
   private readonly reserved: readonly { x: number; z: number }[];
@@ -182,6 +183,7 @@ export class Terrain {
         vegetation: new THREE.Color(env.landscape === 'loess' ? 0xb2a775 : env.biome === 'drylands' ? 0x87965d : 0x71995d),
         wetness: env.landscape === 'lakeside' || env.landscape === 'floodplain' ? 1 : 0,
         rain: env.weather?.kind === 'rain' ? 1 : 0,
+        cloud: env.weather?.kind === 'wind' ? { time: this.windTime, strength: this.cloudStrength } : undefined,
       };
     }
 
@@ -266,8 +268,9 @@ export class Terrain {
 
   /** Rebuild batched scenery only when the quality preset or seed changes. */
   buildDecor(preset: PerformancePreset, seed = 20240): void {
-    groundMaterialDetail(this.material, preset.postFx, this.groundCover, this.roadBlend);
-    if (this.skirt) groundMaterialDetail(this.skirt.material as THREE.MeshStandardMaterial, preset.postFx, this.groundCover, this.roadBlend);
+    const weatherDetail = preset.particleScale > BALANCE.presets.low.particleScale;
+    groundMaterialDetail(this.material, preset.postFx, this.groundCover, this.roadBlend, weatherDetail);
+    if (this.skirt) groundMaterialDetail(this.skirt.material as THREE.MeshStandardMaterial, preset.postFx, this.groundCover, this.roadBlend, weatherDetail);
     const key = `${preset.decorScale}:${preset.shadows}:${seed}`;
     if (key === this.decorKey) return;
     this.clearDecor();
@@ -351,7 +354,7 @@ export class Terrain {
       side: THREE.DoubleSide,
     });
     const grassMat = new THREE.MeshStandardMaterial({ color: this.env.landscape === 'loess' ? 0x8b8065 : 0x778066, roughness: 1, vertexColors: true, side: THREE.DoubleSide });
-    if (preset.postFx) {
+    if (preset.postFx || (this.env.weather?.kind === 'wind' && weatherDetail)) {
       grassMat.onBeforeCompile = shader => {
         shader.uniforms.grassTime = this.windTime;
         shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float grassTime;');
@@ -362,9 +365,24 @@ export class Terrain {
           float gust = sin(grassTime * 1.3 + root.x * .023 + root.z * .018);
           transformed.x += tip * tip * (gust * 1.25 + sin(grassTime * 2.1 + root.z * .09) * .35);
           transformed.z += tip * tip * gust * .45;
+          ${this.env.weather?.kind === 'wind' ? `
+          // Inverse instance rotation keeps every clump leaning east, despite random planting angles.
+          transformed += vec3(instanceMatrix[0].x, instanceMatrix[1].x, instanceMatrix[2].x)
+            * tip * tip * ${BALANCE.fx.weather.grassLean} * (1.0 + sin(grassTime * ${BALANCE.fx.weather.gustSpeed}) * .2);
+          ` : ''}
         `);
       };
       grassMat.customProgramCacheKey = () => 'landscape-grass-wind-v1';
+    }
+    if (this.env.weather?.kind === 'wind' && weatherDetail) {
+      bannerMat.onBeforeCompile = shader => {
+        shader.uniforms.flagTime = this.windTime;
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float flagTime;')
+          .replace('#include <begin_vertex>', `#include <begin_vertex>
+            float freeEdge = uv.x;
+            transformed.z += sin(flagTime * ${BALANCE.fx.weather.gustSpeed} - freeEdge * 6.283185) * freeEdge * ${BALANCE.fx.weather.flagFlutter.toFixed(1)};`);
+      };
+      bannerMat.customProgramCacheKey = () => 'plateau-wind-cloth';
     }
 
     const trunkIM = new THREE.InstancedMesh(trunkGeo, trunkMat, trees);
@@ -471,7 +489,8 @@ export class Terrain {
       if (d < 62 || d > 150) continue;
       if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 49) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
       const y = this.heightAt(x, z);
-      const rot = rng.range(0, Math.PI * 2);
+      const randomRotation = rng.range(0, Math.PI * 2);
+      const rot = this.env.weather?.kind === 'wind' ? 0 : randomRotation;
       q.setFromAxisAngle(_up, rot);
       scl.set(1, 1, 1);
       pos.set(x, y + 26, z);
