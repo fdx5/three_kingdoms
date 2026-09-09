@@ -45,11 +45,7 @@ export class Tower {
 
   /**
    * 망루를 둘러싼 자리들. 값은 그 자리를 차지한 적의 id, 0이면 빈자리다.
-   *
-   * 인덱스가 곧 위치다: 앞의 `slots` 개가 **때리는 안쪽 고리**이고, 그 뒤는
-   * 자리가 나기를 기다리는 바깥 고리들이다 (BALANCE.towerCombat.reserveRings).
-   * 두 고리를 한 배열로 두는 이유는 자리 이동이 인덱스 교체 한 번으로 끝나기
-   * 때문이다 — 기다리던 적이 앞으로 나서는 것이 곧 "낮은 인덱스로 옮긴다"다.
+   * 인덱스가 곧 각도이고, **여기 선 적은 전부 때린다.**
    */
   readonly siegeSlots: number[];
 
@@ -63,8 +59,7 @@ export class Tower {
     this.totalInvested = def.buildCost;
     this.maxHp = towerMaxHp(def, 1);
     this.hp = this.maxHp;
-    const tc = BALANCE.towerCombat;
-    this.siegeSlots = new Array(tc.slots * (1 + tc.reserveRings)).fill(0);
+    this.siegeSlots = new Array(BALANCE.towerCombat.slots).fill(0);
   }
 
   get hpRatio(): number {
@@ -102,54 +97,28 @@ export class Tower {
     return healed;
   }
 
-  /** 이 자리에 선 적이 실제로 망루를 때리는가 (안쪽 고리인가) */
-  static isAssaultSlot(index: number): boolean {
-    return index >= 0 && index < BALANCE.towerCombat.slots;
-  }
-
   /**
    * 이 적이 설 자리를 잡는다. 자리가 없으면 -1.
    *
-   * 안쪽 고리를 먼저 채우고, 같은 고리 안에서는 **다가오는 방향에 가장 가까운
-   * 각도**를 준다 — 그래야 달려드는 길이 서로 엇갈리지 않는다.
+   * 빈자리 중 **다가오는 방향에 가장 가까운 각도**를 준다 — 그래야 달려드는
+   * 길이 서로 엇갈리지 않고, 무리가 망루를 한 바퀴 도는 그림이 안 나온다.
    */
   claimSiegeSlot(enemyId: number, fromX: number, fromZ: number): number {
-    const best = this.pickSlot(fromX, fromZ, this.siegeSlots.length);
-    if (best >= 0) this.siegeSlots[best] = enemyId;
-    return best;
-  }
-
-  /**
-   * 안쪽 고리에 빈자리가 났으면 그 자리로 옮긴다. 옮겼으면 새 인덱스, 아니면 -1.
-   * 바깥에서 기다리던 적이 앞으로 나서는 순간이 이것이다.
-   */
-  promoteSiegeSlot(enemyId: number, current: number, fromX: number, fromZ: number): number {
-    if (Tower.isAssaultSlot(current)) return -1;
-    const next = this.pickSlot(fromX, fromZ, BALANCE.towerCombat.slots);
-    if (next < 0) return -1;
-    this.releaseSiegeSlot(current, enemyId);
-    this.siegeSlots[next] = enemyId;
-    return next;
-  }
-
-  /** limit 미만의 인덱스 중 빈자리 하나. 없으면 -1. */
-  private pickSlot(fromX: number, fromZ: number, limit: number): number {
-    const n = Math.min(limit, this.siegeSlots.length);
     const approach = Math.atan2(fromX - this.x, fromZ - this.z);
     let best = -1;
     let bestScore = Infinity;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < this.siegeSlots.length; i++) {
       if (this.siegeSlots[i] !== 0) continue;
       const angle = this.slotAngle(i);
       const diff = Math.abs(Math.atan2(Math.sin(angle - approach), Math.cos(angle - approach)));
-      // 고리가 먼저, 그 안에서 각도. 동률은 낮은 인덱스가 이긴다(결정론).
-      const ring = Math.floor(i / BALANCE.towerCombat.slots);
-      const score = ring * 100 + diff - i * 1e-6;
+      // 동률은 낮은 인덱스가 이긴다 — 결정론을 위해서다.
+      const score = diff - i * 1e-6;
       if (score < bestScore) {
         bestScore = score;
         best = i;
       }
     }
+    if (best >= 0) this.siegeSlots[best] = enemyId;
     return best;
   }
 
@@ -158,19 +127,14 @@ export class Tower {
     if (this.siegeSlots[index] === enemyId) this.siegeSlots[index] = 0;
   }
 
-  /** 고리마다 반 칸씩 어긋나게 둔다 — 뒷줄이 앞줄 뒤에 정확히 겹치지 않게. */
   private slotAngle(index: number): number {
-    const per = BALANCE.towerCombat.slots;
-    const ring = Math.floor(index / per);
-    return ((index % per) + ring * 0.5) / per * Math.PI * 2;
+    return (index / this.siegeSlots.length) * Math.PI * 2;
   }
 
   /** 이 자리에 선 적이 서 있어야 할 좌표 */
   siegePoint(index: number, out: { x: number; z: number }): { x: number; z: number } {
-    const tc = BALANCE.towerCombat;
-    const ring = Math.floor(index / tc.slots);
     const angle = this.slotAngle(index);
-    const r = tc.surroundRadius + ring * tc.ringSpacing;
+    const r = BALANCE.towerCombat.surroundRadius;
     out.x = this.x + Math.sin(angle) * r;
     out.z = this.z + Math.cos(angle) * r;
     return out;
@@ -222,6 +186,21 @@ export class Tower {
   }
 
   /**
+   * 이 망루가 자기를 때리는 적에게 돌리는 발수 — **절반**이다.
+   *
+   * 전부 발밑에 쓰면 망루는 살지만 길이 빈다. 습격조는 어차피 20초 뒤 물러나는데
+   * 그동안 망루의 화력을 통째로 붙잡아 두므로, 지나가는 돌파조가 한 발도 안 맞고
+   * 성문에 닿는다. 반대로 하나도 안 쓰면 습격조가 저항 없이 기둥을 찍는다.
+   *
+   * 절반이면 둘 다 성립한다. 1레벨(1발)은 전부 자기를 지키고 — 그때가 가장
+   * 위태롭다 — 5레벨(5발)은 두 발로 발밑을 털면서 세 발로 길을 덮는다.
+   * 업그레이드가 "더 센 망루"가 아니라 "두 가지를 동시에 하는 망루"가 된다.
+   */
+  private get selfDefenseArrows(): number {
+    return Math.max(1, Math.floor(this.levelDef.arrows / 2));
+  }
+
+  /**
    * 사거리 내 후보에서 targeting 규칙으로 정렬한 목표 목록을 out에 채운다.
    * candidates는 SpatialGrid가 준 "가능성 있는" 적들이다 — 여기서 정확한 거리 검사를 한다.
    *
@@ -234,10 +213,8 @@ export class Tower {
    * 사람이 보기에도 이쪽이 당연하다 — 코앞에서 도끼로 기둥을 찍는 적을 두고
    * 멀리를 쏘는 망루는 고장 난 것으로 보인다.
    *
-   * 화살 절반만 발밑에 쓰고 나머지로 길을 덮게도 해 봤다. 화력 배분으로는
-   * 더 그럴듯하지만 여섯 장의 밸런스가 그 위에서 성립하지 않았다 — 2·3장의
-   * 권장 조합이 지고 4장은 성문 없이도 이겼다. 이 게임의 여섯 장은 "망루는
-   * 자기를 지킨다"를 전제로 맞춰져 있다.
+   * 자기 방어에 우선 배정하는 발수는 selfDefenseArrows가 정한다.
+   * 남은 발수는 길 위의 적을 맡아, 포위된 망루도 돌파조를 견제한다.
    *
    * 두 무리 각각은 여전히 고른 타게팅으로 정렬된다. 설정이 무시되는 것이 아니라
    * "먼저 볼 무리"가 하나 생기는 것이다.
@@ -270,6 +247,10 @@ export class Tower {
     out.length = sieging;
     sortByTargeting(out, this.targeting, this.x, this.z);
     sortByTargeting(rest, this.targeting, this.x, this.z);
+    // 앞줄에 남기는 것은 자기 방어 몫까지. 넘치는 습격조는 뒷줄로 물러난다.
+    const keep = Math.min(sieging, this.selfDefenseArrows);
+    for (let i = keep; i < sieging; i++) rest.push(out[i]);
+    out.length = keep;
     for (let i = 0; i < rest.length; i++) out.push(rest[i]);
     return out;
   }

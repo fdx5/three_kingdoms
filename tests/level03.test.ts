@@ -15,15 +15,15 @@ describe('레벨 3 맵', () => {
    * 표에 적힌 배율에 전역 difficulty.bossHpMul 이 곱해진 값이 실제 장수의 체력이다.
    * 그래서 표의 숫자가 아니라 곱한 결과를 재는 것이 맞다 — 어느 쪽을 움직여도 걸린다.
    */
-  /* 표의 배율(1.25 / 1.5) x difficulty.bossHpMul 2.6. 2.6이 된 사연은 level02 참조. */
-  it('15개 웨이브이며 중간보스 3.25배·최종보스 3.9배가 적용된다', () => {
+  /* 표의 배율(1.25 / 1.5) x difficulty.bossHpMul 2.3. 2.3이 된 사연은 level02 참조. */
+  it('15개 웨이브이며 중간보스 2.875배·최종보스 3.45배가 적용된다', () => {
     const boss = BALANCE.difficulty.bossHpMul;
     expect(LEVEL_03.waves).toHaveLength(15);
     const yanliang = LEVEL_03.waves[7].spawns.find((s) => s.unitId === 'yanliang')!;
     const yuanshao = LEVEL_03.waves[14].spawns.find((s) => s.unitId === 'yuanshao')!;
-    expect(yanliang.hpMul * boss).toBeCloseTo(3.25, 6);
+    expect(yanliang.hpMul * boss).toBeCloseTo(2.875, 6);
     // 원소는 표의 1.5가 이 장의 상한이다 — 더 올리면 15파에서 성문에 붙는 순간 뒤집힌다.
-    expect(yuanshao.hpMul * boss).toBeCloseTo(3.9, 6);
+    expect(yuanshao.hpMul * boss).toBeCloseTo(3.45, 6);
   });
   const path = new Path(LEVEL_03.path);
 
@@ -199,11 +199,18 @@ describe('레벨 3 밸런스 (헤드리스 15웨이브)', () => {
     expect(runSim({ level: 'level03', early: true, upgrade: 'none' }).won).toBe(false);
   });
 
+  /*
+   * 배수가 3배에서 1.5배로 내려왔다. 공성전이 들어오면서 습격조가 **타워 종류와
+   * 무관하게** 망루 앞에 붙잡혀 죽기 때문이다 — 궁노만 세워도 열 중 일곱은
+   * 성문까지 오지 못한다. 그래서 두 방어선의 누수 차이는 예전만큼 벌어지지 않는다.
+   * 지켜야 하는 교훈은 배수가 아니라 그 위의 두 줄이다: 전부 궁노면 **진다**,
+   * 그리고 뚫는 것은 원거리 저항을 가진 창병이다.
+   */
   it('전부 궁노면 성의 반격으로 버텨도 혼합 방어보다 누수가 많다', () => {
     const r = runSim({ level: 'level03', early: true, build: 'archer' });
     const mixed = runSim({ level: 'level03', early: true });
     expect(r.won).toBe(false);
-    expect(r.leaks).toBeGreaterThan(mixed.leaks * 3);
+    expect(r.leaks).toBeGreaterThan(mixed.leaks * 1.5);
     // 창병(원거리 저항 30%)이 누수의 대부분이다
     expect(r.leaksByUnit.ys_spear ?? 0).toBeGreaterThan(r.leaksByUnit.ys_infantry ?? 0);
   });

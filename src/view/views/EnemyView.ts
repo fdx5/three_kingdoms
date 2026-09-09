@@ -41,6 +41,22 @@ export class EnemyView implements EntityView<Enemy> {
   private variationPose = new Map<THREE.Bone, THREE.Quaternion>();
   private facingInitialized = false;
 
+  /**
+   * 접지 보정 — 공격 자세에서 발이 땅에 묻히는 것을 걷기 기준으로 되돌린다.
+   *
+   * 굽는 쪽(scripts/rig-model.ts)의 plantFeet 은 **걷기 클립에만** 걸려 있다.
+   * 걷는 동안은 지지발이 한 높이에 고정되지만 공격 클립은 그 보정을 안 받아서,
+   * 내지르는 순간 몸이 2유닛쯤 가라앉는다. 성문에 바짝 붙어 때릴 때는 성벽에
+   * 가려 보이지 않았는데, 망루를 둘러싸고 치기 시작하면서 훤한 땅 위에서
+   * 여덟 기가 동시에 발목까지 묻히는 그림이 됐다.
+   *
+   * 상수로 들어 올리지 않는다 — 가라앉는 깊이는 모델마다 다르다. 걷는 동안
+   * 실제 발 높이를 재 두고(footRefY), 공격 중 그보다 낮아진 만큼만 들어 올린다.
+   * 자기 모델을 기준으로 자기를 고치므로 새 유닛이 늘어도 손댈 것이 없다.
+   */
+  private footRefY: number | null = null;
+  private attackLift = 0;
+
   /** 흰색 플래시 */
   private flash = 0;
   private burn: UnitBurnView | null = null;
@@ -74,13 +90,6 @@ export class EnemyView implements EntityView<Enemy> {
    * "때리는 시늉만 한다"로 보인다. 장수는 2초, 잡몹은 16초다.
    */
   private attackInterval = 1;
-  /**
-   * 자리는 잡았지만 아직 칠 차례가 아닌 부대 (망루 바깥 고리).
-   * 무기를 든 채 서서 몸을 들썩이며 기다린다 — 얼어붙은 인형이 아니라
-   * "다음 차례를 노리는 놈"으로 보여야 포위가 무리로 읽힌다.
-   */
-  private waiting = false;
-  private waitPhase = 0;
   /** 지금까지 몇 번째 타격인가 — 이 값이 바뀔 때 클립을 다시 튼다 */
   private attackCycle = 0;
   private baseScale = 1;
@@ -196,10 +205,10 @@ export class EnemyView implements EntityView<Enemy> {
       this.object3d.position.set(enemy.worldX, groundY, enemy.worldZ);
       // 때리는 동안은 시뮬이 알려 준 쪽을 본다 — 성벽이든 망루든 표적이 앞이다.
       this.object3d.rotation.set(0, Math.atan2(enemy.faceX, enemy.faceZ), 0);
-      // 기다리는 부대는 반 박자 느리게 — 때리는 무리와 대기하는 무리가 갈려 보인다
-      if (this.mixer) this.mixer.timeScale = this.waiting ? 0.5 : 1;
+      if (this.mixer) this.mixer.timeScale = 1;
       this.updateAttack(dt);
       this.mixer?.update(dt);
+      this.applyAttackLift(dt);
       this.updateFlash(dt);
       return;
     }
@@ -256,7 +265,47 @@ export class EnemyView implements EntityView<Enemy> {
     this.restoreWalkPose();
     this.mixer?.update(dt);
     this.applyWalkVariation();
+    this.calibrateFoot();
     this.updateFlash(dt);
+  }
+
+  /**
+   * 지금 지지발이 접지면보다 얼마나 위/아래에 있는가 (월드 단위).
+   * 발 뼈가 없는 모델(프리미티브 등)은 null.
+   */
+  private soleOffset(): number | null {
+    const l = this.gaitBones.get('footL');
+    const r = this.gaitBones.get('footR');
+    if (!l || !r) return null;
+    const a = l.getWorldPosition(_footBufA).y;
+    const b = r.getWorldPosition(_footBufB).y;
+    return Math.min(a, b) - this.object3d.position.y;
+  }
+
+  /** 걷는 동안의 지지발 높이를 기준으로 잡아 둔다 (가장 낮은 프레임). */
+  private calibrateFoot(): void {
+    const y = this.soleOffset();
+    if (y === null) return;
+    this.footRefY = this.footRefY === null ? y : Math.min(this.footRefY, y);
+  }
+
+  /**
+   * 공격 중 가라앉은 만큼 모델을 들어 올린다.
+   *
+   * 부드럽게 따라가는 이유는 클립 안에서도 깊이가 바뀌기 때문이다 —
+   * 매 프레임 그대로 반영하면 발이 아니라 몸 전체가 떨린다.
+   */
+  private applyAttackLift(dt: number): void {
+    const ref = this.footRefY;
+    if (ref === null) return;
+    const now = this.soleOffset();
+    if (now === null) return;
+    // 월드 단위로 잰 값이다. model 은 스케일이 걸린 object3d 안에 있으므로 되돌린다.
+    const scale = this.object3d.scale.y || 1;
+    // The measured foot already includes the previous lift; retain it when closing the remaining gap.
+    const want = THREE.MathUtils.clamp(this.model.position.y + (ref - now) / scale, 0, MAX_ATTACK_LIFT);
+    this.attackLift += (want - this.attackLift) * Math.min(1, dt * 12);
+    this.model.position.y = this.attackLift;
   }
 
   private bindGait(enemyId: number): void {
@@ -351,33 +400,22 @@ export class EnemyView implements EntityView<Enemy> {
   /**
    * 목표 앞에 붙었다 — 성벽이든 망루든. 그 자리에서 주기적으로 휘두른다.
    * 클립이 없으면(프리미티브) 앞으로 찌르는 절차적 동작으로 대신한다.
-   *
-   * interval 0 은 "아직 칠 차례가 아니다"라는 뜻이다 (망루 바깥 고리에서 대기).
-   * 그때는 클립을 틀지 않고 무기를 든 채 서서 몸만 들썩인다 — 그래야 안쪽에서
-   * 때리는 놈과 밖에서 기다리는 놈이 화면에서 구분된다.
    */
   startSiegeAttack(interval: number): void {
-    const waiting = interval <= 0;
-    // 이미 같은 자세로 붙어 있으면 박자를 처음부터 다시 세지 않는다 —
-    // 자리를 옮길 때마다 리셋하면 영영 첫 타격이 나가지 않는다.
-    if (this.attacking && this.waiting === waiting) {
-      if (!waiting) this.attackInterval = Math.max(BALANCE.fx.castleAttackDuration, interval);
+    // 이미 붙어 있으면 박자를 처음부터 다시 세지 않는다 —
+    // 이벤트가 다시 올 때마다 리셋하면 영영 첫 타격이 나가지 않는다.
+    if (this.attacking) {
+      this.attackInterval = Math.max(BALANCE.fx.castleAttackDuration, interval);
       return;
     }
     this.attacking = true;
-    this.waiting = waiting;
     this.attackTime = 0;
     this.attackCycle = 0;
     // 클립 한 번보다 짧은 간격은 없다 — 있으면 동작이 잘려 어정쩡해진다
-    this.attackInterval = waiting ? 1 : Math.max(BALANCE.fx.castleAttackDuration, interval);
-    this.impactPending = !waiting;
+    this.attackInterval = Math.max(BALANCE.fx.castleAttackDuration, interval);
+    this.impactPending = true;
     this.model.position.set(0, 0, 0);
     this.model.rotation.set(0, 0, 0);
-    if (waiting) {
-      // 기다리는 자세 — idle 이 있으면 그걸, 없으면 걷기를 아주 느리게 돌린다.
-      this.playState(this.actions.has('idle') ? 'idle' : 'walk');
-      return;
-    }
     this.playState('attack');
     this.replayAttackClip();
   }
@@ -391,7 +429,7 @@ export class EnemyView implements EntityView<Enemy> {
   stopSiegeAttack(): void {
     if (!this.attacking) return;
     this.attacking = false;
-    this.waiting = false;
+    this.attackLift = 0;
     this.impactPending = false;
     this.attackTime = 0;
     this.attackCycle = 0;
@@ -401,9 +439,9 @@ export class EnemyView implements EntityView<Enemy> {
     this.playState('walk');
   }
 
-  /** 지금 목표를 때리는 중인가 (대기 중은 제외) */
+  /** 지금 목표를 때리는 중인가 */
   get isStriking(): boolean {
-    return this.attacking && !this.waiting;
+    return this.attacking;
   }
 
   /**
@@ -448,18 +486,6 @@ export class EnemyView implements EntityView<Enemy> {
   private updateAttack(dt: number): void {
     this.attackTime += dt;
 
-    /*
-     * 대기 중 — 때리지 않는다. 무게 중심만 좌우로 옮기며 몸을 들썩인다.
-     * 완전히 멈춰 세우면 스무 기가 둘러선 그림이 인형 진열대가 된다.
-     */
-    if (this.waiting) {
-      this.waitPhase += dt * 1.6;
-      const sway = Math.sin(this.waitPhase) * 0.055;
-      this.model.rotation.z = sway;
-      this.model.position.y = Math.abs(Math.sin(this.waitPhase * 2)) * 0.7;
-      return;
-    }
-
     // 다음 타격 차례가 왔으면 클립을 다시 튼다
     const cycle = Math.floor(this.attackTime / this.attackInterval);
     if (cycle > this.attackCycle) {
@@ -470,21 +496,32 @@ export class EnemyView implements EntityView<Enemy> {
 
     const t = (this.attackTime % this.attackInterval) / BALANCE.fx.castleAttackDuration;
 
-    // 클립이 없으면 몸을 통째로 앞으로 내밀었다가 되돌린다.
-    // sin(pi*t)^2 은 찌르고 빠지는 한 번의 왕복이라 창 동작과 박자가 같다.
-    if (!this.hasClips) {
-      const thrust = t < 1 ? Math.sin(Math.PI * t) ** 2 : 0;
-      // The model is already inside the rotated root: thrust in local +Z.
-      this.model.position.set(0, 0, thrust * 9);
+    /*
+     * 내지르며 앞으로 파고든다.
+     *
+     * sin(pi*t)^2 은 찌르고 빠지는 한 번의 왕복이라 창 동작과 박자가 같다.
+     * 모델은 이미 회전된 루트 안에 있으므로 로컬 +Z 가 곧 표적 쪽이다.
+     *
+     * 클립이 있는 유닛에게도 이걸 얹는다. 구운 공격 클립은 **제자리에서** 팔만
+     * 휘두르는데, 그러면 둘러싼 무리가 망루를 향해 허공을 젓는 것처럼 보인다.
+     * 한 발 파고들었다 물러나는 왕복이 붙어야 "때린다"가 된다 —
+     * 다만 클립이 이미 상체를 쓰므로 폭은 절반 아래로 둔다.
+     */
+    const thrust = t < 1 ? Math.sin(Math.PI * t) ** 2 : 0;
+    if (this.hasClips) {
+      this.model.position.z = thrust * LUNGE_CLIP;
+      this.model.position.x = 0;
+      this.model.rotation.x = -thrust * 0.07;
+    } else {
+      this.model.position.z = thrust * LUNGE_PRIMITIVE;
+      this.model.position.x = 0;
       this.model.rotation.x = -thrust * 0.22;
     }
-
   }
 
   /** 시뮬은 이미 죽였다. 뷰만 남아 연출한다. 끝나면 true를 반환한다. */
   startDeath(): void {
     this.attacking = false;
-    this.waiting = false;
     this.dying = true;
     this.dieTime = 0;
     this.deathGroundY = this.object3d.position.y;
@@ -520,8 +557,6 @@ export class EnemyView implements EntityView<Enemy> {
     this.dying = false;
     this.dieTime = 0;
     this.attacking = false;
-    this.waiting = false;
-    this.waitPhase = 0;
     this.attackTime = 0;
     this.attackCycle = 0;
     this.impactPending = false;
@@ -534,6 +569,8 @@ export class EnemyView implements EntityView<Enemy> {
     this.model.position.set(0, 0, 0);
     this.model.rotation.set(0, 0, 0);
     this.flash = 0;
+    this.attackLift = 0;
+    this.footRefY = null;
     this.slowed = false;
     this.charging = false;
     this.object3d.scale.setScalar(this.baseScale);
@@ -563,6 +600,20 @@ export class EnemyView implements EntityView<Enemy> {
     this.object3d.clear();
   }
 }
+
+/**
+ * 내지를 때 앞으로 파고드는 거리(u).
+ * 클립이 있는 유닛은 상체가 이미 움직이므로 발만 조금 옮기고,
+ * 프리미티브는 몸통 전체가 유일한 표현 수단이라 크게 내민다.
+ */
+const LUNGE_CLIP = 4.5;
+const LUNGE_PRIMITIVE = 9;
+
+/** 접지 보정의 상한(모델 로컬 단위). 측정이 어긋나도 유닛이 공중에 뜨지 않게. */
+const MAX_ATTACK_LIFT = 6;
+
+const _footBufA = new THREE.Vector3();
+const _footBufB = new THREE.Vector3();
 
 const _white = new THREE.Color(0xffffff);
 const _burnTint = new THREE.Color(0xd33a08);

@@ -22,6 +22,28 @@ function fixture(model?: THREE.Object3D) {
 }
 
 describe('Animation quality and resource lifetime', () => {
+  it('attacking feet recover the full walking height and reset on reuse', () => {
+    const model = new THREE.Group();
+    const feet = ['footL', 'footR'].map(name => {
+      const foot = new THREE.Bone(); foot.name = name; model.add(foot); return foot;
+    });
+    model.animations = ['walk', 'attack'].map(name => new THREE.AnimationClip(name, 1, feet.map(foot =>
+      new THREE.VectorKeyframeTrack(`${foot.name}.position`, [0, 1],
+        name === 'walk' ? [0, 4, 0, 0, 4, 0] : [0, 2, 0, 0, 2, 0]))));
+    const { view, enemy, assets } = fixture(model);
+    const footHeight = () => feet[0].getWorldPosition(new THREE.Vector3()).y - view.object3d.position.y;
+    for (let i = 0; i < 60; i++) view.sync(enemy, 1, 1 / 60);
+    const walkingHeight = footHeight();
+    view.startSiegeAttack(2);
+    for (let i = 0; i < 180; i++) view.sync(enemy, 1, 1 / 60);
+    expect(footHeight()).toBeCloseTo(walkingHeight, 2);
+    view.stopSiegeAttack();
+    expect(model.position.y).toBe(0);
+    view.resetForReuse();
+    expect(model.position.y).toBe(0);
+    view.dispose(); assets.dispose();
+  });
+
   it('a newly spawned frozen unit evaluates its initial animation pose', () => {
     const model = new THREE.Group();
     model.animations = [new THREE.AnimationClip('walk', 1, [

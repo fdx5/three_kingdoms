@@ -64,7 +64,12 @@ describe('사운드 매핑', () => {
     for (const u of UNIT_LIST) expect(mapping[u.kind], u.id).toBeDefined();
   });
 
-  it('대포는 타워든 성문이든 같은 포성을 낸다', () => {
+  /*
+   * 예전에는 타워와 성문이 같은 포성을 냈다. 지금은 다르다 —
+   * 화포 진지가 한 발 쏜 것과 성문이 반격한 것은 판에서 뜻이 다른 사건인데,
+   * 소리가 같으면 화면을 보고 있지 않을 때 둘을 구분할 방법이 없다.
+   */
+  it('성문의 포는 화포 진지와 다른 포성을 낸다', () => {
     const fired = SOUND_MAP['projectile:fired'];
     const castle = SOUND_MAP['castle:fired'];
     if (typeof fired === 'string' || typeof castle === 'string') throw new Error('맵이어야 한다');
@@ -73,8 +78,39 @@ describe('사운드 매핑', () => {
     expect(fired.fire_tower).toBe('sfx_fire_burn');
     expect(manifest.audio[fired.fire_tower]).toBe('audio/fire_burn.mp3');
     expect(readFileSync(`public/assets/${manifest.audio[fired.fire_tower]}`)).toEqual(readFileSync('sound/fire_burn.mp3'));
-    expect(castle.cannon).toBe('sfx_cannon');
+
+    expect(castle.cannon).toBe('sfx_castle_cannon');
+    expect(castle.cannon).not.toBe(fired.cannon_tower);
     expect(manifest.audio.sfx_cannon).toBe('audio/cannon.mp3');
+    expect(manifest.audio.sfx_castle_cannon).toBe('audio/cannon2.mp3');
+    // 매니페스트의 파일이 sound/ 의 원본과 같은 파일인지까지 본다.
+    expect(readFileSync(`public/assets/${manifest.audio.sfx_castle_cannon}`))
+      .toEqual(readFileSync('sound/cannon2.mp3'));
+  });
+
+  /*
+   * 백병전 타격음 — 무기 계열로 갈린다.
+   *
+   * 여기서 지키는 것은 "몇 종류가 있는가"가 아니라 **성벽과 망루가 같은 표를
+   * 쓴다**는 것이다. 둘이 갈라지면 같은 병사가 무엇을 때리느냐에 따라 다른
+   * 무기를 든 것처럼 들린다.
+   */
+  it('백병전 타격음은 무기 계열로 갈리고, 성벽과 망루가 같은 표를 쓴다', () => {
+    const wall = SOUND_MAP['enemy:castle-attack'];
+    const tower = SOUND_MAP['tower:damaged'];
+    if (typeof wall === 'string' || typeof tower === 'string') throw new Error('맵이어야 한다');
+    expect(tower).toBe(wall);
+
+    // 종류 기본값이 반드시 있어야 한다 — 표에 없는 유닛이 무음이 되면 안 된다
+    for (const kind of ['minion', 'elite', 'boss']) {
+      expect(wall[kind], kind).toBeDefined();
+      expect(manifest.audio[wall[kind]], kind).toBeDefined();
+    }
+
+    // 계열이 실제로 갈려 있다: 방패·기병·창·대도가 서로 다른 음원을 쓴다
+    const 계열 = [wall.xl_shield, wall.xl_cavalry, wall.ys_spear, wall.jz_halberd];
+    expect(new Set(계열).size).toBe(계열.length);
+    for (const id of 계열) expect(manifest.audio[id], id).toBeDefined();
   });
 
   it('성문의 활 발사는 arrow.mp3를 사용한다', () => {

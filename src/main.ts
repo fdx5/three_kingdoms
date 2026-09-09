@@ -498,7 +498,11 @@ class Game {
          * 전장 한가운데서 한눈에 갈린다 (fire 플래그를 그 색으로 쓴다).
          */
         this.fx.showDamage(sx, sy, amount, isBoss, true);
-        this.audio.play('enemy:castle-attack', unitId, 0.28, getUnit(unitId).kind);
+        /*
+         * 타격음은 무기 계열이 정한다 — 유닛 id 가 먼저 잡히고 없으면 종류로
+         * 떨어진다(성벽을 칠 때와 같은 표다).
+         */
+        this.audio.play('tower:damaged', unitId, 0.28, getUnit(unitId).kind);
       },
       onTowerDestroyed: (towerId, level, lostGold) => {
         const name = getTower(towerId).displayName;

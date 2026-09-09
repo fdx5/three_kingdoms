@@ -5,6 +5,48 @@
  */
 export type SoundMapping = string | Record<string, string>;
 
+/**
+ * 백병전 타격음 — **무기 계열**로 나눈다.
+ *
+ * 유닛마다 한 줄씩 적지 않고 계열로 묶는 이유는 둘이다. 진영이 늘 때마다
+ * (오군·형주군·촉군…) 새 보병이 알아서 소리를 내야 하고, 스무 종이 넘는 유닛에
+ * 스무 줄을 적으면 어떤 소리가 어디 쓰이는지 표를 봐도 알 수 없기 때문이다.
+ * 여기 없는 유닛은 종류(minion/elite/boss) 기본값으로 떨어진다.
+ *
+ * 성벽을 치든 망루를 치든 같은 표를 쓴다 — 같은 병사가 무엇을 때리느냐에 따라
+ * 다른 소리를 내면 그건 무기가 아니라 표적의 소리가 된다.
+ */
+const MELEE_BY_UNIT: Record<string, string> = {
+  // 방패와 중장갑 — 쇠와 쇠가 부딪히는 둔중한 소리
+  xl_shield: 'sfx_sword1',
+  sh_chainmail: 'sfx_sword1',
+  wu_rattan: 'sfx_sword1',
+
+  // 기병 — 말 위에서 내리치는 짧고 빠른 검격
+  xl_cavalry: 'sfx_sword2',
+  ys_banner: 'sfx_sword2',
+  wu_cavalry: 'sfx_sword2',
+  jz_cavalry: 'sfx_sword2',
+  sh_cavalry: 'sfx_sword2',
+
+  // 창·수군 — 내지르는 장병기
+  ys_spear: 'sfx_sword3',
+  wu_marine: 'sfx_sword3',
+  jz_marine: 'sfx_sword3',
+  wu_raider: 'sfx_sword3',
+
+  // 대도 — 몸만 한 날이 쓸고 지나간다
+  jz_halberd: 'sfx_sword4',
+};
+
+/** 무기 계열 + 종류 기본값. 유닛 id 가 먼저 잡히고, 없으면 종류로 떨어진다. */
+const MELEE_SOUNDS: Record<string, string> = {
+  ...MELEE_BY_UNIT,
+  minion: 'sfx_castle_strike_soldier',
+  elite: 'sfx_castle_strike_boss',
+  boss: 'sfx_castle_strike_boss',
+};
+
 export const SOUND_MAP: Record<string, SoundMapping> = {
   'enemy:killed': {
     yt_infantry: 'sfx_die_small',
@@ -30,7 +72,9 @@ export const SOUND_MAP: Record<string, SoundMapping> = {
    */
   'castle:fired': {
     arrow: 'sfx_bow',
-    cannon: 'sfx_cannon',
+    // 성문의 포는 망루의 화포(sfx_cannon)와 다른 음원이다 — 같은 소리면
+    // 성이 쏜 것인지 화포 진지가 쏜 것인지 귀로 구분되지 않는다.
+    cannon: 'sfx_castle_cannon',
     flame: 'sfx_fire_burn',
   },
   'projectile:hit': 'sfx_hit',
@@ -41,17 +85,17 @@ export const SOUND_MAP: Record<string, SoundMapping> = {
    * 특정 유닛만 다른 소리를 내야 하면 그 유닛 id를 여기에 한 줄 더 적으면 되고,
    * 그때는 id 쪽이 먼저 잡힌다 (AudioManager.play의 fallbackVariant).
    */
-  'enemy:castle-attack': {
-    minion: 'sfx_castle_strike_soldier',
-    elite: 'sfx_castle_strike_boss',
-    boss: 'sfx_castle_strike_boss',
-  },
+  'enemy:castle-attack': MELEE_SOUNDS,
   'castle:spark': 'sfx_spark',
+  /** 망루를 치는 소리도 성벽과 같은 표를 쓴다 — 무기가 정하지 표적이 정하지 않는다. */
+  'tower:damaged': MELEE_SOUNDS,
   /*
-   * 망루가 무너지는 소리. 대포 소리를 빌려 쓴다 — 목재가 통째로 꺾이는 굉음에
-   * 가진 음원 중 가장 가깝고, 한 판에 몇 번 안 나므로 포성과 헷갈리지 않는다.
+   * 망루가 무너지는 소리. 대포 소리를 길게 늘여 쓴다 — 목재가 통째로 꺾이는
+   * 굉음에 가진 음원 중 가장 가깝다. 화포 발사와 같은 원본이지만 클립 길이와
+   * 여운이 두 배라(SOUND_CLIPS) 실제로 들리는 소리는 다르고, 무엇보다 이쪽에는
+   * 배너와 화면 흔들림과 잔해가 함께 온다.
    */
-  'tower:destroyed': 'sfx_cannon',
+  'tower:destroyed': 'sfx_tower_fall',
   'tower:built': 'sfx_build',
   'tower:upgraded': 'sfx_upgrade',
   'tower:sold': 'sfx_sell',
@@ -107,6 +151,18 @@ export const SOUND_CLIPS: Record<string, SoundClip> = {
    */
   sfx_cannon: { duration: 0.9, fadeOut: 0.15, trimLead: true, dedupeMs: 260 },
   sfx_fire_burn: { duration: .8, fadeOut: .16, trimLead: true, dedupeMs: 90, gain: .8 },
+  /*
+   * 검격. 짧게 끊어야 여러 기가 동시에 쳐도 뭉개지지 않는다.
+   * 중복 억제는 넉넉히 두되 클립이 네 개라 실제로는 네 배만큼 자주 난다.
+   */
+  // 붕괴 — 길고 무겁게. 한 판에 몇 번 안 나므로 억제 간격도 길게.
+  sfx_tower_fall: { duration: 1.6, fadeOut: .3, trimLead: true, dedupeMs: 700 },
+  // 성문의 포. 화포 진지보다 굵고 길게 울린다.
+  sfx_castle_cannon: { duration: 1.1, fadeOut: .2, trimLead: true, dedupeMs: 300 },
+  sfx_sword1: { duration: .42, fadeOut: .1, trimLead: true, dedupeMs: 120, gain: .7 },
+  sfx_sword2: { duration: .42, fadeOut: .1, trimLead: true, dedupeMs: 120, gain: .7 },
+  sfx_sword3: { duration: .42, fadeOut: .1, trimLead: true, dedupeMs: 120, gain: .7 },
+  sfx_sword4: { duration: .42, fadeOut: .1, trimLead: true, dedupeMs: 120, gain: .7 },
 };
 
 /** 버스 배정 */

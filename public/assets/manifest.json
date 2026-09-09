@@ -135,7 +135,13 @@
     "sfx_castle_strike_soldier": "audio/soldier.mp3",
     "sfx_castle_strike_boss": "audio/middle_boss.mp3",
     "sfx_cannon": "audio/cannon.mp3",
+    "sfx_castle_cannon": "audio/cannon2.mp3",
+    "sfx_tower_fall": "audio/cannon.mp3",
     "sfx_fire_burn": "audio/fire_burn.mp3",
+    "sfx_sword1": "audio/sword.mp3",
+    "sfx_sword2": "audio/sword2.mp3",
+    "sfx_sword3": "audio/sword3.mp3",
+    "sfx_sword4": "audio/sword4.mp3",
     "sfx_victory": "audio/victory.mp3",
     "sfx_defeat": "audio/game_over.mp3"
   }

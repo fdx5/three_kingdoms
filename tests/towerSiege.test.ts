@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { World } from '../src/sim/World';
-import { Tower, towerMaxHp } from '../src/sim/Tower';
+import { towerMaxHp } from '../src/sim/Tower';
 import { Enemy } from '../src/sim/Enemy';
 import { LEVEL_01, LEVEL_02 } from '../src/data/levels';
 import { TOWERS, getTower } from '../src/data/towers';
@@ -157,19 +157,71 @@ describe('포위와 타격', () => {
     expect(tower.hp).toBeLessThan(full);
   });
 
-  it('안쪽 고리만 때린다 — 바깥 고리는 자리가 날 때까지 기다린다', () => {
+  it('자리를 잡은 적은 전부 때린다 — 서서 기다리는 적은 없다', () => {
     const tc = BALANCE.towerCombat;
     const { world, tower, attach } = siegeWorld();
-    // 안쪽 자리보다 훨씬 많이 붙인다
-    attach(tc.slots * 2);
+    // 자리보다 훨씬 많이 붙인다
+    attach(tc.slots * 3);
     run(world, 4);
-    const striking = world.enemies.filter((e) => e.siege === 'assault' && Tower.isAssaultSlot(e.siegeSlotIndex));
-    const waiting = world.enemies.filter((e) => e.siege === 'assault' && !Tower.isAssaultSlot(e.siegeSlotIndex));
-    expect(striking.length).toBeLessThanOrEqual(tc.slots);
-    expect(waiting.length).toBeGreaterThan(0);
+    const holding = world.enemies.filter((e) => e.targetSlotId === tower.slotId);
+    // 자리 수를 넘겨 붙을 수는 없다 — 그게 망루가 받는 초당 피해의 상한이다
+    expect(holding.length).toBeLessThanOrEqual(tc.slots);
+    // 붙은 적은 하나도 빠짐없이 때리는 상태여야 한다
+    for (const e of holding) {
+      expect(['approach', 'assault']).toContain(e.siege);
+      if (e.siege === 'assault') expect(e.attackInterval).toBeGreaterThan(0);
+    }
     // 자리는 겹치지 않는다
     const taken = tower.siegeSlots.filter((v) => v !== 0);
     expect(new Set(taken).size).toBe(taken.length);
+  });
+
+  /**
+   * 자리 반납 — 한 번 빠뜨려서 게임이 통째로 망가졌던 자리다.
+   *
+   * 죽은 적이 자리를 쥔 채 사라지면 그 자리는 영원히 유령 것이 된다. 1파가
+   * 끝나면 모든 망루가 막히고, 2파부터 오는 적은 아무도 망루를 못 친다.
+   */
+  it('망루 앞에서 죽은 적은 자리를 반납한다 (유령 자리가 남지 않는다)', () => {
+    const { world, tower, attach } = siegeWorld();
+    const attackers = attach(BALANCE.towerCombat.slots);
+    run(world, 4);
+    expect(tower.siegeSlots.some((v) => v !== 0)).toBe(true);
+
+    // 붙어 있던 적을 전부 죽인다 (collectDead 는 alive 플래그를 본다)
+    for (const e of attackers) {
+      e.hp = 0;
+      e.alive = false;
+    }
+    run(world, FIXED_DT * 3);
+
+    expect(world.enemies.length).toBe(0);
+    expect(tower.siegeSlots.every((v) => v === 0)).toBe(true);
+
+    // 그리고 다음 무리가 곧바로 다시 붙을 수 있어야 한다
+    const next = attach(2);
+    run(world, 4);
+    expect(next.every((e) => e.targetSlotId === tower.slotId)).toBe(true);
+  });
+
+  it('여러 파를 돌려도 자리에 시체가 쌓이지 않는다', () => {
+    const world = new World({ level: LEVEL_02, seed: 1 });
+    world.economy.add(30000);
+    for (const spot of world.buildableSpots(50)) {
+      if (world.towers.size >= world.maxTowers) break;
+      world.build(spot, 'archer_tower');
+    }
+    const alive = new Set<number>();
+    world.bus.on('enemy:spawned', ({ enemyId }) => alive.add(enemyId));
+    world.bus.on('enemy:killed', ({ enemyId }) => alive.delete(enemyId));
+    run(world, 240);
+
+    for (const t of world.towers.values()) {
+      for (const id of t.siegeSlots) {
+        // 자리에 남아 있는 id 는 반드시 지금 살아 있는 적이어야 한다
+        if (id !== 0) expect(alive.has(id)).toBe(true);
+      }
+    }
   });
 
   it('한 망루에 매달릴 수 있는 시간에 상한이 있다 — 그 뒤엔 돌파조가 된다', () => {

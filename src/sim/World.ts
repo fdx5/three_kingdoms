@@ -423,7 +423,7 @@ export class World {
         continue;
       }
 
-      // d) 타격 (안쪽 고리) / 대기 (바깥 고리)
+      // d) 타격
       if (e.siege === 'assault' && tower) {
         /*
          * 물러날 때가 됐는가.
@@ -445,26 +445,6 @@ export class World {
         const len = Math.hypot(dx, dz) || 1;
         e.faceX = dx / len;
         e.faceZ = dz / len;
-
-        if (!Tower.isAssaultSlot(e.siegeSlotIndex)) {
-          // 바깥 고리 — 무기만 든 채 기다린다. 안쪽이 비면 그 자리로 파고든다.
-          const next = tower.promoteSiegeSlot(e.id, e.siegeSlotIndex, e.worldX, e.worldZ);
-          if (next >= 0) {
-            e.siegeSlotIndex = next;
-            e.siege = 'approach';
-            tower.siegePoint(next, this.posBuf);
-            e.moveToX = this.posBuf.x;
-            e.moveToZ = this.posBuf.z;
-            this.bus.emit('enemy:siege', {
-              enemyId: e.id,
-              unitId: e.defId,
-              slotId: tower.slotId,
-              state: 'approach',
-              interval: e.towerStrikeInterval,
-            });
-          }
-          continue;
-        }
 
         e.towerAttackCooldown -= dt;
         if (e.towerAttackCooldown > 0) continue;
@@ -517,20 +497,14 @@ export class World {
     });
   }
 
-  /**
-   * 자리에 붙었다.
-   *
-   * 안쪽 고리면 여기서부터 때리고, 바깥 고리면 서서 기다린다 — 상태는 둘 다
-   * 'assault' 다. 뷰에는 interval 0 으로 알려 "무기를 든 채 서 있다"를 그리게 한다.
-   */
+  /** 자리에 붙었다 — 여기서부터 때린다. */
   private beginAssault(e: Enemy, tower: Tower | null): void {
     if (!tower) {
       this.abandonSiege(e);
       return;
     }
-    const striking = Tower.isAssaultSlot(e.siegeSlotIndex);
     e.siege = 'assault';
-    e.attackInterval = striking ? e.towerStrikeInterval : 0;
+    e.attackInterval = e.towerStrikeInterval;
     e.towerAttackCooldown = BALANCE.towerCombat.firstImpactDelay;
     this.bus.emit('enemy:siege', {
       enemyId: e.id,
@@ -1161,6 +1135,18 @@ export class World {
 
   private removeEnemyAt(i: number): void {
     const e = this.enemies[i];
+    /*
+     * 판을 떠나는 적은 붙잡고 있던 포위 자리를 반드시 놓아야 한다.
+     *
+     * 이걸 빠뜨려서 게임이 통째로 망가진 적이 있다. 망루 앞에서 죽은 적의 id 가
+     * siegeSlots 에 그대로 남고, 적은 풀로 돌아가 다른 id 로 되살아난다. 그래서
+     * 자리는 **영원히 죽은 사람 것**이 된다 — 1파가 끝나면 안쪽 여덟 자리가 전부
+     * 유령으로 막히고, 2파부터 오는 적은 때리지 않는 바깥 고리만 잡아서
+     * 20초 동안 가만히 서 있다 물러난다(실측: 125초에 점유 40 중 유령 40).
+     *
+     * 죽음뿐 아니라 어떤 이유로 사라지든 여기를 지나므로, 반납은 여기 한 곳에 둔다.
+     */
+    this.releaseSiegeSlot(e);
     this.enemies.splice(i, 1);
     // 이 적을 노리던 투사체는 목표를 잃는다 (마지막 예측 지점까지 날아가 소멸).
     for (let j = 0; j < this.projectiles.length; j++) {
