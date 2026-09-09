@@ -517,6 +517,16 @@ button:focus-visible {
   z-index: 20;
   width: min(340px, calc(100vw - 24px));
   padding: 14px;
+  /*
+   * 넘치면 **자른다가 아니라 굴린다.**
+   *
+   * 여러 곳에서 max-height 를 걸어 두고 있었는데 넘친 내용을 굴릴 방법이 없었다.
+   * 그래서 아이패드처럼 하단바가 두 줄로 늘어난 화면에서는 패널 아래쪽의
+   * 업그레이드·수리·판매 버튼이 통째로 잘려 **보이지도 눌리지도 않았다.**
+   * 세로가 모자란 것은 화면 탓이니 어쩔 수 없지만, 손이 닿지 않는 것은 버그다.
+   */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--panel);
   border: 1px solid var(--edge);
   border-radius: 14px;
@@ -1492,4 +1502,70 @@ body.debug .leveltitle {
   .overlay__title { font-size: 1.2em; }
   .overlay__actions button { min-height: var(--tap); padding-block: 5px; }
   #backend-label { display: none; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   태블릿 — 손가락으로 쓰는 큰 화면
+
+   여기까지의 모바일 규칙은 전부 `(pointer: coarse)` 하나로 갈렸다. 그래서
+   아이패드가 아이폰과 같은 취급을 받았다. 폭이 1180px 이나 되는데도 하단바가
+   두 줄로 쌓여 126px(기본 54px의 두 배 넘게)을 먹었고, 글자는 데스크톱과 같은
+   17px, 버튼은 손가락 기준 44px 이 그대로 붙어 화면에 비해 뭉툭했다.
+   거기에 세로를 먹은 만큼 건설 패널의 max-height 가 줄어, 굴릴 수 없는 패널의
+   아래쪽 버튼이 잘렸다.
+
+   태블릿은 폰이 아니다. 폭이 넉넉하니 한 줄로 서고, 화면이 크니 44px 까지
+   키우지 않아도 충분히 눌린다. 폰(가로로 든 아이폰 포함)이 여기 걸리지 않도록
+   폭과 **높이**를 함께 본다 — 아이폰 가로는 높이가 430px 을 넘지 않는다.
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (pointer: coarse) and (min-width: 768px) and (min-height: 600px) {
+  :root {
+    /* 17px 은 마우스로 보는 거리의 값이다. 태블릿은 더 가까이 든다. */
+    --ui: 14px;
+    /* 44px 은 작은 폰의 기준이다. 이 화면에서는 38px 도 여유롭게 눌린다. */
+    --tap: 38px;
+    --radius: 9px;
+  }
+
+  /* ── 하단바: 폰의 2단 격자를 풀고 데스크톱처럼 한 줄로 ────────────── */
+  .bottombar {
+    display: flex;
+    grid-template-columns: none;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  .bottombar__left,
+  .bottombar__right,
+  .bottombar__center { grid-column: auto; grid-row: auto; }
+  .bottombar__left { gap: 6px; }
+  .bottombar__right { justify-content: flex-end; gap: 6px; }
+  .bottombar__center { flex: 1 1 auto; min-width: 0; justify-content: center; }
+  .seg { padding: 3px; gap: 3px; }
+
+  /* ── 상단바: 값이 주인공이고 이름표는 거들 뿐 ──────────────────────── */
+  .chip { min-height: 34px; padding: 0 9px; gap: 5px; }
+  .castle-bar { width: clamp(70px, 9vw, 110px); }
+
+  /*
+   * ── 건설·망루 패널: 하단 시트가 아니라 팝오버로 되돌린다 ────────────
+   *
+   * 폰에서 시트로 내린 것은 화면이 좁아 팝오버가 전장을 다 덮기 때문이다.
+   * 태블릿에는 그 문제가 없고, 오히려 시트가 하단바 위에 얹히며 세로를 겹쳐 먹는다.
+   * 슬롯 옆에 뜨는 편이 "어디에 짓는지"가 보인다.
+   */
+  .panel--popover {
+    left: 50% !important;
+    right: auto;
+    top: auto !important;
+    bottom: calc(var(--safe-b) + var(--bottombar-height) + 16px);
+    transform: translateX(-50%);
+    width: min(420px, calc(100vw - 32px));
+    max-width: none;
+    max-height: calc(var(--viewport-height, 100dvh) - var(--safe-t) - var(--safe-b)
+                     - var(--topbar-height) - var(--bottombar-height) - 32px);
+    padding: 12px;
+  }
+  .stratcard { min-width: 58px; }
 }
