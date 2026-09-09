@@ -85,8 +85,12 @@ function settlementBatch(sites: SettlementSite[], kind: HouseKind, assets?: Asse
   const ridge = new THREE.CylinderGeometry(1.2, 1.2, 57, 8).rotateZ(Math.PI / 2).translate(0, straw ? 39.4 : 37.4, 0);
   tiles.push(ridge);
   const materials = [
-    new THREE.MeshStandardMaterial({ color: 0x4b3020, roughness: 0.88 }),
-    new THREE.MeshStandardMaterial({ color: kind === 'granary' ? 0x957653 : straw ? 0xb6a07a : 0xb8ad8c, roughness: 0.97 }),
+    new THREE.MeshStandardMaterial({ color: 0x9c8972, roughness: 0.9,
+      map: assets?.getTexture('scenery_wood') ?? null, normalMap: assets?.getTexture('scenery_wood_normal') ?? null,
+      roughnessMap: assets?.getTexture('scenery_wood_roughness') ?? null, normalScale: new THREE.Vector2(.5, .5) }),
+    new THREE.MeshStandardMaterial({ color: kind === 'granary' ? 0xa28e72 : straw ? 0xc0b39c : 0xd1c7b4, roughness: 0.97,
+      map: assets?.getTexture('scenery_plaster') ?? null, normalMap: assets?.getTexture('scenery_plaster_normal') ?? null,
+      roughnessMap: assets?.getTexture('scenery_plaster_roughness') ?? null, normalScale: new THREE.Vector2(.45, .45) }),
     new THREE.MeshStandardMaterial({ color: 0xa29e90, roughness: 0.95,
       map: assets?.getTexture('scenery_stone') ?? null, normalMap: assets?.getTexture('scenery_stone_normal') ?? null,
       normalScale: new THREE.Vector2(.45, .45) }),

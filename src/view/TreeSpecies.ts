@@ -50,7 +50,7 @@ export function treeSpeciesMeshes(sites: TreeSite[], bark: THREE.MeshStandardMat
     }
     const materials = [
       new THREE.MeshStandardMaterial({ ...bark, color: species === 'bamboo' ? 0x8b9d59 : 0xffffff, roughness: .94 }),
-      new THREE.MeshStandardMaterial({ color: species === 'pine' ? 0x557550 : species === 'willow' ? 0x8caa62 : 0x689052,
+      new THREE.MeshStandardMaterial({ color: species === 'pine' ? 0x596955 : species === 'willow' ? 0x7e8b68 : 0x6a7a59,
         vertexColors: true, roughness: .92, side: THREE.DoubleSide }),
     ];
     return [stems, leaves].map((parts, index) => {

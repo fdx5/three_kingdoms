@@ -11,7 +11,7 @@ export class BattlePostFx {
   private composer: EffectComposer;
   private scenePass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
   private contact = new ContactOcclusion();
-  private bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.24, 0.35, 1.25);
+  private bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.15, 0.35, 1.25);
   private output = new OutputPass();
   private finish = new ShaderPass({
     uniforms: { tDiffuse: { value: null }, texel: { value: new THREE.Vector2(1, 1) } },
@@ -27,7 +27,7 @@ export class BattlePostFx {
         // Bounded sharpening restores fine roofs and foliage after MSAA without halos.
         color += clamp((color - blur) * .22, vec3(-.025), vec3(.025));
         float luma = dot(color, vec3(.2126, .7152, .0722));
-        color = mix(vec3(luma), color, 1.08);
+        color = mix(vec3(luma), color, .96);
         color += vec3(-.008, .002, .012) * (1.0 - smoothstep(.15, .6, luma));
         vec2 frame = vUv * 2.0 - 1.0;
         color *= 1.0 - .045 * pow(dot(frame, frame) * .5, 2.0);

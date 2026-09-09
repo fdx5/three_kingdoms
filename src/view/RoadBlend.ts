@@ -86,7 +86,7 @@ export function blendRoad(shader: Shader, road: RoadBlend): void {
     float meadow = (.48 + smoothstep(.23, .72, broad) * .52) * smoothstep(36.0, 68.0, roadDistance);
     float groundLuma = dot(diffuseColor.rgb, vec3(.2126,.7152,.0722));
     vec3 meadowColor = vegetationTint * (groundLuma * 2.2 + .025);
-    diffuseColor.rgb = mix(diffuseColor.rgb, meadowColor, meadow * .8);
+    diffuseColor.rgb = mix(diffuseColor.rgb, meadowColor, meadow * .28);
     diffuseColor.rgb = mix(diffuseColor.rgb, roadAlbedo, roadWeight);
     float damp = landscapeWetness * (1.0 - smoothstep(-.8, 4.0, landscapeHeight + broad * 1.5))
       * smoothstep(52.0, 72.0, roadDistance);

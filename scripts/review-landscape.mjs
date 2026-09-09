@@ -19,8 +19,11 @@ try {
       const metrics = await page.evaluate(quality => {
         const g = window.game;
         g.applyPreset(quality); g.render(1, 1 / 60);
+        const vegetation = g.scene.terrain.group.children.filter(o => o.userData.vegetationModel && o.count > 0);
+        if (!vegetation.length || !g.assets.getModel('scenery_pine_sapling_small')) throw new Error('Authored vegetation failed to load');
         return { calls: g.handle.renderer.info.render.calls, triangles: g.handle.renderer.info.render.triangles,
-          textures: g.handle.renderer.info.memory.textures };
+          textures: g.handle.renderer.info.memory.textures,
+          vegetationModels: [...new Set(vegetation.map(o => o.userData.vegetationModel))] };
       }, quality);
       await page.screenshot({ path: `artifacts/landscape-${process.env.REVIEW_TAG ?? 'after'}-${level}-${quality}.png` });
       report.push({ level, quality, ...metrics, errors: [...errors] });

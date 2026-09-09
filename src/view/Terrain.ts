@@ -12,6 +12,7 @@ import { groundMaterialDetail, type GroundCover } from './GroundMaterial';
 import { battlefieldHeight, surroundingHeight } from './Landform';
 import { treeSpeciesMeshes, type TreeSite, type TreeSpecies } from './TreeSpecies';
 import { roadDistanceField, type RoadBlend } from './RoadBlend';
+import { vegetationMeshes, type VegetationSite } from './VegetationModels';
 
 /**
  * 160×96 높이 격자와 연속된 외곽 능선으로 구성한 전장.
@@ -348,7 +349,7 @@ export class Terrain {
       roughness: 0.95,
       side: THREE.DoubleSide,
     });
-    const grassMat = new THREE.MeshStandardMaterial({ color: this.env.landscape === 'loess' ? 0xb0a06a : 0xa3b574, roughness: 1, vertexColors: true, side: THREE.DoubleSide });
+    const grassMat = new THREE.MeshStandardMaterial({ color: this.env.landscape === 'loess' ? 0x8b8065 : 0x778066, roughness: 1, vertexColors: true, side: THREE.DoubleSide });
     if (preset.postFx) {
       grassMat.onBeforeCompile = shader => {
         shader.uniforms.grassTime = this.windTime;
@@ -386,6 +387,7 @@ export class Terrain {
     let placed = 0;
     let guard = 0;
     const speciesSites: TreeSite[] = [];
+    const modelSites: VegetationSite[] = [];
     while (placed + speciesSites.length < trees && guard++ < trees * 40) {
       const x = rng.range(8, BALANCE.mapWidth - 8);
       const z = rng.range(8, BALANCE.mapDepth - 8);
@@ -403,6 +405,7 @@ export class Terrain {
         continue;
       }
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
+      modelSites.push({ x, y, z, angle: 2 * Math.atan2(q.y, q.w), scale: s });
       scl.set(s, s, s);
       pos.set(x, y + 8 * s, z);
       m.compose(pos, q, scl);
@@ -425,6 +428,11 @@ export class Terrain {
     trunkIM.count = placed;
     crownIM.count = placed;
     crownSmallIM.count = placed * 2;
+    const authoredTrees = vegetationMeshes(this.assets, 'scenery_tree_small_02', modelSites);
+    if (authoredTrees.length) trunkIM.count = crownIM.count = crownSmallIM.count = 0;
+    const pineSites = speciesSites.filter(site => site.species === 'pine');
+    const authoredPines = vegetationMeshes(this.assets, 'scenery_pine_sapling_small', pineSites);
+    const remainingSpecies = authoredPines.length ? speciesSites.filter(site => site.species !== 'pine') : speciesSites;
 
     let rplaced = 0;
     guard = 0;
@@ -492,11 +500,11 @@ export class Terrain {
       const y = this.heightAt(x, z);
       const s = rng.range(0.45, 1.25) * THREE.MathUtils.lerp(.55, 1, THREE.MathUtils.smoothstep(roadDist, 39, 75));
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
-      scl.set(s, s, s);
-      pos.set(x, y + 5.5 * s, z);
+      scl.set(s * .8, s * .58, s * .8);
+      pos.set(x, y + 5.5 * s * .58, z);
       m.compose(pos, q, scl);
       grassIM.setMatrixAt(gplaced, m);
-      grassIM.setColorAt(gplaced++, new THREE.Color().setHSL(rng.range(.18, .25), .25, rng.range(.64, .9)));
+      grassIM.setColorAt(gplaced++, new THREE.Color().setHSL(rng.range(.18, .23), .09, rng.range(.76, .95)));
     }
     grassIM.count = gplaced;
 
@@ -506,6 +514,7 @@ export class Terrain {
     const outerCrowns = new THREE.InstancedMesh(foliageGeometry(14, 53, preset.postFx ? 128 : 64), crownMat.clone(), outerTrees);
     outerCrowns.userData.contactOcclusion = false;
     let oplaced = 0;
+    const outerSites: VegetationSite[] = [];
     guard = 0;
     while (oplaced < outerTrees && guard++ < outerTrees * 30) {
       const x = rng.range(-900, BALANCE.mapWidth + 900);
@@ -518,6 +527,7 @@ export class Terrain {
       if (landformNoise(lx * 1.7, lz * 1.7) < 0.38) continue;
       const s = rng.range(.9, z > BALANCE.mapDepth ? 1.45 : 2.1);
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
+      outerSites.push({ x, y, z, angle: 2 * Math.atan2(q.y, q.w), scale: s });
       scl.set(s, s, s);
       pos.set(x, y + 8 * s, z); m.compose(pos, q, scl); outerTrunks.setMatrixAt(oplaced, m);
       pos.set(x, y + 27 * s, z); m.compose(pos, q, scl); outerCrowns.setMatrixAt(oplaced, m);
@@ -525,6 +535,8 @@ export class Terrain {
       oplaced++;
     }
     outerTrunks.count = outerCrowns.count = oplaced;
+    const authoredOuter = vegetationMeshes(this.assets, 'scenery_tree_small_02', outerSites, true);
+    if (authoredOuter.length) outerTrunks.count = outerCrowns.count = 0;
     outerTrunks.instanceMatrix.needsUpdate = outerCrowns.instanceMatrix.needsUpdate = true;
     // Distant forest receives light but does not fill the battlefield shadow atlas.
     outerTrunks.castShadow = outerCrowns.castShadow = false;
@@ -556,7 +568,8 @@ export class Terrain {
     bannerIM.instanceMatrix.needsUpdate = true;
     grassIM.instanceMatrix.needsUpdate = true;
 
-    this.decor.push(...architecture, ...treeSpeciesMeshes(speciesSites, this.surfaces.bark, preset.postFx),
+    this.decor.push(...architecture, ...authoredTrees, ...authoredPines, ...authoredOuter,
+      ...treeSpeciesMeshes(remainingSpecies, this.surfaces.bark, preset.postFx),
       trunkIM, crownIM, crownSmallIM, rockIM, poleIM, bannerIM, grassIM, outerTrunks, outerCrowns);
     for (const d of this.decor) this.group.add(d);
     if (this.env.landscape) {

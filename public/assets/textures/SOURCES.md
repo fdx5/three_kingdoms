@@ -1,5 +1,14 @@
 # Scenery PBR materials
 
+## Building surfaces (2026-09-09)
+
+- `wood_planks_grey_*`: [Wood Planks Grey](https://polyhaven.com/a/wood_planks_grey), Rob Tuytel, CC0.
+- `plastered_wall_*`: [Plastered Wall](https://polyhaven.com/a/plastered_wall), CC0.
+
+`node scripts/building-textures.mjs` downloads the 1K diffuse, OpenGL normal and
+roughness maps and converts them to WebP. Used on settlement timber and plaster.
+Powered by Poly Haven; https://polyhaven.com/license.
+
 Downloaded from Poly Haven on 2026-09-08, under CC0 1.0:
 
 - `bark_brown_02_*.webp`: [Bark Brown 02](https://polyhaven.com/a/bark_brown_02), Rob Tuytel.

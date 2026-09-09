@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { UNIT_LIST } from '../src/data/units';
 import { TOWER_LIST } from '../src/data/towers';
 import { LEVEL_ORDER } from '../src/data/levels';
+import { VEGETATION_MODEL_IDS } from '../src/view/VegetationModels';
 
 /**
  * 모델 참조가 끊기지 않았는지 본다.
@@ -17,6 +18,7 @@ const manifest = JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'))
 
 function refs(): { who: string; modelId: string }[] {
   const out: { who: string; modelId: string }[] = [];
+  for (const modelId of VEGETATION_MODEL_IDS) out.push({ who: 'terrain vegetation', modelId });
   for (const u of UNIT_LIST) if (u.view.modelId) out.push({ who: `unit ${u.id}`, modelId: u.view.modelId });
   for (const t of TOWER_LIST) {
     t.levels.forEach((lv, i) => {

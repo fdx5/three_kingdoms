@@ -229,7 +229,7 @@ export class PathRibbon {
     this.arrowMat = new THREE.MeshBasicMaterial({
       color: 0xffe9a8,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.42,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -240,7 +240,7 @@ export class PathRibbon {
 
   /** 첫 웨이브가 시작되면 화살표를 흐리게 (완전히 지우지는 않는다) */
   setArrowsHighlighted(on: boolean): void {
-    if (this.arrowMat) this.arrowMat.opacity = on ? 0.75 : 0.16;
+    if (this.arrowMat) this.arrowMat.opacity = on ? 0.42 : 0.09;
   }
 
   dispose(): void {
