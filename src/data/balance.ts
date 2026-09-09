@@ -402,6 +402,11 @@ export const BALANCE = {
       // Four wave milestones, rather than a repeating timer that flashes forever during preparation.
       lightningMilestones: [.15, .4, .65, .9], flashSec: .32, flashStrength: 2.4,
       thunderDelay: 1.3, thunderSec: 3.2, thunderGain: .28, thunderHz: 180,
+      // Smoke begins beyond the north apron; small ash shares its batch without covering units.
+      ashCount: 360, ashSpeed: 7, ashSize: 1.7, ashOpacity: .3,
+      smokeFraction: .2, smokeColumns: 3, smokeZ: -100, smokeBase: 55,
+      smokeHeight: 320, smokeSize: 135, smokeRise: 26, smokeOpacity: .48,
+      smokeColor: '#333239', fireGlowStrength: .3,
     },
     deathAnimDuration: 0.35,
     /**

@@ -55,6 +55,8 @@ export class Stage {
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
   constructor(env: LevelEnvironment) {
+    // Leave a visible strip beyond the northern ridge for the off-map supply fire.
+    if (env.weather?.framing) this.zoom = this.zoomTarget = env.weather.framing;
     this.scene.background = new THREE.Color(env.skyColor);
     // 안개는 원경 정리용으로 약하게
     this.scene.fog = new THREE.Fog(env.fogColor, 1550, 3700);
@@ -68,6 +70,19 @@ export class Stage {
       fog: false,
     });
     this.skyDome = new THREE.Mesh(skyGeo, skyMat);
+    if (env.weather?.fireGlow) {
+      const glow = new THREE.Color(env.weather.fireGlow);
+      skyMat.onBeforeCompile = shader => {
+        shader.uniforms.fireGlow = { value: glow };
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 skyDirection;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nskyDirection = normalize(position);');
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 skyDirection; uniform vec3 fireGlow;')
+          .replace('#include <color_fragment>', `#include <color_fragment>
+            float glow = pow(max(0.0, -skyDirection.z), 4.0) * (1.0 - smoothstep(.0, .6, abs(skyDirection.y)));
+            diffuseColor.rgb = mix(diffuseColor.rgb, fireGlow, glow * ${BALANCE.fx.weather.fireGlowStrength});`);
+      };
+      skyMat.customProgramCacheKey = () => 'distant-supply-fire';
+    }
     this.skyDome.rotation.y = Math.PI * 0.18;
     this.skyDome.frustumCulled = false;
     this.scene.add(this.skyDome);

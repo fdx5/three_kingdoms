@@ -192,6 +192,9 @@ export const LEVEL_03: LevelDef = {
   }),
 
   environment: {
+    // The supply fire is beyond the playable field: smoke tells the story without concealing combat.
+    weather: { kind: 'ash', color: '#bcb4a3', sky: '#b7a0a0', sun: '#ffd09b', sunIntensity: 2.45,
+      fogNear: 1750, fogFar: 3550, wind: 12, fireGlow: '#e9853d', framing: 1.2 },
     // 서늘한 관문에서 강가 갈대밭으로
     skyColor: '#b9c3cc',
     groundColor: '#6b7358',

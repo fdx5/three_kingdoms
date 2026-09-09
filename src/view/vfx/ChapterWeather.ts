@@ -26,6 +26,7 @@ export class ChapterWeather {
 
   private createParticles(): void {
     const w = this.env.weather!;
+    const ash = w.kind === 'ash';
     const geometry = new THREE.PlaneGeometry(1, 1);
     const rng = new Rng(C.seed);
     const seeds = new Float32Array(C.capacity * 4);
@@ -33,30 +34,53 @@ export class ChapterWeather {
     geometry.setAttribute('weatherSeed', new THREE.InstancedBufferAttribute(seeds, 4));
     const material = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, side: THREE.DoubleSide,
-      uniforms: { weatherTime: this.time, tint: { value: new THREE.Color(w.color) } },
+      uniforms: { weatherTime: this.time, tint: { value: new THREE.Color(w.color) },
+        smokeTint: { value: new THREE.Color(C.smokeColor) } },
       vertexShader: `
         attribute vec4 weatherSeed;
         uniform float weatherTime;
-        varying vec2 vUv; varying float vFade;
+        varying vec2 vUv; varying float vFade; varying float vSmoke; varying float vAge;
         void main() {
           vUv = uv;
+          vSmoke = 0.0; vAge = 0.0;
           float age = fract(weatherSeed.y + weatherTime * ${C.rainSpeed / C.ceiling});
           vec3 p = vec3(weatherSeed.x * ${BALANCE.mapWidth + C.padding * 2}.0 - ${C.padding}.0,
             (1.0-age) * ${C.ceiling}.0,
             weatherSeed.z * ${BALANCE.mapDepth + C.padding * 2}.0 - ${C.padding}.0);
           p.x += age * ${w.wind.toFixed(1)};
+          ${ash ? `
+          age = fract(weatherSeed.y + weatherTime * ${C.ashSpeed / C.ceiling});
+          p.y = (1.0-age) * ${C.ceiling}.0;
+          p.x += sin(weatherTime + weatherSeed.z * 6.283185) * ${w.wind.toFixed(1)};
+          vSmoke = step(weatherSeed.w, ${C.smokeFraction});
+          if (vSmoke > .5) {
+            age = fract(weatherSeed.y + weatherTime * ${C.smokeRise / C.smokeHeight});
+            p = vec3((floor(weatherSeed.x * ${C.smokeColumns}.0) + .5) * ${BALANCE.mapWidth / C.smokeColumns}.0,
+              ${C.smokeBase}.0 + age * ${C.smokeHeight}.0, ${C.smokeZ}.0);
+            p.x += sin(age * 6.283185 + weatherSeed.z * 6.283185) * age * ${w.wind.toFixed(1)};
+          }
+          vAge = age;
+          ` : ''}
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           vec2 direction = normalize((modelViewMatrix * vec4(${w.wind.toFixed(1)}, -${C.ceiling}.0, 0.0, 0.0)).xy);
-          mv.xy += direction * position.y * ${C.rainLength}.0
-            + vec2(-direction.y, direction.x) * position.x * ${C.rainWidth};
+          ${ash ? `mv.xy += position.xy * mix(${C.ashSize}, ${C.smokeSize}.0 * (.5 + age), vSmoke);`
+            : `mv.xy += direction * position.y * ${C.rainLength}.0
+            + vec2(-direction.y, direction.x) * position.x * ${C.rainWidth};`}
           vFade = smoothstep(${C.nearFade}.0, ${C.fullFade}.0, -mv.z);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
-        uniform vec3 tint; varying vec2 vUv; varying float vFade;
+        uniform vec3 tint, smokeTint; varying vec2 vUv; varying float vFade, vSmoke, vAge;
         void main() {
           float a = (1.0 - abs(vUv.x * 2.0 - 1.0)) * sin(vUv.y * 3.14159265);
           gl_FragColor = vec4(tint, a * vFade * ${C.rainOpacity});
+          ${ash ? `
+          vec2 q = vUv * 2.0 - 1.0;
+          float edge = length(q) + sin(q.x * 13.0 + vAge * 17.0) * sin(q.y * 11.0 - vAge * 9.0) * .09;
+          a = pow(max(0.0, 1.0-edge), 2.0);
+          gl_FragColor = vec4(mix(tint, smokeTint, vSmoke), a * vFade
+            * mix(${C.ashOpacity}, ${C.smokeOpacity} * sin(vAge * 3.14159265), vSmoke));
+          ` : ''}
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
@@ -70,7 +94,8 @@ export class ChapterWeather {
   applyPreset(preset: PerformancePreset): void {
     this.enabled = preset.particleScale > BALANCE.presets.low.particleScale;
     if (this.mesh) {
-      this.mesh.count = this.enabled ? Math.round(C.capacity * preset.particleScale) : 0;
+      const capacity = this.env.weather?.kind === 'ash' ? C.ashCount : C.capacity;
+      this.mesh.count = this.enabled ? Math.round(capacity * preset.particleScale) : 0;
       this.mesh.visible = this.enabled;
     }
     if (!this.enabled) { this.flash = 0; this.thunder = 0; }
