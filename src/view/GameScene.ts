@@ -162,7 +162,7 @@ export class GameScene {
     this.terrain.buildDecor(preset);
     this.storm = new StratagemStorm(world, this.terrain, preset);
     this.stage.root.add(this.storm.group);
-    this.weather = new ChapterWeather(world.level.environment, this.stage, preset, () => this.cb.onWeatherThunder?.());
+    this.weather = new ChapterWeather(world.level.environment, this.stage, preset, () => this.cb.onWeatherThunder?.(), this.terrain);
     this.stage.root.add(this.weather.group);
 
     this.ribbon = new PathRibbon(world.path, this.terrain, assets);

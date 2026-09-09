@@ -70,6 +70,19 @@ try {
       });
       assert.deepEqual(eventCheck, { flashes: 4, thunder: 4, duplicate: 0 });
     }
+    if (level === '4') {
+      const dawn = await page.evaluate(() => {
+        const g = window.game, w = g.scene.weather;
+        g.applyPreset('high');
+        const early = g.scene.stage.scene.fog.far;
+        w.waveStarted(g.level.waves.length, g.level.waves.length);
+        for (let i = 0; i < 200; i++) w.update(.1);
+        g.render(1, 0);
+        return { early, late: g.scene.stage.scene.fog.far, clearing: w.clearing.value };
+      });
+      assert.ok(dawn.late > dawn.early && dawn.clearing > .99);
+      await page.screenshot({ path: 'artifacts/weather-4-cleared.png' });
+    }
     assert.deepEqual(errors, []);
     report.push({ level, snapshots });
     console.log(`Chapter ${level}: 3 presets, resource lifetime, batching, low timing passed`);

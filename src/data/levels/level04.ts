@@ -182,6 +182,9 @@ export const LEVEL_04: LevelDef = {
   }),
 
   environment: {
+    // Dawn opens the far shore gradually; the near road is outside the fog band throughout.
+    weather: { kind: 'mist', color: '#c4d5d5', sky: '#c2cdd3', sun: '#ffe6ba', sunIntensity: 2.0,
+      fogNear: 1500, fogFar: 2650, wind: 16 },
     landscape: 'lakeside',
     // 소호(巢湖) 물가의 갈대밭 — 습하고 푸르다
     skyColor: '#a9bcc4',

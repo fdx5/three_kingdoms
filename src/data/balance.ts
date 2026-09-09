@@ -407,6 +407,11 @@ export const BALANCE = {
       smokeFraction: .2, smokeColumns: 3, smokeZ: -100, smokeBase: 55,
       smokeHeight: 320, smokeSize: 135, smokeRise: 26, smokeOpacity: .48,
       smokeColor: '#333239', fireGlowStrength: .3,
+      // Lake wisps stay below soldiers' heads. Only distant fog changes visibility as dawn clears.
+      mistCount: 120, mistWidth: 150, mistHeight: 26, mistLift: 10, mistOpacity: .2,
+      mistCycle: 18, mistClearRate: .4, mistSunrise: .65, clearFogNear: 1550, clearFogFar: 3700,
+      mistNearOffset: 80, mistFarSpan: 750,
+      waterline: -1.1, waterUvScale: 70, waterSearchAttempts: 100,
     },
     deathAnimDuration: 0.35,
     /**
