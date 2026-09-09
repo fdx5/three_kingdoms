@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { ContactOcclusion } from './ContactOcclusion';
+import { isAppleTouchDevice } from './DeviceCapabilities';
 
 /** HDR highlights only; terrain stays readable. Owned by the renderer, not a level. */
 export class BattlePostFx {
@@ -34,13 +35,35 @@ export class BattlePostFx {
         gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
       }`,
   });
+  /** HDR 버퍼가 넘지 않을 크기 — 기기 예산에 따라 생성자가 정한다 */
+  private readonly budget: { width: number; height: number };
   private size = new THREE.Vector2();
   private width = 0;
   private height = 0;
 
   constructor(private renderer: THREE.WebGLRenderer) {
-    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
-    target.samples = Math.min(4, renderer.capabilities.maxSamples);
+    /*
+     * 버퍼 예산은 기기가 정한다.
+     *
+     * 이 합성기는 장면을 HDR(반정밀도) 타겟에 그리고 MSAA 를 얹는다. 데스크톱에서는
+     * 값싼 사치지만 iOS 에서는 그렇지 않다 — 반정밀도는 픽셀당 8바이트라 8비트의
+     * 두 배이고, MSAA 4배는 다시 네 배다. 여기에 그림자 맵과 화면 프레임버퍼가
+     * 더해지면 사파리가 탭을 죽인다(흰 화면 + "문제가 반복적으로 발생했습니다").
+     *
+     * 그래서 iOS 에서는 정밀도와 MSAA 를 내린다. 블룸이 다루는 밝기 범위가 좁아지고
+     * 가장자리 계단이 조금 보이지만, **탭이 죽는 것과 견줄 문제가 아니다.**
+     * 반정밀도로 그릴 수 없는 기기(확장 미지원)도 같은 길로 보낸다 — 그 경우
+     * 프레임버퍼가 불완전해져 화면이 통째로 어두워진다.
+     */
+    const gl = renderer.getContext();
+    const canDrawHalfFloat =
+      !!gl.getExtension('EXT_color_buffer_half_float') || !!gl.getExtension('EXT_color_buffer_float');
+    const frugal = isAppleTouchDevice() || !canDrawHalfFloat;
+    const target = new THREE.WebGLRenderTarget(1, 1, {
+      type: frugal ? THREE.UnsignedByteType : THREE.HalfFloatType,
+    });
+    target.samples = frugal ? 0 : Math.min(4, renderer.capabilities.maxSamples);
+    this.budget = frugal ? { width: 1280, height: 800 } : { width: 1920, height: 1200 };
     this.composer = new EffectComposer(renderer, target);
     this.composer.setPixelRatio(1);
     this.composer.addPass(this.scenePass);
@@ -53,7 +76,7 @@ export class BattlePostFx {
   render(scene: THREE.Scene, camera: THREE.Camera, dt: number): void {
     this.renderer.getDrawingBufferSize(this.size);
     // Bound HDR buffers on high-DPI/4K screens without lowering the native canvas.
-    const scale = Math.min(1, 1920 / this.size.x, 1200 / this.size.y);
+    const scale = Math.min(1, this.budget.width / this.size.x, this.budget.height / this.size.y);
     const width = Math.max(1, Math.round(this.size.x * scale));
     const height = Math.max(1, Math.round(this.size.y * scale));
     if (width !== this.width || height !== this.height) {

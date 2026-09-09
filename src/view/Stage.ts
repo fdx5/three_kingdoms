@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BALANCE, type PerformancePreset } from '../data/balance';
 import type { LevelEnvironment } from '../types/level';
-import { maxShadowMapSize } from './Renderer';
+import { maxShadowMapSize } from './DeviceCapabilities';
 
 /** 줌 한계 — 1은 맵 전체가 들어오는 거리 */
 const ZOOM_MIN = 0.42;

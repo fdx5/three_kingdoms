@@ -46,9 +46,14 @@ const SETTINGS_KEY = 'samtd.settings';
  * 제자리로 내려가고(updateFps), 그 값이 새 표식과 함께 저장된다.
  *
  * 기본값을 또 크게 바꿀 때만 이 문자열을 올린다.
+ *
+ * '2' -> '3': 아이패드에서 '높음'이 탭을 죽이고 있었다(그림자 4096 + HDR MSAA
+ * 후처리 + 픽셀비 2 가 iOS 의 탭 메모리 한도를 넘었다). 죽지 않은 경우에도 그
+ * 무게 때문에 첫 측정이 느리게 나와 '낮음'으로 굳었고, 그 값이 저장돼 다음
+ * 실행부터 계속 낮음이었다. 원인을 고쳤으니 그때 잘못 내려간 값을 한 번 놓아 준다.
  */
 const PRESET_EPOCH_KEY = 'samtd.preset.epoch';
-const PRESET_EPOCH = '2';
+const PRESET_EPOCH = '3';
 
 /**
  * 열어 둔 망루 패널을 다시 그리는 주기(초).
@@ -58,6 +63,16 @@ const PRESET_EPOCH = '2';
  * 한 번보다 길고, 내구도가 눈에 띄게 달라지기 전에 한 번은 돈다.
  */
 const PANEL_REFRESH_SEC = 0.35;
+
+/**
+ * 자동 보정이 **재기만 하고 판단하지 않는** 구간(초).
+ *
+ * 셰이더 컴파일, 텍스처 업로드, 첫 그림자 맵이 여기 들어간다. 한 번만 치르는
+ * 비용이라 기기의 실력이 아니다. 3초면 그 대부분이 끝난다.
+ */
+const WARMUP_SEC = 3;
+/** 예열이 끝난 뒤 실제로 성적을 매기는 구간(초) */
+const SAMPLE_SEC = 2;
 
 /**
  * 이번 실행을 시작할 프리셋 — 저장값이 있으면 그것, 없으면 guessPreset().
@@ -1066,13 +1081,31 @@ class Game {
       this.frames = 0;
       this.fpsAccum = 0;
     }
-    // 초기 3초 fps 측정으로 프리셋 자동 보정
+    /*
+     * 초기 fps 측정으로 프리셋 자동 보정 — 단, **판을 열자마자 재지 않는다.**
+     *
+     * 예전에는 첫 3초를 그대로 성적표로 삼았다. 그 3초는 이 게임에서 가장 느린
+     * 3초다: 셰이더 수십 개가 그때 컴파일되고, 텍스처가 GPU 로 올라가고, 그림자
+     * 맵이 처음 채워진다. 그 비용은 한 번만 치르는데 측정은 그것을 "이 기기는
+     * 느리다"로 읽었다. 아이패드가 이유 없이 '낮음'으로 굳어 있던 것이 그래서다 —
+     * 게다가 그 결과는 localStorage 에 남아 다음 실행부터 그 자리에서 시작한다.
+     *
+     * 그래서 WARMUP_SEC 동안은 재기만 하고 판단하지 않는다. 그 뒤 SAMPLE_SEC 를
+     * 더 보고서 정한다. 못 버티는 기기가 더 오래 버벅이는 값을 치르지만,
+     * **한 번 잘못 내려가면 사람이 설정을 열기 전까지 영영 그대로**이므로
+     * 그쪽 실수가 훨씬 비싸다.
+     */
     if (!this.autoTuned) {
       this.autoTuneTime += dt;
-      if (this.autoTuneTime >= 3) {
+      if (this.autoTuneTime >= WARMUP_SEC + SAMPLE_SEC) {
         this.autoTuned = true;
         if (this.fps < 26 && this.preset !== 'low') this.applyPreset('low');
         else if (this.fps < 45 && this.preset === 'high') this.applyPreset('medium');
+      } else if (this.autoTuneTime < WARMUP_SEC) {
+        // 예열 구간의 표본은 버린다 — 셰이더 컴파일과 텍스처 업로드가 섞여 있다.
+        this.frames = 0;
+        this.fpsAccum = 0;
+        this.fps = 0;
       }
     }
   }
