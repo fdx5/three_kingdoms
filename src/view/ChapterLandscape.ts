@@ -3,6 +3,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { LevelEnvironment } from '../types/level';
 import { Rng } from '../core/Rng';
 import type { Terrain } from './Terrain';
+import { weatheredMaterial } from './WeatheredMaterial';
+import { WaterReflection } from './WaterReflection';
 
 type Theme = NonNullable<LevelEnvironment['landscape']>;
 export function chapterSites(theme?: Theme): number[][] {
@@ -45,23 +47,27 @@ export class ChapterLandscape {
   private textures: THREE.Texture[] = [];
   private water: THREE.MeshStandardMaterial | null = null;
   private time = 0;
+  private waterTime = { value: 0 };
+  private reflection: WaterReflection | null = null;
 
-  constructor(private theme: Theme, private terrain: Terrain, private clear: (x: number, z: number) => number, scale: number) {
+  constructor(private theme: Theme, private terrain: Terrain, private clear: (x: number, z: number) => number, scale: number,
+    private stoneSurface: THREE.MeshStandardMaterialParameters = {}) {
     this.group.name = `landscape-${theme}`;
-    if (theme !== 'loess') this.buildWater();
+    if (theme !== 'loess') this.buildWater(scale >= 1);
     this.buildProps(scale);
   }
 
-  private buildWater(): void {
-    const positions: number[] = [], colors: number[] = [], uv: number[] = [], indices: number[] = [];
+  private buildWater(reflections: boolean): void {
+    const positions: number[] = [], colors: number[] = [], uv: number[] = [], indices: number[] = [], depths: number[] = [];
     const nx = 160, nz = 94, waterline = -1.1;
     for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
       const x = i * 1200 / nx, z = j * 700 / nz;
       const depth = waterline - this.terrain.heightAt(x, z);
+      depths.push(Math.max(0, depth));
       positions.push(x, waterline, z); uv.push(x / 70, z / 70);
-      const color = new THREE.Color(this.theme === 'lakeside' ? 0x4c8275 : 0x657e83)
-        .lerp(new THREE.Color(this.theme === 'lakeside' ? 0x183f46 : 0x293f4b), THREE.MathUtils.smoothstep(depth, 0, 7));
-      colors.push(color.r, color.g, color.b, THREE.MathUtils.smoothstep(depth, 0, 1.8) * .93);
+      const color = new THREE.Color(this.theme === 'lakeside' ? 0x6c8170 : 0x7c8277)
+        .lerp(new THREE.Color(this.theme === 'lakeside' ? 0x254a4e : 0x3d5155), THREE.MathUtils.smoothstep(depth, 0, 9));
+      colors.push(color.r, color.g, color.b, THREE.MathUtils.smoothstep(depth, 0, 2.8) * .94);
       if (j > 0 && i > 0) {
         const a = j * (nx + 1) + i;
         indices.push(a - nx - 2, a - 1, a - nx - 1, a - nx - 1, a - 1, a);
@@ -71,6 +77,7 @@ export class ChapterLandscape {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute('waterDepth', new THREE.Float32BufferAttribute(depths, 1));
     geo.setIndex(indices); geo.computeVertexNormals();
     // Tileable wave normals create moving highlights without another render pass.
     const size = 128, pixels = new Uint8Array(size * size * 4);
@@ -85,9 +92,30 @@ export class ChapterLandscape {
     normal.magFilter = normal.minFilter = THREE.LinearFilter; normal.needsUpdate = true;
     this.textures.push(normal);
     this.water = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, depthWrite: false,
-      roughness: .26, metalness: .32, normalMap: normal, normalScale: new THREE.Vector2(.45, .45), side: THREE.DoubleSide });
+      roughness: .19, metalness: 0, envMapIntensity: 1.6, normalMap: normal, normalScale: new THREE.Vector2(.3, .3), side: THREE.DoubleSide });
+    this.water.onBeforeCompile = shader => {
+      shader.uniforms.waterTime = this.waterTime;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float waterDepth; varying float vWaterDepth;');
+      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWaterDepth = waterDepth;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float waterTime; varying float vWaterDepth;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>',
+        THREE.ShaderChunk.normal_fragment_maps.replace('texture2D( normalMap, vNormalMapUv ).xyz', `
+          (texture2D(normalMap, vNormalMapUv * .53 + vec2(waterTime * .009, -waterTime * .006)).xyz
+          + texture2D(normalMap, vNormalMapUv * 1.17 + vec2(-waterTime * .012, waterTime * .008)).xyz) * .5`));
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
+        #include <color_fragment>
+        float shore = (1.0 - smoothstep(.3, 3.5, vWaterDepth));
+        float foam = smoothstep(.78, .97, sin(vNormalMapUv.x * 18.0 + sin(vNormalMapUv.y * 13.0) + waterTime * .7));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.47, .52, .45), shore * foam * .22);
+      `);
+    };
+    this.water.customProgramCacheKey = () => 'water-crossflow-v1';
     const mesh = new THREE.Mesh(geo, this.water); mesh.name = 'chapter-water'; mesh.renderOrder = 1;
     this.group.add(mesh);
+    if (reflections) {
+      this.reflection = new WaterReflection(geo, this.waterTime);
+      this.group.add(this.reflection);
+    }
   }
 
   private buildProps(scale: number): void {
@@ -95,11 +123,12 @@ export class ChapterLandscape {
     const batches = new Map<string, THREE.BufferGeometry[]>();
     const materials: Record<string, THREE.MeshStandardMaterial> = {
       timber: new THREE.MeshStandardMaterial({ color: 0x514031, roughness: .93 }),
-      stone: new THREE.MeshStandardMaterial({ color: this.theme === 'loess' ? 0xa58c66 : 0x78807c, roughness: .93 }),
+      stone: new THREE.MeshStandardMaterial({ ...this.stoneSurface, color: this.theme === 'loess' ? 0xa58c66 : 0x78807c, roughness: .93 }),
       cloth: new THREE.MeshStandardMaterial({ color: this.theme === 'loess' ? 0x9b5136 : 0x657c74, roughness: .88, side: THREE.DoubleSide }),
       reed: new THREE.MeshStandardMaterial({ color: this.theme === 'lakeside' ? 0x899257 : 0x838370, roughness: 1, side: THREE.DoubleSide }),
       tips: new THREE.MeshStandardMaterial({ color: 0xc8b48a, roughness: 1 }),
     };
+    weatheredMaterial(materials.timber, 'timber');
     const add = (kind: string, geo: THREE.BufferGeometry) => {
       const parts = batches.get(kind) ?? []; parts.push(geo); batches.set(kind, parts);
     };
@@ -191,10 +220,13 @@ export class ChapterLandscape {
 
   update(dt: number): void {
     this.time += dt;
-    if (this.water?.normalMap) this.water.normalMap.offset.set(this.time * .014, this.time * .008);
+    this.waterTime.value = this.time;
   }
 
   dispose(): void {
+    if (this.reflection) {
+      this.reflection.removeFromParent(); this.reflection.geometry.dispose(); this.reflection.dispose(); this.reflection = null;
+    }
     this.group.traverse(o => { if (o instanceof THREE.Mesh) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); } });
     this.textures.forEach(t => t.dispose()); this.group.removeFromParent(); this.group.clear();
   }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BattlePostFx } from './BattlePostFx';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { outdoorLighting } from './OutdoorLighting';
 import { BALANCE, type PerformancePresetName } from '../data/balance';
 
 export type RendererBackend = 'webgpu' | 'webgl2' | 'webgl';
@@ -115,16 +115,9 @@ export async function createRenderer(container: HTMLElement): Promise<RendererHa
 
   let post: BattlePostFx | null = null;
   const supportsPostFx = renderer instanceof THREE.WebGLRenderer;
-  // A shared, prefiltered light probe restores detail on dark metal and armor.
-  // Generate once; changing chapters reuses the same GPU texture.
+  // Rebuild only for a new chapter's sun. All objects share this outdoor light probe.
   let environment: THREE.WebGLRenderTarget | null = null;
-  if (supportsPostFx) {
-    const room = new RoomEnvironment();
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    environment = pmrem.fromScene(room, 0.04);
-    room.dispose();
-    pmrem.dispose();
-  }
+  let environmentScene: THREE.Scene | null = null;
   renderer.info.autoReset = false;
   return {
     renderer,
@@ -132,9 +125,16 @@ export async function createRenderer(container: HTMLElement): Promise<RendererHa
     domElement: canvas,
     setPixelRatio,
     render: (scene, camera, dt, postFx) => {
-      if (environment && !scene.environment) {
-        scene.environment = environment.texture;
-        scene.environmentIntensity = 0.28;
+      if (supportsPostFx && scene !== environmentScene) {
+        const sun = scene.children.find(o => o instanceof THREE.DirectionalLight) as THREE.DirectionalLight | undefined;
+        if (sun) {
+          if (environmentScene && environmentScene.environment === environment?.texture) environmentScene.environment = null;
+          environment?.dispose();
+          environment = outdoorLighting(renderer!, sun, scene.fog?.color ?? new THREE.Color(0xc3d4dc));
+          scene.environment = environment.texture;
+          scene.environmentIntensity = .72;
+        }
+        environmentScene = scene;
       }
       if (postFx && supportsPostFx) {
         post ??= new BattlePostFx(renderer!);

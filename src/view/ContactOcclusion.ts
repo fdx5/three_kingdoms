@@ -7,8 +7,8 @@ export class ContactOcclusion extends GTAOPass {
 
   constructor() {
     super(new THREE.Scene(), new THREE.PerspectiveCamera(), 1, 1);
-    this.blendIntensity = .42;
-    this.updateGtaoMaterial({ radius: 14, thickness: 3, distanceFallOff: .8, samples: 8, screenSpaceRadius: false });
+    this.blendIntensity = .5;
+    this.updateGtaoMaterial({ radius: 8, thickness: 2, distanceFallOff: .9, samples: 12, screenSpaceRadius: false });
     this.updatePdMaterial({ radius: 3, samples: 8, rings: 2 });
   }
 

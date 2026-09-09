@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { blendRoad, type RoadBlend } from './RoadBlend';
 
 export interface GroundCover { map: THREE.Texture; normal: THREE.Texture; roughness: THREE.Texture; amount: number }
 
@@ -6,11 +7,12 @@ export interface GroundCover { map: THREE.Texture; normal: THREE.Texture; roughn
  * Shared UV derivatives preserve crisp mip selection at the blend boundaries.
  * No displacement, screen buffer or additional draw call is required.
  */
-export function groundMaterialDetail(material: THREE.MeshStandardMaterial, enabled: boolean, cover?: GroundCover): void {
+export function groundMaterialDetail(material: THREE.MeshStandardMaterial, enabled: boolean, cover?: GroundCover, road?: RoadBlend): void {
   if (material.userData.groundDetail === enabled) return;
   material.userData.groundDetail = enabled;
-  material.customProgramCacheKey = () => `ground-detail-v2-${enabled}-${!!cover}`;
+  material.customProgramCacheKey = () => `ground-detail-v3-${enabled}-${!!cover}-${!!road}`;
   material.onBeforeCompile = shader => {
+    if (road) blendRoad(shader, road);
     if (!enabled) return;
     if (cover) {
       shader.uniforms.groundCoverMap = { value: cover.map };

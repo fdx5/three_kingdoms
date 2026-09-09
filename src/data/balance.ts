@@ -465,7 +465,7 @@ export const BALANCE = {
 
   /** 성능 프리셋 */
   presets: {
-    high: { shadows: true, shadowMapSize: 2048, particleScale: 1.0, decorScale: 1.0, postFx: true, maxDpr: 2 },
+    high: { shadows: true, shadowMapSize: 4096, particleScale: 1.0, decorScale: 1.0, postFx: true, maxDpr: 2 },
     medium: { shadows: true, shadowMapSize: 1024, particleScale: 0.6, decorScale: 0.6, postFx: false, maxDpr: 1.5 },
     low: { shadows: false, shadowMapSize: 512, particleScale: 0.3, decorScale: 0.3, postFx: false, maxDpr: 1.0 },
   },

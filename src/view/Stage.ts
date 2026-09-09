@@ -81,10 +81,10 @@ export class Stage {
       skyMat.needsUpdate = true;
     });
 
-    this.hemi = new THREE.HemisphereLight(new THREE.Color(env.skyColor), new THREE.Color(env.groundColor), 1.05);
+    this.hemi = new THREE.HemisphereLight(new THREE.Color(env.skyColor).lerp(new THREE.Color(0xc4ddf1), .55), new THREE.Color(env.groundColor), .65);
     this.scene.add(this.hemi);
 
-    this.sun = new THREE.DirectionalLight(0xffe4bd, 2.75);
+    this.sun = new THREE.DirectionalLight(0xfff1df, 3.2);
     this.sun.position.set(-620, 740, 250);
     if (env.landscape === 'floodplain') { this.sun.color.set(0xd8e7f0); this.sun.intensity = 2.1; }
     if (env.landscape === 'lakeside') { this.sun.color.set(0xffebc8); this.sun.intensity = 2.55; }
@@ -96,7 +96,7 @@ export class Stage {
     // swim and also overwrote the chapter-specific sunset direction every frame.
     this.sun.position.add(this.target);
 
-    this.fill = new THREE.DirectionalLight(new THREE.Color(env.skyColor).lerp(new THREE.Color(0x9dc9ff), 0.35), 0.38);
+    this.fill = new THREE.DirectionalLight(new THREE.Color(env.skyColor).lerp(new THREE.Color(0x9dc9ff), 0.35), 0.16);
     this.fill.position.set(700, 420, -600);
     this.scene.add(this.fill);
 
@@ -106,8 +106,8 @@ export class Stage {
     this.sun.shadow.camera.bottom = -700;
     this.sun.shadow.camera.near = 200;
     this.sun.shadow.camera.far = 2200;
-    this.sun.shadow.bias = -0.00025;
-    this.sun.shadow.normalBias = 0.45;
+    this.sun.shadow.bias = -0.00012;
+    this.sun.shadow.normalBias = 0.3;
   }
 
   applyPreset(preset: PerformancePreset, renderer: THREE.WebGLRenderer): void {

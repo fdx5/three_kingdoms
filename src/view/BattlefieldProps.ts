@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { weatheredMaterial } from './WeatheredMaterial';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { AssetRegistry } from './AssetRegistry';
 
@@ -86,12 +87,16 @@ function settlementBatch(sites: SettlementSite[], kind: HouseKind, assets?: Asse
   const materials = [
     new THREE.MeshStandardMaterial({ color: 0x4b3020, roughness: 0.88 }),
     new THREE.MeshStandardMaterial({ color: kind === 'granary' ? 0x957653 : straw ? 0xb6a07a : 0xb8ad8c, roughness: 0.97 }),
-    new THREE.MeshStandardMaterial({ color: 0x77756b, roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({ color: 0xa29e90, roughness: 0.95,
+      map: assets?.getTexture('scenery_stone') ?? null, normalMap: assets?.getTexture('scenery_stone_normal') ?? null,
+      normalScale: new THREE.Vector2(.45, .45) }),
     new THREE.MeshStandardMaterial({ color: straw ? 0xc6b18a : kind === 'pavilion' ? 0x50695c : 0x424f50,
       map: straw ? assets?.getTexture('scenery_thatch') ?? null : null,
       normalMap: straw ? assets?.getTexture('scenery_thatch_normal') ?? null : null,
       normalScale: new THREE.Vector2(.65, .65), roughness: straw ? .98 : .78, side: THREE.DoubleSide }),
   ];
+  weatheredMaterial(materials[0], 'timber');
+  weatheredMaterial(materials[1], 'plaster');
   const transform = new THREE.Object3D();
   const meshes = [timber, plaster, stone, tiles].map((parts, index) => {
     const geo = mergeGeometries(parts);

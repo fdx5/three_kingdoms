@@ -27,7 +27,7 @@ export class BuildableField {
 
   constructor(private readonly terrain: Terrain, capacity = 512, radius = 15) {
     this.capacity = capacity;
-    this.geo = new THREE.RingGeometry(radius - 2.2, radius, 24);
+    this.geo = new THREE.RingGeometry(radius - 1.1, radius, 40);
     this.geo.rotateX(-Math.PI / 2);
     this.mat = new THREE.MeshBasicMaterial({
       color: 0x3fd0c9, // RangeRing 의 "지을 수 있다" 청록과 같은 색
@@ -78,7 +78,7 @@ export class BuildableField {
   update(dt: number): void {
     if (!this.mesh.visible) return;
     this.pulseT += dt;
-    this.mat.opacity = 0.24 + Math.sin(this.pulseT * 1.6) * 0.08;
+    this.mat.opacity = 0.15 + Math.sin(this.pulseT * 1.6) * 0.045;
   }
 
   dispose(): void {

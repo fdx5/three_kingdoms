@@ -11,6 +11,7 @@ import { scenerySurface } from './ScenerySurfaces';
 import { groundMaterialDetail, type GroundCover } from './GroundMaterial';
 import { battlefieldHeight, surroundingHeight } from './Landform';
 import { treeSpeciesMeshes, type TreeSite, type TreeSpecies } from './TreeSpecies';
+import { roadDistanceField, type RoadBlend } from './RoadBlend';
 
 /**
  * 160×96 높이 격자와 연속된 외곽 능선으로 구성한 전장.
@@ -28,6 +29,9 @@ export class Terrain {
   private surfaces: { bark: ReturnType<typeof scenerySurface>; stone: ReturnType<typeof scenerySurface> } | null = null;
   private chapter: ChapterLandscape | null = null;
   private groundCover?: GroundCover;
+  private roadBlend?: RoadBlend;
+  private windTime = { value: 0 };
+  get hasIntegratedRoad(): boolean { return !!this.roadBlend; }
   get landscape(): LevelEnvironment['landscape'] { return this.env.landscape; }
   private readonly reserved: readonly { x: number; z: number }[];
 
@@ -165,6 +169,20 @@ export class Terrain {
       metalness: 0,
     });
 
+    const roadMap = assets?.getTexture('path_dirt');
+    const roadNormal = assets?.getTexture('path_dirt_normal');
+    const roadRoughness = assets?.getTexture('path_dirt_roughness');
+    if (albedo && normal && roadMap && roadNormal && roadRoughness) {
+      const field = roadDistanceField(path);
+      this.ownedTextures.push(field);
+      this.roadBlend = {
+        field, map: roadMap, normal: roadNormal, roughness: roadRoughness,
+        tint: new THREE.Color(env.landscape === 'floodplain' ? 0xa2aaa1 : env.landscape === 'loess' ? 0xd7bc94 : 0xc9b695),
+        vegetation: new THREE.Color(env.landscape === 'loess' ? 0xb2a775 : env.biome === 'drylands' ? 0x87965d : 0x71995d),
+        wetness: env.landscape === 'lakeside' || env.landscape === 'floodplain' ? 1 : 0,
+      };
+    }
+
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.position.set(BALANCE.mapWidth / 2, 0, BALANCE.mapDepth / 2);
     this.mesh.receiveShadow = true;
@@ -246,8 +264,8 @@ export class Terrain {
 
   /** Rebuild batched scenery only when the quality preset or seed changes. */
   buildDecor(preset: PerformancePreset, seed = 20240): void {
-    groundMaterialDetail(this.material, preset.postFx, this.groundCover);
-    if (this.skirt) groundMaterialDetail(this.skirt.material as THREE.MeshStandardMaterial, preset.postFx, this.groundCover);
+    groundMaterialDetail(this.material, preset.postFx, this.groundCover, this.roadBlend);
+    if (this.skirt) groundMaterialDetail(this.skirt.material as THREE.MeshStandardMaterial, preset.postFx, this.groundCover, this.roadBlend);
     const key = `${preset.decorScale}:${preset.shadows}:${seed}`;
     if (key === this.decorKey) return;
     this.clearDecor();
@@ -297,7 +315,7 @@ export class Terrain {
     const trees = Math.round((this.env.landscape === 'loess' ? 34 : this.env.landscape === 'floodplain' ? 52 : this.env.landscape === 'lakeside' ? 100 : 190) * preset.decorScale);
     const rocks = Math.round(120 * preset.decorScale);
     const flags = Math.round(22 * preset.decorScale);
-    const grasses = Math.round((this.env.landscape ? 900 : 1700) * preset.decorScale);
+    const grasses = Math.round((this.env.landscape === 'loess' ? 1400 : this.env.landscape ? 2600 : 4200) * preset.decorScale);
 
     const trunkGeo = treeTrunkGeometry();
     const crownGeo = foliageGeometry(13, 19, preset.postFx ? 180 : 100);
@@ -322,7 +340,7 @@ export class Terrain {
     const crownMat = new THREE.MeshStandardMaterial({ color: treeColor, roughness: 0.9, vertexColors: true, side: THREE.DoubleSide });
     const crownSmallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(treeColor).multiplyScalar(1.14), roughness: 0.9, vertexColors: true, side: THREE.DoubleSide });
     const rockMat = new THREE.MeshStandardMaterial({ ...this.surfaces.stone, color: this.env.landscape === 'loess' ? 0xc5ad88 : 0xffffff,
-      normalScale: new THREE.Vector2(.9, .9), roughness: .94 });
+      vertexColors: true, normalScale: new THREE.Vector2(.9, .9), roughness: .94 });
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a2c1e, roughness: 1 });
     // 한(漢)군 깃발 — 방어측 진영색
     const bannerMat = new THREE.MeshStandardMaterial({
@@ -330,7 +348,22 @@ export class Terrain {
       roughness: 0.95,
       side: THREE.DoubleSide,
     });
-    const grassMat = new THREE.MeshStandardMaterial({ color: 0x9b9f65, roughness: 1, vertexColors: true, side: THREE.DoubleSide });
+    const grassMat = new THREE.MeshStandardMaterial({ color: this.env.landscape === 'loess' ? 0xb0a06a : 0xa3b574, roughness: 1, vertexColors: true, side: THREE.DoubleSide });
+    if (preset.postFx) {
+      grassMat.onBeforeCompile = shader => {
+        shader.uniforms.grassTime = this.windTime;
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float grassTime;');
+        shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `
+          #include <begin_vertex>
+          float tip = clamp((position.y + 5.5) / 11.0, 0.0, 1.0);
+          vec3 root = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          float gust = sin(grassTime * 1.3 + root.x * .023 + root.z * .018);
+          transformed.x += tip * tip * (gust * 1.25 + sin(grassTime * 2.1 + root.z * .09) * .35);
+          transformed.z += tip * tip * gust * .45;
+        `);
+      };
+      grassMat.customProgramCacheKey = () => 'landscape-grass-wind-v1';
+    }
 
     const trunkIM = new THREE.InstancedMesh(trunkGeo, trunkMat, trees);
     const crownIM = new THREE.InstancedMesh(crownGeo, crownMat, trees);
@@ -451,15 +484,19 @@ export class Terrain {
       const z = rng.range(8, BALANCE.mapDepth - 8);
       if (this.env.landscape && this.heightAt(x, z) < 0) continue;
       const roadDist = distanceToPath(this.path, x, z);
-      if (roadDist < 62 || roadDist > 260) continue;
+      if (roadDist < 39 || roadDist > 300) continue;
+      const patch = landformNoise(x * 3.8, z * 3.8);
+      if (roadDist > 65 && patch < .46) continue;
+      if (roadDist < 49 && rng.next() > .3) continue;
       if (this.reserved.some(slot => Math.hypot(x - slot.x, z - slot.z) < 49) || sites.some(site => Math.hypot(x - site.x, z - site.z) < 43)) continue;
       const y = this.heightAt(x, z);
-      const s = rng.range(0.45, 1.15);
+      const s = rng.range(0.45, 1.25) * THREE.MathUtils.lerp(.55, 1, THREE.MathUtils.smoothstep(roadDist, 39, 75));
       q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
       scl.set(s, s, s);
       pos.set(x, y + 5.5 * s, z);
       m.compose(pos, q, scl);
-      grassIM.setMatrixAt(gplaced++, m);
+      grassIM.setMatrixAt(gplaced, m);
+      grassIM.setColorAt(gplaced++, new THREE.Color().setHSL(rng.range(.18, .25), .25, rng.range(.64, .9)));
     }
     grassIM.count = gplaced;
 
@@ -523,13 +560,13 @@ export class Terrain {
       trunkIM, crownIM, crownSmallIM, rockIM, poleIM, bannerIM, grassIM, outerTrunks, outerCrowns);
     for (const d of this.decor) this.group.add(d);
     if (this.env.landscape) {
-      this.chapter = new ChapterLandscape(this.env.landscape, this,
-        (x, z) => Math.min(distanceToPath(this.path, x, z), ...this.reserved.map(p => Math.hypot(x - p.x, z - p.z))), preset.decorScale);
+        this.chapter = new ChapterLandscape(this.env.landscape, this,
+        (x, z) => Math.min(distanceToPath(this.path, x, z), ...this.reserved.map(p => Math.hypot(x - p.x, z - p.z))), preset.decorScale, this.surfaces.stone);
       this.group.add(this.chapter.group);
     }
   }
 
-  update(dt: number): void { this.chapter?.update(dt); }
+  update(dt: number): void { this.windTime.value += dt; this.chapter?.update(dt); }
 
   private clearDecor(): void {
     this.decorKey = '';

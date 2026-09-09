@@ -5,29 +5,36 @@ import { Rng } from '../core/Rng';
 /** Solid folded leaves retain their silhouette and shadows at every camera angle. */
 export function foliageGeometry(radius: number, seed: number, leafCount = 260): THREE.BufferGeometry {
   const rng = new Rng(seed);
-  const vertices: number[] = [], colors: number[] = [];
+  const vertices: number[] = [], colors: number[] = [], normals: number[] = [];
   const color = new THREE.Color();
   for (let i = 0; i < leafCount; i++) {
     const az = rng.range(0, Math.PI * 2), el = rng.range(-1, 1);
-    const r = radius * Math.cbrt(rng.range(0.15, 1));
+    const r = radius * Math.cbrt(rng.range(0.32, 1));
     const center = new THREE.Vector3(Math.cos(az) * Math.sqrt(1 - el * el) * r, el * r * 0.82, Math.sin(az) * Math.sqrt(1 - el * el) * r);
-    const length = rng.range(1.8, 3.5) * Math.cbrt(260 / leafCount), width = length * 0.34;
-    const rotation = new THREE.Euler(rng.range(-1, 1), az, rng.range(-0.7, 0.7));
-    // Tapered six-sided leaves with a raised midrib catch light as curved surfaces.
-    const points = [[-length, 0, 0], [-length * .4, .15, -width], [length * .45, .25, -width * .8],
-      [length, 0, 0], [length * .45, .25, width * .8], [-length * .4, .15, width], [0, .5, 0]];
-    const transformed = points.map(p => new THREE.Vector3(...p as [number, number, number]).applyEuler(rotation).add(center));
-    color.setHSL(rng.range(0.20, 0.26), rng.range(0.12, 0.26), rng.range(0.58, 0.82));
-    const depthShade = .78 + .22 * (center.y / radius + 1) / 2;
-    for (const index of [0, 1, 6, 1, 2, 6, 2, 3, 6, 3, 4, 6, 4, 5, 6, 5, 0, 6]) {
-      const shade = depthShade * (index === 6 ? 1.08 : .96);
-      vertices.push(...transformed[index].toArray()); colors.push(color.r * shade, color.g * shade, color.b * shade);
+    // Three small curved leaflets replace the oversized flat flakes. Bent canopy
+    // normals retain the tree's volume instead of lighting every leaf as a separate card.
+    for (let leaf = 0; leaf < 3; leaf++) {
+      const length = rng.range(1.1, 2.5) * Math.cbrt(260 / leafCount), width = length * .42;
+      const rotation = new THREE.Euler(rng.range(-.9, .9), az + leaf * 2.1, rng.range(-.6, .6));
+      const origin = center.clone().add(new THREE.Vector3(Math.cos(leaf * 2.1 + az) * 1.9, leaf * .5, Math.sin(leaf * 2.1 + az) * 1.9));
+      const points = [[-length, 0, 0], [0, .12, -width], [length, -.12, 0], [0, .12, width], [0, .35, 0]];
+      const transformed = points.map(p => new THREE.Vector3(...p as [number, number, number]).applyEuler(rotation).add(origin));
+      color.setHSL(rng.range(.21, .27), rng.range(.16, .28), rng.range(.62, .8));
+      const depthShade = .55 + .45 * THREE.MathUtils.clamp((center.y / radius + 1) * .5, 0, 1);
+      const leafNormal = new THREE.Vector3(0, 1, 0).applyEuler(rotation);
+      for (const index of [0, 4, 1, 1, 4, 2, 2, 4, 3, 3, 4, 0]) {
+        const p = transformed[index];
+        const normal = new THREE.Vector3(p.x, p.y * .8 + radius * .35, p.z).normalize().lerp(leafNormal, .3).normalize();
+        const shade = depthShade * (index === 4 ? 1.02 : .97);
+        vertices.push(...p.toArray()); normals.push(...normal.toArray());
+        colors.push(color.r * shade, color.g * shade, color.b * shade);
+      }
     }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   return geo;
 }
 
@@ -86,5 +93,18 @@ export function rockGeometry(): THREE.BufferGeometry {
     p.setXYZ(i, Math.min(rx, 5.1 - y * .13), Math.max(-4.5, ry), Math.max(rz, -5.2 + x * .12));
   }
   geo.computeVertexNormals();
+  const normals = geo.getAttribute('normal');
+  const colors: number[] = [];
+  const tint = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const grain = Math.sin(x * 1.7 + z * 2.3) * Math.cos(y * 2.1 - z);
+    const moss = THREE.MathUtils.smoothstep(normals.getY(i), .35, .9)
+      * THREE.MathUtils.smoothstep(Math.sin(x * .8 + z * .9), -.25, .8);
+    tint.set(0xd4d1c7).lerp(new THREE.Color(0x78805c), moss * .58);
+    tint.multiplyScalar((.68 + THREE.MathUtils.smoothstep(y, -4.5, 3) * .3) * (1 + grain * .07));
+    colors.push(tint.r, tint.g, tint.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   return geo;
 }

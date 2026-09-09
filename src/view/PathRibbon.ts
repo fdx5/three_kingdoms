@@ -147,6 +147,7 @@ export class PathRibbon {
     }
 
     this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh.visible = !terrain.hasIntegratedRoad;
     this.mesh.receiveShadow = true;
     this.group.add(this.mesh);
 
@@ -158,7 +159,7 @@ export class PathRibbon {
   setSurfaceQuality(high: boolean): void { groundMaterialDetail(this.material, high); }
 
   private buildRoadDetails(terrain: Terrain): void {
-    const stoneCount = Math.max(12, Math.floor(this.path.totalLength / 6));
+    const stoneCount = Math.max(12, Math.floor(this.path.totalLength / 9));
     const stones = new THREE.InstancedMesh(
       new THREE.DodecahedronGeometry(2.4, 0),
       new THREE.MeshStandardMaterial({ color: 0x766a58, roughness: 0.96, flatShading: true }),
@@ -172,16 +173,17 @@ export class PathRibbon {
     const position = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
     for (let i = 0; i < stoneCount; i++) {
-      const d = 8 + (i / stoneCount) * (this.path.totalLength - 16);
+      const random = (salt: number) => { const n = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453; return n - Math.floor(n); };
+      const d = 8 + random(1) * (this.path.totalLength - 16);
       const at = { x: 0, z: 0 }, dir = { x: 0, z: 0 };
       this.path.positionAt(d, at);
       this.path.directionAt(d, dir);
       const side = i % 2 === 0 ? -1 : 1;
-      const offset = side * (RIBBON_WIDTH * (0.42 + (Math.sin(i * 41.3) * 0.5 + 0.5) * 0.23));
+      const offset = side * (RIBBON_WIDTH * (.38 + random(2) * .28));
       const x = at.x - dir.z * offset, z = at.z + dir.x * offset;
       position.set(x, terrain.heightAt(x, z) + 1.3, z);
       quaternion.setFromAxisAngle(up, i * 2.399);
-      const s = 0.55 + (Math.sin(i * 17.17) * 0.5 + 0.5) * 1.1;
+      const s = .25 + Math.pow(random(3), 2) * 1.1;
       scale.set(s, s * 0.55, s * 1.25);
       matrix.compose(position, quaternion, scale);
       stones.setMatrixAt(i, matrix);
