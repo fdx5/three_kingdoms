@@ -1202,11 +1202,26 @@ body.debug .leveltitle {
   color: #d7a89b;
 }
 /* Cinematic calligraphy remains click-through so the battlefield stays playable. */
+/*
+ * 자막의 자리는 **비주얼 뷰포트**로 잡는다 — 화면에 실제로 보이는 사각형이다.
+ *
+ * 이 요소는 body 에 붙는데(전장 위 어디에도 속하지 않는 연출이라), 예전에는
+ * `left: 50%` 와 `15vw` 로 잡았다. 그 퍼센트와 vw 는 position:fixed 에서
+ * **레이아웃 뷰포트**를 기준으로 풀린다. 데스크톱에서는 둘이 같아서 아무 문제가
+ * 없지만 iOS 사파리에서는 다르다(툴바, 확대, 아이패드의 분할 화면·스테이지 매니저).
+ * 그래서 아이패드에서 얼음폭풍·화공 글씨만 혼자 커지고 화면 중앙을 벗어나 있었다 —
+ * 나머지 HUD 는 #app 이 --viewport-* 로 이미 비주얼 뷰포트에 붙어 있었기 때문이다.
+ *
+ * 폴백(100vw/100dvh)은 그 변수를 아직 못 받은 첫 프레임용이다. trackViewport() 가
+ * 값을 넣는 순간 정확한 사각형으로 옮겨 간다.
+ */
 .storm-title {
-  position: fixed; left: 50%; top: 40%; z-index: 120;
+  position: fixed; z-index: 120;
+  left: calc(var(--viewport-left, 0px) + var(--viewport-width, 100vw) / 2);
+  top: calc(var(--viewport-top, 0px) + var(--viewport-height, 100dvh) * 0.4);
   transform: translate(-50%, -50%) rotate(-5deg); opacity: 0;
   pointer-events: none; text-align: center; color: #fff;
-  width: min(90vw, 760px); isolation: isolate;
+  width: min(calc(var(--viewport-width, 100vw) * 0.9), 760px); isolation: isolate;
   text-shadow: 0 4px 8px #000, 0 0 38px #ff761f88;
 }
 .storm-title::before {
@@ -1216,10 +1231,19 @@ body.debug .leveltitle {
 }
 .storm-title strong {
   display: block; font-family: 'Storm Brush', 'KaiTi', '궁서', cursive;
-  font-size: clamp(100px, 15vw, 220px); font-weight: 400; line-height: 1.15;
+  /*
+   * 글자 크기도 보이는 폭에서 끌어낸다. vw 로 두면 위와 같은 이유로 아이패드에서만
+   * 혼자 커진다. 아래 한계(60px)는 예전 좁은 화면 규칙에서 가져왔다 — 이제 이
+   * 한 줄이 폰부터 데스크톱까지 다 덮으므로 폭별 예외가 필요 없다.
+   */
+  font-size: clamp(60px, calc(var(--viewport-width, 100vw) * 0.15), 220px);
+  font-weight: 400; line-height: 1.15;
   letter-spacing: .08em; -webkit-text-stroke: 1px #fff;
 }
-.storm-title span { display: block; font-size: clamp(12px, 1.4vw, 18px); letter-spacing: .3em; margin-top: 12px; }
+.storm-title span {
+  display: block; letter-spacing: .3em; margin-top: 12px;
+  font-size: clamp(12px, calc(var(--viewport-width, 100vw) * 0.014), 18px);
+}
 .storm-title--ice { text-shadow: 0 4px 8px #00111c, 0 0 38px #54cfff; }
 .storm-title--ice::before { background: radial-gradient(ellipse, #071e39cc, #071e3900 70%); }
 @media (prefers-reduced-motion: reduce) { .storm-title { transform: translate(-50%, -50%); } }
@@ -1342,7 +1366,6 @@ body.debug .leveltitle {
   .stratagems { width: 100%; }
   .stratcard { flex: 1 0 62px; }
   .overlay__card { padding: 16px; }
-  .storm-title strong { font-size: clamp(60px, 17vw, 100px); }
 }
 @media (max-height: 450px) and (orientation: landscape) {
   .topbar .chip { min-height: 32px; }
