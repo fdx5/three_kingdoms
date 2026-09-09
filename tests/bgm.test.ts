@@ -20,6 +20,10 @@ interface FakePlayer {
 }
 
 let created: FakePlayer[] = [];
+/** window 에 걸린 리스너들 — 제스처를 손으로 터뜨리려고 모아 둔다 */
+let listeners: Record<string, (() => void)[]> = {};
+/** iOS 흉내: 제스처 없이는 autoplay 가 시작되지 않는다 */
+let blockAutoplay = false;
 /** 마지막으로 생성된 플레이어가 받은 playerVars */
 let capturedVars: Record<string, unknown> | undefined;
 let fireReady: (() => void) | null = null;
@@ -49,7 +53,7 @@ function installFakeYT(): void {
         const self: FakePlayer = { videoId: opts.videoId, playing: false, calls: [], ready: false };
         created.push(self);
         // 실제 플레이어와 같게 — autoplay가 켜져 있으면 준비되기도 전에 소리가 난다.
-        if (opts.playerVars.autoplay) self.playing = true;
+        if (opts.playerVars.autoplay && !blockAutoplay) self.playing = true;
         /*
          * 여기가 이 가짜의 핵심이다. 진짜 IFrame API는 onReady 전의 메서드 호출을
          * 던지지도 큐에 넣지도 않고 **그냥 버린다**. 그 성질을 흉내내지 않으면
@@ -79,13 +83,18 @@ function installFakeYT(): void {
       }
     },
   };
-  (w.window as Record<string, unknown>).addEventListener = () => {};
-  (w.window as Record<string, unknown>).removeEventListener = () => {};
+  (w.window as Record<string, unknown>).addEventListener = (type: string, fn: () => void) => {
+    (listeners[type] ??= []).push(fn);
+  };
+  (w.window as Record<string, unknown>).removeEventListener = (type: string, fn: () => void) => {
+    listeners[type] = (listeners[type] ?? []).filter((f) => f !== fn);
+  };
   (w.window as Record<string, unknown>).YT = w.YT;
 }
 
 beforeEach(() => {
   created = []; fireReady = null; fireEnded = null; capturedVars = undefined;
+  listeners = {}; blockAutoplay = false;
   installFakeYT();
 });
 afterEach(() => {
@@ -95,6 +104,8 @@ afterEach(() => {
 const CH1 = 'chapter-one-song';
 const CH6 = 'chapter-six-song';
 const last = () => created[created.length - 1];
+/** 그 이벤트로 걸린 리스너를 전부 부른다 */
+const fireGesture = (type: string) => { for (const fn of listeners[type] ?? []) fn(); };
 
 describe('배경음 — 플레이어가 준비되기 전의 요청', () => {
   it('준비 전에 장이 바뀌면 준비된 뒤 바뀐 장의 곡이 나온다', async () => {
@@ -154,5 +165,61 @@ describe('배경음 — 플레이어가 준비되기 전의 요청', () => {
     expect(capturedVars).toBeDefined();
     expect(capturedVars).not.toHaveProperty('playlist');
     expect(capturedVars).not.toHaveProperty('loop');
+  });
+});
+
+
+/*
+ * iOS 에서 배경음이 아예 안 나오던 버그.
+ *
+ * 세 가지가 겹쳐 있었다. (1) `pointerdown` 만 들었는데 iOS 사파리는 그것을 재생
+ * 권한으로 인정하지 않는다 — `click` 이나 `touchend` 여야 한다. (2) 리스너를 1.5초
+ * 뒤에, 그것도 `await ensurePlayer()` 뒤에 걸어서 로딩 중에 지나간 첫 탭을 놓쳤다.
+ * (3) `once: true` 라 그 한 번이 실패하면 두 번째 기회가 없었다.
+ *
+ * 데스크톱에서는 pointerdown 으로 풀리므로 셋 다 안 보였다.
+ */
+describe('배경음 — 자동재생이 막힌 기기(iOS)', () => {
+  it('iOS 가 인정하는 제스처(click·touchend)를 듣는다', async () => {
+    blockAutoplay = true;
+    const bgm = new YoutubeBgm();
+    await bgm.play(CH1);
+    expect(listeners.click?.length).toBeGreaterThan(0);
+    expect(listeners.touchend?.length).toBeGreaterThan(0);
+  });
+
+  it('플레이어가 준비되기 전에 지나간 탭도 권한으로 쓴다', async () => {
+    blockAutoplay = true;
+    const bgm = new YoutubeBgm();
+    await bgm.play(CH1);
+    // 로딩 화면을 누르고 지나갔다 — 아직 onReady 전이라 playVideo 는 버려진다
+    fireGesture('touchend');
+    expect(last().playing).toBe(false);
+
+    // 그 탭을 기억하고 있어야 준비된 순간 소리가 난다
+    fireReady!();
+    expect(last().playing).toBe(true);
+  });
+
+  it('첫 제스처가 실패해도 계속 기다린다 (한 번으로 포기하지 않는다)', async () => {
+    blockAutoplay = true;
+    const bgm = new YoutubeBgm();
+    await bgm.play(CH1);
+    fireReady!();
+    // 준비는 됐지만 autoplay 가 막혀 아직 소리가 없다
+    last().playing = false;
+
+    expect(listeners.click?.length).toBeGreaterThan(0);
+    fireGesture('click');
+    expect(last().playing).toBe(true);
+  });
+
+  it('멈추라고 하면 제스처를 더 듣지 않는다', async () => {
+    blockAutoplay = true;
+    const bgm = new YoutubeBgm();
+    await bgm.play(CH1);
+    expect(listeners.click?.length).toBeGreaterThan(0);
+    bgm.stop();
+    expect(listeners.click?.length ?? 0).toBe(0);
   });
 });

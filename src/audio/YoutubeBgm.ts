@@ -53,6 +53,14 @@ const API_TIMEOUT_MS = 8000;
 /** 재생을 걸고 이 시간 안에 시작되지 않으면 자동재생이 막힌 것으로 본다 */
 const AUTOPLAY_CHECK_MS = 1500;
 
+/**
+ * 재생 권한을 주는 사용자 조작들.
+ *
+ * `click` 과 `touchend` 가 iOS 에서 유일하게 인정되는 둘이다. `pointerdown` 은
+ * 데스크톱에서 더 빨리 반응하니 남겨 두고, `keydown` 은 키보드로만 노는 사람 몫이다.
+ */
+const GESTURE_EVENTS = ['click', 'touchend', 'pointerdown', 'keydown'] as const;
+
 let apiPromise: Promise<YTNamespace | null> | null = null;
 
 /** iframe_api 스크립트를 한 번만 심는다. 실패하면 null. */
@@ -109,10 +117,32 @@ export class YoutubeBgm {
   private muted = false;
   private gestureArmed = false;
   private disposed = false;
+  /**
+   * 사용자 조작을 한 번이라도 봤는가.
+   *
+   * 플레이어가 준비되기 전에 첫 탭이 지나가는 일이 흔하다(로딩 중에 화면을 누른다).
+   * 그 사실을 기억해 두지 않으면 onReady 가 왔을 때 "아직 제스처가 없었다"고 보고
+   * 조용히 막힌 채로 남는다.
+   */
+  private sawGesture = false;
 
   private onGesture = (): void => {
-    this.gestureArmed = false;
-    if (this.wantPlaying) this.player?.playVideo?.();
+    this.sawGesture = true;
+    if (!this.wantPlaying || this.disposed) return;
+    // 이 호출은 반드시 제스처 핸들러와 **같은 실행 덩어리** 안에 있어야 한다.
+    // await 를 하나라도 끼우면 iOS 가 사용자 조작으로 인정하지 않는다.
+    this.applyVolume();
+    this.player?.playVideo?.();
+    // 한 번의 제스처로 풀리지 않는 경우가 있다(플레이어가 아직 준비 전이라거나,
+    // 저전력 모드라거나). 실제로 재생이 시작됐는지 확인하고, 아니면 계속 기다린다.
+    setTimeout(() => {
+      if (this.disposed || !this.wantPlaying) return;
+      const YT = window.YT;
+      const state = this.safeState();
+      if (YT && (state === YT.PlayerState.PLAYING || state === YT.PlayerState.BUFFERING)) {
+        this.disarmGestureRetry();
+      }
+    }, AUTOPLAY_CHECK_MS);
   };
 
   /** 이 곡을 처음부터 반복 재생한다. 이미 같은 곡이 돌고 있으면 이어서 튼다. */
@@ -120,6 +150,15 @@ export class YoutubeBgm {
     if (!videoId || this.disposed) return;
     this.wantedId = videoId;
     this.wantPlaying = true;
+
+    /*
+     * 기다리기 **전에** 건다.
+     *
+     * ensurePlayer() 는 유튜브 API 스크립트를 받아 오므로 모바일 회선에서 몇 초가
+     * 걸린다. 그 사이에 사람은 로딩 화면을 한 번 누르고 지나가고, 그게 iOS 에서는
+     * 유일하게 인정되는 재생 권한이었다. await 뒤에 걸면 그 탭을 놓친다.
+     */
+    this.armGestureRetry();
 
     await this.ensurePlayer();
     const player = this.player;
@@ -188,28 +227,36 @@ export class YoutubeBgm {
   }
 
   /**
-   * 자동재생이 막혔을 때를 대비해 다음 사용자 조작에서 한 번 더 시도한다.
+   * 자동재생이 막혔을 때를 대비해 사용자 조작에서 다시 시도한다.
    * 브라우저는 소리가 나는 재생을 제스처 없이는 막는다 — 게임 첫 탭이 그 제스처가 된다.
+   *
+   * iOS 에서 배경음이 아예 안 나오던 이유가 여기 있었다. 세 가지가 겹쳤다.
+   *
+   *   1) **듣는 이벤트가 틀렸다.** iOS 사파리는 `pointerdown`(과 `touchstart`)을
+   *      미디어 재생 권한으로 인정하지 않는다. `click` 이나 `touchend` 여야 한다.
+   *      데스크톱에서는 pointerdown 으로도 풀리므로 이 차이가 안 보였다.
+   *   2) **너무 늦게 걸었다.** 1.5초 뒤에야 리스너를 달았는데, 그 사이에 사람이
+   *      화면을 한 번 누르고 지나간다. 그 탭이 유일한 기회였다.
+   *   3) **한 번만 시도했다.** `once: true` 라 첫 조작에서 실패하면(플레이어가 아직
+   *      준비 전이면 playVideo 는 조용히 사라진다) 두 번째 기회가 없었다.
+   *
+   * 그래서 지금은 **곧바로, 네 이벤트 모두에, 재생이 확인될 때까지** 건다.
    */
   private armGestureRetry(): void {
-    if (typeof window === 'undefined') return;
-    setTimeout(() => {
-      if (!this.wantPlaying || this.disposed || this.gestureArmed) return;
-      const state = this.safeState();
-      const YT = window.YT;
-      if (!YT) return;
-      if (state === YT.PlayerState.PLAYING || state === YT.PlayerState.BUFFERING) return;
-      this.gestureArmed = true;
-      window.addEventListener('pointerdown', this.onGesture, { once: true });
-      window.addEventListener('keydown', this.onGesture, { once: true });
-    }, AUTOPLAY_CHECK_MS);
+    if (typeof window === 'undefined' || this.disposed) return;
+    if (!this.wantPlaying || this.gestureArmed) return;
+    this.gestureArmed = true;
+    for (const type of GESTURE_EVENTS) {
+      window.addEventListener(type, this.onGesture, { passive: true });
+    }
   }
 
   private disarmGestureRetry(): void {
     if (typeof window === 'undefined' || !this.gestureArmed) return;
     this.gestureArmed = false;
-    window.removeEventListener('pointerdown', this.onGesture);
-    window.removeEventListener('keydown', this.onGesture);
+    for (const type of GESTURE_EVENTS) {
+      window.removeEventListener(type, this.onGesture);
+    }
   }
 
   private safeState(): number {
@@ -279,6 +326,8 @@ export class YoutubeBgm {
               this.ready = true;
               this.applyVolume();
               this.applyWanted();
+              // 준비 전에 지나간 탭도 권한이다 — 여기서 한 번 더 눌러 본다.
+              if (this.wantPlaying && this.sawGesture) this.player?.playVideo?.();
               if (this.wantPlaying) this.armGestureRetry();
             },
             onStateChange: (e) => {

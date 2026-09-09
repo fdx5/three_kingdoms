@@ -839,10 +839,17 @@ class Game {
     this.resizeObserver.observe(this.container);
     this.resize();
 
-    // 첫 사용자 제스처에서 오디오를 깨운다 (모바일 자동재생 정책)
+    /*
+     * 첫 사용자 제스처에서 오디오를 깨운다 (모바일 자동재생 정책).
+     *
+     * click 과 touchend 가 목록에 있어야 한다 — iOS 사파리는 pointerdown 을
+     * 재생 권한으로 인정하지 않는다. pointerdown 만 걸어 두면 데스크톱에서는
+     * 멀쩡하고 아이폰·아이패드에서만 소리가 안 난다. [[YoutubeBgm.armGestureRetry]]
+     */
     const unlock = () => void this.audio.unlock();
-    window.addEventListener('pointerdown', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
+    for (const type of ['click', 'touchend', 'pointerdown', 'keydown'] as const) {
+      window.addEventListener(type, unlock, { once: true, passive: true });
+    }
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
