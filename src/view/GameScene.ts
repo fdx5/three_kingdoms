@@ -24,6 +24,7 @@ import { ProjectileView, createProjectileAssets, heatOf } from './views/Projecti
 import { GroundFireView, createGroundFireAssets } from './views/GroundFireView';
 import { ParticleSystem } from './vfx/Particles';
 import { ImpactWaves } from './vfx/ImpactWaves';
+import { MeleeStrikes } from './vfx/MeleeStrikes';
 import { BloodDecals } from './vfx/BloodDecals';
 
 export interface GameSceneCallbacks {
@@ -81,6 +82,7 @@ export class GameScene {
   readonly particles: ParticleSystem;
   readonly blood: BloodDecals;
   readonly impacts: ImpactWaves;
+  readonly melee: MeleeStrikes;
 
   private castleView: CastleView;
   private towerViews = new Map<string, TowerView>();
@@ -176,6 +178,8 @@ export class GameScene {
 
     this.impacts = new ImpactWaves(preset);
     this.stage.root.add(this.impacts.mesh);
+    this.melee = new MeleeStrikes(preset);
+    this.stage.root.add(this.melee.group);
     this.particles = new ParticleSystem(preset);
     this.stage.root.add(this.particles.points);
 
@@ -690,14 +694,15 @@ export class GameScene {
     const hx = e.worldPos.x + (dx / len) * reach;
     const hz = e.worldPos.z + (dz / len) * reach;
     const hy = this.terrain.heightAt(hx, hz) + 16 * def.scale;
+    this.melee.emit(hx, hy, hz, -dx, -dz, e.unitId, def.scale);
 
     // 돌로 쌓은 진지는 돌조각이, 목조 망루는 나뭇조각이 튄다.
     const stone = e.towerId === 'cannon_tower' || e.towerId === 'caltrop_camp';
     const power = boss ? 1.5 : 0.7;
-    this.particles.emit(stone ? 'stone_chip' : 'wood_splinter', hx, hy, hz, power);
+    this.particles.emit(stone ? 'stone_chip' : 'wood_splinter', hx, hy, hz, power, dx, dz);
     this.particles.emit('weapon_spark', hx, hy, hz, boss ? 0.9 : 0.35);
     // 체력이 얼마 안 남은 망루는 맞을 때마다 먼지가 인다 — 무너지기 직전의 소리다.
-    if (e.hpRatio < BALANCE.fx.towerDamage.criticalAt && Math.random() < 0.5) {
+    if (1 - e.hpRatio > BALANCE.fx.towerDamage.criticalAt) {
       this.particles.emit('ground_smoke', hx, hy, hz, 0.5);
     }
     if (boss && this.shakeEnabled) this.stage.addShake(BALANCE.fx.cameraShakeOnLeak * 0.5);
@@ -831,7 +836,7 @@ export class GameScene {
        * 앞으로 뻗은 순간이라, 등갑병의 검이든 감녕의 철퇴든 그 무기 끝에서 튄다.
        * 둘은 박자가 다르다 — 클립이 먼저 닿고 피해가 뒤따른다.
        */
-      if ((enemy.atCastle || enemy.siege === 'assault') && view.takeCastleImpact()) {
+      if (view.takeCastleImpact() && enemy.atCastle) {
         const def = getUnit(enemy.defId);
         const p = view.object3d.position;
         /*
@@ -844,6 +849,8 @@ export class GameScene {
         const len = Math.hypot(dx, dz) || 1;
         // 무기는 몸에서 성 쪽으로 이만큼 뻗어 있다 — 덩치가 클수록 멀리 닿는다
         const reach = 10 * def.scale;
+        this.melee.emit(p.x + dx / len * reach, view.weaponHeight, p.z + dz / len * reach,
+          dx, dz, enemy.defId, def.scale);
         if (def.view.weaponSweep) {
           /*
            * 날이 지나간 자리를 호로 그린다.
@@ -935,6 +942,14 @@ export class GameScene {
     for (let i = this.collapsingTowers.length - 1; i >= 0; i--) {
       const view = this.collapsingTowers[i];
       view.sync(_deadTower, alpha, dt, this.stage.camera);
+      if (view.takeCollapseImpact()) {
+        const { x, z } = view.object3d.position;
+        const y = this.terrain.heightAt(x, z);
+        this.impacts.emit(x, y + 2, z, 110);
+        this.particles.emit('tower_rubble', x, y + 8, z, .7);
+        this.particles.emit('death_dust', x, y + 4, z, 1.4);
+        if (this.shakeEnabled) this.stage.addShake(BALANCE.fx.cameraShakeOnLeak * .6);
+      }
       if (view.isCollapseFinished) {
         view.dispose();
         this.collapsingTowers.splice(i, 1);
@@ -945,6 +960,7 @@ export class GameScene {
 
     this.particles.update(dt);
     this.impacts.update(dt);
+    this.melee.update(dt, this.stage.camera);
     this.blood.update(dt);
     this.buildable.update(dt);
     this.flushHitFits();
@@ -1177,6 +1193,7 @@ export class GameScene {
     );
     this.particles.setPreset(preset);
     this.impacts.setPreset(preset);
+    this.melee.setPreset(preset);
     this.blood.setPreset(preset);
   }
 
@@ -1226,6 +1243,7 @@ export class GameScene {
     this.castleView.dispose();
     this.particles.dispose();
     this.impacts.dispose();
+    this.melee.dispose();
     this.ribbon.dispose();
     this.terrain.dispose();
     this.stage.dispose();

@@ -76,6 +76,7 @@ export class TowerView implements EntityView<Tower> {
   /** 무너지는 중이면 0..1, 아니면 -1 */
   private collapse = -1;
   private collapseAxis = 0;
+  private collapseImpactEmitted = false;
   private damageFx: TowerDamageFx | null = null;
   private fireAssets: GroundFireAssets | null = null;
   private readonly bar: TowerHealthBar;
@@ -237,6 +238,13 @@ export class TowerView implements EntityView<Tower> {
 
   get isCollapseFinished(): boolean {
     return this.collapse >= 1;
+  }
+
+  /** The heavy second impact happens when the falling structure reaches the ground. */
+  takeCollapseImpact(): boolean {
+    if (this.collapse < .55 || this.collapseImpactEmitted) return false;
+    this.collapseImpactEmitted = true;
+    return true;
   }
 
   private ensureDamageFx(): void {

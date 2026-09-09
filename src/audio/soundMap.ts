@@ -17,6 +17,8 @@ export type SoundMapping = string | Record<string, string>;
  * 다른 소리를 내면 그건 무기가 아니라 표적의 소리가 된다.
  */
 const MELEE_BY_UNIT: Record<string, string> = {
+  xl_infantry: 'sfx_sword1',
+  ys_infantry: 'sfx_sword2',
   // 방패와 중장갑 — 쇠와 쇠가 부딪히는 둔중한 소리
   xl_shield: 'sfx_sword1',
   sh_chainmail: 'sfx_sword1',
@@ -36,7 +38,7 @@ const MELEE_BY_UNIT: Record<string, string> = {
   wu_raider: 'sfx_sword3',
 
   // 대도 — 몸만 한 날이 쓸고 지나간다
-  jz_halberd: 'sfx_sword4',
+  jz_halberd: 'sfx_sword2',
 };
 
 /** 무기 계열 + 종류 기본값. 유닛 id 가 먼저 잡히고, 없으면 종류로 떨어진다. */

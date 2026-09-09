@@ -130,6 +130,22 @@ async function main() {
   await page.waitForTimeout(700);
   await shot(page, '1b-closeup');
 
+  // Freeze the contact frame so brief blade/thrust silhouettes can be inspected.
+  const strike = await page.evaluate(() => {
+    const g = window.game;
+    g.loop.stop();
+    const t = g.world.towers.values().next().value;
+    const y = g.scene.terrain.heightAt(t.x, t.z) + 22;
+    g.scene.melee.emit(t.x - 22, y, t.z + 22, 1, 0, 'xl_infantry', 1.3);
+    g.scene.melee.emit(t.x + 22, y, t.z + 22, -1, 0, 'ys_spear', 1.3);
+    g.render(1, 1 / 60);
+    return g.scene.melee.group.visible && g.scene.melee.group.children.length === 3;
+  });
+  if (strike) ok('칼 궤적·창 찌르기·접촉 섬광 표시');
+  else fail('무기 타격 궤적이 표시되지 않았다');
+  await shot(page, '1c-weapon-contact');
+  await page.evaluate(() => window.game.loop.start());
+
   // 망루 하나를 반쯤 부수고 그 그림을 본다 (연기 -> 불)
   for (const [name, ratio] of [['2-smoke', 0.62], ['3-fire', 0.38], ['4-critical', 0.14]]) {
     await page.evaluate(`(function () {

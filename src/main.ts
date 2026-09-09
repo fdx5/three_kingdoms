@@ -502,7 +502,8 @@ class Game {
          * 타격음은 무기 계열이 정한다 — 유닛 id 가 먼저 잡히고 없으면 종류로
          * 떨어진다(성벽을 칠 때와 같은 표다).
          */
-        this.audio.play('tower:damaged', unitId, 0.28, getUnit(unitId).kind);
+        const pan = Math.max(-.85, Math.min(.85, sx / Math.max(1, this.container.clientWidth) * 2 - 1));
+        this.audio.play('tower:damaged', unitId, pan, getUnit(unitId).kind);
       },
       onTowerDestroyed: (towerId, level, lostGold) => {
         const name = getTower(towerId).displayName;

@@ -107,10 +107,16 @@ describe('사운드 매핑', () => {
       expect(manifest.audio[wall[kind]], kind).toBeDefined();
     }
 
-    // 계열이 실제로 갈려 있다: 방패·기병·창·대도가 서로 다른 음원을 쓴다
-    const 계열 = [wall.xl_shield, wall.xl_cavalry, wall.ys_spear, wall.jz_halberd];
+    // 요청한 세 음원을 방패·기병·창에 나눠 쓰고 일반 보병에도 배정한다.
+    const 계열 = [wall.xl_shield, wall.xl_cavalry, wall.ys_spear];
     expect(new Set(계열).size).toBe(계열.length);
     for (const id of 계열) expect(manifest.audio[id], id).toBeDefined();
+    for (const [id, file] of [['sfx_sword1', 'sword.mp3'], ['sfx_sword2', 'sword2.mp3'], ['sfx_sword3', 'sword3.mp3']]) {
+      expect(readFileSync(`public/assets/${manifest.audio[id]}`)).toEqual(readFileSync(`sound/${file}`));
+    }
+    expect(wall.xl_infantry).toBe('sfx_sword1');
+    expect(wall.ys_infantry).toBe('sfx_sword2');
+    expect(wall.jz_halberd).toBe('sfx_sword2');
   });
 
   it('성문의 활 발사는 arrow.mp3를 사용한다', () => {

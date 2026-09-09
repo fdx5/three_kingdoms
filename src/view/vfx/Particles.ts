@@ -221,7 +221,7 @@ export class ParticleSystem {
     return this.rngState / 4294967296;
   }
 
-  emit(preset: ParticlePreset, x: number, y: number, z: number, intensity = 1): void {
+  emit(preset: ParticlePreset, x: number, y: number, z: number, intensity = 1, directionX = 0, directionZ = 0): void {
     const spec = PRESETS[preset];
     const count = Math.max(1, Math.round(spec.count * this.scale * intensity));
     if (intensity <= 0 || this.scale <= 0) return;
@@ -230,7 +230,9 @@ export class ParticleSystem {
     for (let i = 0; i < count; i++) {
       const idx = this.activeCount < this.limit ? this.activeCount++ : this.cursor++ % this.limit;
 
-      const theta = this.rand() * Math.PI * 2;
+      const theta = directionX || directionZ
+        ? Math.atan2(directionZ, directionX) + (this.rand() - .5) * 1.8
+        : this.rand() * Math.PI * 2;
       const upBias = spec.up;
       const horiz = (1 - upBias) + this.rand() * spec.spread;
       const speed = spec.speed[0] + this.rand() * (spec.speed[1] - spec.speed[0]);

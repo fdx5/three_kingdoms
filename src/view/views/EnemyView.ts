@@ -476,7 +476,7 @@ export class EnemyView implements EntityView<Enemy> {
 
   /** 무기가 성벽을 때리는 대략적인 높이 (불꽃을 여기서 터뜨린다) */
   get weaponHeight(): number {
-    return this.headHeight * 0.55;
+    return this.object3d.position.y + this.headHeight * 0.55;
   }
 
   get isAttackFinished(): boolean {
