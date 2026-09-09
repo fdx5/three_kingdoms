@@ -196,6 +196,9 @@ export const LEVEL_05: LevelDef = {
   }),
 
   environment: {
+    // Flooding must read immediately, while the distant fog leaves the road and HUD legible.
+    weather: { kind: 'rain', color: '#b7d0dd', sky: '#8e9fae', sun: '#d5e5f5', sunIntensity: 1.65,
+      fogNear: 1650, fogFar: 3300, wind: 65 },
     landscape: 'floodplain',
     // 물에 잠긴 들판 — 잿빛 하늘과 진흙
     skyColor: '#9fa8ad',

@@ -1,4 +1,6 @@
 import type { AssetRegistry } from '../view/AssetRegistry';
+import { BALANCE } from '../data/balance';
+import { Rng } from '../core/Rng';
 import { SOUND_MAP, SOUND_BUS, SOUND_CLIPS, type SoundMapping } from './soundMap';
 import { YoutubeBgm } from './YoutubeBgm';
 
@@ -88,6 +90,22 @@ export class AudioManager {
     } catch {
       return null;
     }
+  }
+
+  /** Distant filtered rumble uses the existing SFX bus, so mute and volume still apply. */
+  playThunder(): void {
+    const ctx = this.ctx, bus = this.buses.sfx.gain;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const c = BALANCE.fx.weather;
+    const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * c.thunderSec), ctx.sampleRate);
+    const data = buffer.getChannelData(0), rng = new Rng(c.seed);
+    for (let i = 0; i < data.length; i++) data[i] = (rng.next() * 2 - 1) * Math.sin(Math.PI * i / data.length);
+    const source = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+    source.buffer = buffer; filter.type = 'lowpass'; filter.frequency.value = c.thunderHz;
+    gain.gain.value = c.thunderGain;
+    source.connect(filter); filter.connect(gain); gain.connect(bus);
+    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
+    source.start();
   }
 
   /**

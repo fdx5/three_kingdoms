@@ -1,4 +1,5 @@
 import { StratagemStorm } from './vfx/StratagemStorm';
+import { ChapterWeather } from './vfx/ChapterWeather';
 import * as THREE from 'three';
 import type { World } from '../sim/World';
 import type { Enemy } from '../sim/Enemy';
@@ -28,6 +29,7 @@ import { MeleeStrikes } from './vfx/MeleeStrikes';
 import { BloodDecals } from './vfx/BloodDecals';
 
 export interface GameSceneCallbacks {
+  onWeatherThunder?: () => void;
   /** 세워진 타워를 탭했다 */
   onTowerTapped: (slotId: string, screenX: number, screenY: number) => void;
   /**
@@ -77,6 +79,7 @@ const CASTLE_FIRE_RADIUS = 84;
 export class GameScene {
   readonly stage: Stage;
   private storm: StratagemStorm;
+  readonly weather: ChapterWeather;
   readonly terrain: Terrain;
   readonly ribbon: PathRibbon;
   readonly particles: ParticleSystem;
@@ -159,6 +162,8 @@ export class GameScene {
     this.terrain.buildDecor(preset);
     this.storm = new StratagemStorm(world, this.terrain, preset);
     this.stage.root.add(this.storm.group);
+    this.weather = new ChapterWeather(world.level.environment, this.stage, preset, () => this.cb.onWeatherThunder?.());
+    this.stage.root.add(this.weather.group);
 
     this.ribbon = new PathRibbon(world.path, this.terrain, assets);
     // 지면 재질의 디테일 단계. PathRibbon 이 아직 이 API 를 갖지 않은 트리에서도
@@ -649,6 +654,7 @@ export class GameScene {
 
     this.subs.add(
       bus.on('wave:started', ({ index }) => {
+        this.weather.waveStarted(index, this.world.level.waves.length);
         if (index === 1) this.ribbon.setArrowsHighlighted(false);
       }),
     );
@@ -814,6 +820,7 @@ export class GameScene {
   render(alpha: number, dt: number, frameDt = dt): void {
     this.stage.update(frameDt);
     this.terrain.update(frameDt);
+    this.weather.update(frameDt);
     this.storm.update();
 
     this.fxTimer += dt;
@@ -1184,6 +1191,7 @@ export class GameScene {
     this.stage.applyPreset(preset, renderer);
     this.terrain.buildDecor(preset);
     this.storm.applyPreset(preset);
+    this.weather.applyPreset(preset);
     // 지면 재질의 디테일 단계. PathRibbon 이 아직 이 API 를 갖지 않은 트리에서도
     // 타입과 런타임 양쪽에서 안전하도록 캐스트 + 옵셔널로 부른다 —
     // 없으면 재질 품질만 기본값으로 남고, 들어오면 그대로 동작한다.
@@ -1200,6 +1208,7 @@ export class GameScene {
   dispose(): void {
     this.subs.dispose();
     this.storm.dispose();
+    this.weather.dispose();
 
     for (const v of this.enemyViews.values()) v.dispose();
     for (const d of this.dyingViews) d.view.dispose();

@@ -34,6 +34,17 @@ export interface BuildSlotDef {
 }
 
 export interface LevelEnvironment {
+  /** Weather is view-only; chapter identity and lighting live with its palette. */
+  weather?: {
+    kind: 'rain';
+    color: string;
+    sky: string;
+    sun: string;
+    sunIntensity: number;
+    fogNear: number;
+    fogFar: number;
+    wind: number;
+  };
   skyColor: string;
   groundColor: string;
   /** 고도 낮은 곳 흙색 */

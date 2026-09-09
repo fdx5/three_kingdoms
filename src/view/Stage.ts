@@ -111,6 +111,13 @@ export class Stage {
     this.sun.shadow.normalBias = 0.3;
   }
 
+  setWeatherSky(color: string, flash: number): void {
+    // Tint the panorama too: changing background alone is hidden by the existing dome.
+    const material = this.skyDome.material as THREE.MeshBasicMaterial;
+    material.color.set(color).multiplyScalar(1 + flash);
+    this.hemi.intensity = .65 + flash;
+  }
+
   applyPreset(preset: PerformancePreset, renderer: THREE.WebGLRenderer): void {
     renderer.shadowMap.enabled = preset.shadows;
     this.sun.castShadow = preset.shadows;

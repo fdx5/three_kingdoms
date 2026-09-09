@@ -181,6 +181,7 @@ export class Terrain {
         tint: new THREE.Color(env.landscape === 'floodplain' ? 0xa2aaa1 : env.landscape === 'loess' ? 0xd7bc94 : 0xc9b695),
         vegetation: new THREE.Color(env.landscape === 'loess' ? 0xb2a775 : env.biome === 'drylands' ? 0x87965d : 0x71995d),
         wetness: env.landscape === 'lakeside' || env.landscape === 'floodplain' ? 1 : 0,
+        rain: env.weather?.kind === 'rain' ? 1 : 0,
       };
     }
 
@@ -574,7 +575,8 @@ export class Terrain {
     for (const d of this.decor) this.group.add(d);
     if (this.env.landscape) {
         this.chapter = new ChapterLandscape(this.env.landscape, this,
-        (x, z) => Math.min(distanceToPath(this.path, x, z), ...this.reserved.map(p => Math.hypot(x - p.x, z - p.z))), preset.decorScale, this.surfaces.stone);
+        (x, z) => Math.min(distanceToPath(this.path, x, z), ...this.reserved.map(p => Math.hypot(x - p.x, z - p.z))), preset.decorScale, this.surfaces.stone,
+        this.env.weather?.kind === 'rain' && preset.particleScale > BALANCE.presets.low.particleScale);
       this.group.add(this.chapter.group);
     }
   }

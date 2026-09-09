@@ -391,6 +391,18 @@ export const BALANCE = {
 
   /** 뷰 연출 (sim에는 영향 없음) */
   fx: {
+    weather: {
+      // One GPU batch, no per-drop objects. Low omits it altogether; medium uses particleScale.
+      capacity: 1600, seed: 5017, ceiling: 340, padding: 100,
+      rainSpeed: 440, rainLength: 24, rainWidth: .65, rainOpacity: .27,
+      // Keep the nearest actors clear and prevent stalls from jumping an entire storm cycle.
+      maxDt: .1, nearFade: 180, fullFade: 500,
+      wetDarkening: .14, wetRoughness: .32,
+      rippleTile: 18, rippleSpeed: 1.7, rippleWidth: .035, rippleStrength: .18,
+      // Four wave milestones, rather than a repeating timer that flashes forever during preparation.
+      lightningMilestones: [.15, .4, .65, .9], flashSec: .32, flashStrength: 2.4,
+      thunderDelay: 1.3, thunderSec: 3.2, thunderGain: .28, thunderHz: 180,
+    },
     deathAnimDuration: 0.35,
     /**
      * 성에 닿은 적이 창을 한 번 내지르고 사라지기까지. attack 클립 길이와 맞춘다.

@@ -10,6 +10,7 @@ export interface RoadBlend {
   tint: THREE.Color;
   vegetation: THREE.Color;
   wetness: number;
+  rain: number;
 }
 
 /** World-space distance, not ribbon UVs: corners and shoulders share one opaque ground. */
@@ -47,6 +48,7 @@ export function blendRoad(shader: Shader, road: RoadBlend): void {
     roadNormal: { value: road.normal }, roadRoughness: { value: road.roughness },
     roadTint: { value: road.tint }, vegetationTint: { value: road.vegetation },
     landscapeWetness: { value: road.wetness },
+    landscapeRain: { value: road.rain },
   });
   shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 landscapePosition; varying float landscapeHeight;');
   shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
@@ -56,6 +58,7 @@ export function blendRoad(shader: Shader, road: RoadBlend): void {
     varying vec2 landscapePosition;
     varying float landscapeHeight;
     uniform float landscapeWetness;
+    uniform float landscapeRain;
     uniform sampler2D roadField, roadMap, roadNormal, roadRoughness;
     uniform vec3 roadTint, vegetationTint;
     float landscapeHash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
@@ -91,6 +94,7 @@ export function blendRoad(shader: Shader, road: RoadBlend): void {
     float damp = landscapeWetness * (1.0 - smoothstep(-.8, 4.0, landscapeHeight + broad * 1.5))
       * smoothstep(52.0, 72.0, roadDistance);
     diffuseColor.rgb *= 1.0 - damp * .32;
+    diffuseColor.rgb *= 1.0 - landscapeRain * ${BALANCE.fx.weather.wetDarkening};
   `);
   // Preserve the same ground tangent basis for both materials; their UV axes agree.
   const normalChunk = THREE.ShaderChunk.normal_fragment_maps.replace(
@@ -101,5 +105,6 @@ export function blendRoad(shader: Shader, road: RoadBlend): void {
     #include <roughnessmap_fragment>
     roughnessFactor = mix(roughnessFactor, max(.72, texture2D(roadRoughness, roadUv).g), roadWeight);
     roughnessFactor = mix(roughnessFactor, .46, damp);
+    roughnessFactor = mix(roughnessFactor, ${BALANCE.fx.weather.wetRoughness}, landscapeRain);
   `);
 }

@@ -5,6 +5,8 @@ import { Rng } from '../core/Rng';
 import type { Terrain } from './Terrain';
 import { weatheredMaterial } from './WeatheredMaterial';
 import { WaterReflection } from './WaterReflection';
+import { BALANCE } from '../data/balance';
+import { rainRipplesGLSL } from './vfx/RainRipples';
 
 type Theme = NonNullable<LevelEnvironment['landscape']>;
 export function chapterSites(theme?: Theme): number[][] {
@@ -51,7 +53,7 @@ export class ChapterLandscape {
   private reflection: WaterReflection | null = null;
 
   constructor(private theme: Theme, private terrain: Terrain, private clear: (x: number, z: number) => number, scale: number,
-    private stoneSurface: THREE.MeshStandardMaterialParameters = {}) {
+    private stoneSurface: THREE.MeshStandardMaterialParameters = {}, private rain = false) {
     this.group.name = `landscape-${theme}`;
     if (theme !== 'loess') this.buildWater(scale >= 1);
     this.buildProps(scale);
@@ -98,6 +100,12 @@ export class ChapterLandscape {
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float waterDepth; varying float vWaterDepth;');
       shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWaterDepth = waterDepth;');
       shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float waterTime; varying float vWaterDepth;');
+      if (this.rain) {
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + rainRipplesGLSL);
+        shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
+          #include <color_fragment>
+          diffuseColor.rgb += rainRing(vNormalMapUv * 70.0, waterTime) * ${BALANCE.fx.weather.rippleStrength};`);
+      }
       shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>',
         THREE.ShaderChunk.normal_fragment_maps.replace('texture2D( normalMap, vNormalMapUv ).xyz', `
           (texture2D(normalMap, vNormalMapUv * .53 + vec2(waterTime * .009, -waterTime * .006)).xyz
@@ -109,11 +117,11 @@ export class ChapterLandscape {
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.47, .52, .45), shore * foam * .22);
       `);
     };
-    this.water.customProgramCacheKey = () => 'water-crossflow-v1';
+    this.water.customProgramCacheKey = () => `water-crossflow-rain-${this.rain}`;
     const mesh = new THREE.Mesh(geo, this.water); mesh.name = 'chapter-water'; mesh.renderOrder = 1;
     this.group.add(mesh);
     if (reflections) {
-      this.reflection = new WaterReflection(geo, this.waterTime);
+      this.reflection = new WaterReflection(geo, this.waterTime, this.rain);
       this.group.add(this.reflection);
     }
   }

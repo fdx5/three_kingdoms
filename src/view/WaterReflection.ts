@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { rainRipplesGLSL } from './vfx/RainRipples';
+import { BALANCE } from '../data/balance';
 
 /** One shared planar reflection for all pools at the same waterline. */
 export class WaterReflection extends Reflector {
   declare material: THREE.ShaderMaterial;
-  constructor(surface: THREE.BufferGeometry, time: { value: number }) {
+  constructor(surface: THREE.BufferGeometry, time: { value: number }, rain = false) {
     const geometry = surface.clone().translate(0, 1.1, 0).rotateX(Math.PI / 2);
     super(geometry, { textureWidth: 768, textureHeight: 512, multisample: 0, clipBias: .002 });
     this.rotation.x = -Math.PI / 2;
@@ -33,6 +35,9 @@ export class WaterReflection extends Reflector {
         gl_FragColor = vec4(base.rgb, fresnel * smoothstep(.15, 3.5, depth));
       `);
     const renderReflection = this.onBeforeRender;
+    if (rain) this.material.fragmentShader = this.material.fragmentShader
+      .replace('void main() {', rainRipplesGLSL + '\nvoid main() {')
+      .replace('vec4 base = texture2D', `ripple += rainRing(worldPosition.xz, waterTime) * ${BALANCE.fx.weather.rippleStrength} * .01;\nvec4 base = texture2D`);
     this.onBeforeRender = (renderer, scene, camera, ...rest) => {
       // Helpers and transparent water must not appear in the reflection capture.
       const hidden: THREE.Object3D[] = [];

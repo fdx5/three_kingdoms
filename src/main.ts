@@ -497,6 +497,7 @@ class Game {
     this.world = new World({ level: this.level, seed: 1 });
 
     this.scene = new GameScene(this.world, this.assets, BALANCE.presets[this.preset], {
+      onWeatherThunder: () => this.audio.playThunder(),
       onTowerTapped: (slotId, sx, sy) => {
         void this.audio.unlock();
         this.audio.play('ui:tap');
