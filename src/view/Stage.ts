@@ -119,6 +119,7 @@ export class Stage {
     if (env.landscape === 'floodplain') { this.sun.color.set(0xd8e7f0); this.sun.intensity = 2.1; }
     if (env.landscape === 'lakeside') { this.sun.color.set(0xffebc8); this.sun.intensity = 2.55; }
     if (env.landscape === 'loess') { this.sun.color.set(0xffd09b); this.sun.position.set(-650, 650, 180); }
+    if (env.weather?.sunPosition) this.sun.position.fromArray(env.weather.sunPosition);
     this.sun.target.position.copy(this.target);
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);

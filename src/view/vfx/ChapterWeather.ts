@@ -19,6 +19,9 @@ export class ChapterWeather {
   private clearing = { value: 0 };
   private targetClearing = 0;
   private bossCloud = 0;
+  private starProgress = { value: -1 };
+  private starStarted = -1;
+  private starSeen = false;
 
   constructor(private env: LevelEnvironment, private stage: Stage, preset: PerformancePreset,
     private onThunder: () => void, private terrain: Terrain) {
@@ -32,11 +35,13 @@ export class ChapterWeather {
     const w = this.env.weather!;
     const ash = w.kind === 'ash';
     const mist = w.kind === 'mist';
-    const wind = w.kind === 'wind';
+    const loess = w.kind === 'loess';
+    const wind = w.kind === 'wind' || loess;
     const geometry = new THREE.PlaneGeometry(1, 1);
     const rng = new Rng(C.seed);
     const seeds = new Float32Array(C.capacity * 4);
     for (let i = 0; i < seeds.length; i++) seeds[i] = rng.next();
+    if (loess) seeds[3] = -1;
     if (mist) for (let i = 0; i < C.capacity; i++) {
       // Reject dry land once during construction, never search the terrain in the frame loop.
       for (let attempt = 0; attempt < C.waterSearchAttempts; attempt++) {
@@ -49,14 +54,15 @@ export class ChapterWeather {
     const material = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, side: THREE.DoubleSide,
       uniforms: { weatherTime: this.time, tint: { value: new THREE.Color(w.color) },
-        smokeTint: { value: new THREE.Color(C.smokeColor) }, clearing: this.clearing },
+        smokeTint: { value: new THREE.Color(C.smokeColor) }, clearing: this.clearing,
+        starProgress: this.starProgress, starTint: { value: new THREE.Color(C.starColor).multiplyScalar(C.starBrightness) } },
       vertexShader: `
         attribute vec4 weatherSeed;
-        uniform float weatherTime;
-        varying vec2 vUv; varying float vFade; varying float vSmoke; varying float vAge;
+        uniform float weatherTime, starProgress;
+        varying vec2 vUv; varying float vFade; varying float vSmoke; varying float vAge; varying float vStar;
         void main() {
           vUv = uv;
-          vSmoke = 0.0; vAge = 0.0;
+          vSmoke = 0.0; vAge = 0.0; vStar = 0.0;
           float age = fract(weatherSeed.y + weatherTime * ${C.rainSpeed / C.ceiling});
           vec3 p = vec3(weatherSeed.x * ${BALANCE.mapWidth + C.padding * 2}.0 - ${C.padding}.0,
             (1.0-age) * ${C.ceiling}.0,
@@ -85,9 +91,15 @@ export class ChapterWeather {
             ${C.mistLift}.0, weatherSeed.z * ${BALANCE.mapDepth}.0);
           vAge = age;
           ` : ''}
+          ${loess ? `
+          if (weatherSeed.w < 0.0) {
+            vStar = 1.0;
+            p = mix(vec3(${C.starStart.map(n => n.toFixed(1)).join(',')}), vec3(${C.starEnd.map(n => n.toFixed(1)).join(',')}), clamp(starProgress, 0.0, 1.0));
+          }
+          ` : ''}
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           vec2 direction = normalize((modelViewMatrix * vec4(${w.wind.toFixed(1)}, -${C.ceiling}.0, 0.0, 0.0)).xy);
-          ${wind ? `mv.xy += position.xy * vec2(${C.dustWidth}.0, ${C.dustThickness}.0);`
+          ${wind ? `mv.xy += position.xy * mix(vec2(${C.dustWidth}.0, ${C.dustThickness}.0), vec2(${C.starSize}.0), vStar);`
             : mist ? `mv.xy += position.xy * vec2(${C.mistWidth}.0, ${C.mistHeight}.0);`
             : ash ? `mv.xy += position.xy * mix(${C.ashSize}, ${C.smokeSize}.0 * (.5 + age), vSmoke);`
             : `mv.xy += direction * position.y * ${C.rainLength}.0
@@ -96,7 +108,7 @@ export class ChapterWeather {
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
-        uniform vec3 tint, smokeTint; uniform float clearing; varying vec2 vUv; varying float vFade, vSmoke, vAge;
+        uniform vec3 tint, smokeTint, starTint; uniform float clearing, starProgress; varying vec2 vUv; varying float vFade, vSmoke, vAge, vStar;
         void main() {
           float a = (1.0 - abs(vUv.x * 2.0 - 1.0)) * sin(vUv.y * 3.14159265);
           gl_FragColor = vec4(tint, a * vFade * ${C.rainOpacity});
@@ -107,7 +119,17 @@ export class ChapterWeather {
           gl_FragColor = vec4(mix(tint, smokeTint, vSmoke), a * vFade
             * mix(${C.ashOpacity}, ${C.smokeOpacity} * sin(vAge * 3.14159265), vSmoke));
           ` : ''}
-          ${wind ? `gl_FragColor = vec4(tint, pow(max(0.0, 1.0 - length(vUv * 2.0 - 1.0)), 2.0) * ${C.dustOpacity} * vFade);` : ''}
+          ${wind ? `gl_FragColor = vec4(tint, pow(max(0.0, 1.0 - length(vUv * 2.0 - 1.0)), 2.0) * ${loess ? C.loessOpacity : C.dustOpacity} * vFade);` : ''}
+          ${loess ? `
+          if (vStar > .5) {
+            vec2 q = vUv * 2.0 - 1.0;
+            vec2 tail = vec2(.6, .8);
+            float along = clamp(dot(q, tail), 0.0, 1.0);
+            float core = exp(-dot(q,q) / ${C.starCore * C.starCore});
+            float trail = exp(-pow(length(q-tail*along) / ${C.starTrail}, 2.0)) * (1.0-along) * .4;
+            gl_FragColor = vec4(starTint, (core + trail) * sin(clamp(starProgress, 0.0, 1.0) * 3.14159265));
+          }
+          ` : ''}
           ${mist ? `
           float soft = pow(max(0.0, 1.0 - length(vUv * 2.0 - 1.0)), 2.0);
           gl_FragColor = vec4(tint, soft * sin(vAge * 3.14159265) * ${C.mistOpacity} * (1.0-clearing) * vFade);
@@ -125,7 +147,7 @@ export class ChapterWeather {
   applyPreset(preset: PerformancePreset): void {
     this.enabled = preset.particleScale > BALANCE.presets.low.particleScale;
     if (this.mesh) {
-      const capacity = this.env.weather?.kind === 'wind' ? C.windCount : this.env.weather?.kind === 'mist' ? C.mistCount : this.env.weather?.kind === 'ash' ? C.ashCount : C.capacity;
+      const capacity = this.env.weather?.kind === 'loess' ? C.loessCount : this.env.weather?.kind === 'wind' ? C.windCount : this.env.weather?.kind === 'mist' ? C.mistCount : this.env.weather?.kind === 'ash' ? C.ashCount : C.capacity;
       this.mesh.count = this.enabled ? Math.round(capacity * preset.particleScale) : 0;
       this.mesh.visible = this.enabled;
     }
@@ -133,6 +155,7 @@ export class ChapterWeather {
   }
 
   waveStarted(index: number, total: number): void {
+    if (index === total) this.startStar();
     if (this.env.weather?.kind === 'mist') this.targetClearing = THREE.MathUtils.clamp((index - 1) / Math.max(1, total - 1), 0, 1);
     if (this.env.weather?.kind !== 'rain') return;
     const milestone = C.lightningMilestones.findIndex(p => index === Math.max(1, Math.ceil(total * p)));
@@ -142,7 +165,13 @@ export class ChapterWeather {
   }
 
   enemySpawned(unitId: string): void {
+    if (unitId === 'zhugeliang') this.startStar();
     if (this.env.weather?.kind === 'wind' && unitId === 'lubu' && this.enabled) this.bossCloud = C.bossCloudSec;
+  }
+
+  private startStar(): void {
+    if (this.env.weather?.kind !== 'loess' || this.starSeen) return;
+    this.starSeen = true; this.starStarted = this.time.value;
   }
 
   update(dt: number): void {
@@ -150,6 +179,7 @@ export class ChapterWeather {
     if (!w) return;
     dt = Math.min(C.maxDt, Math.max(0, dt));
     this.time.value += dt;
+    if (this.starStarted >= 0) this.starProgress.value = Math.min(1, (this.time.value - this.starStarted) / C.starSec);
     this.clearing.value = THREE.MathUtils.lerp(this.clearing.value, this.targetClearing, 1 - Math.exp(-dt * C.mistClearRate));
     this.flash = Math.max(0, this.flash - dt);
     this.bossCloud = Math.max(0, this.bossCloud - dt);

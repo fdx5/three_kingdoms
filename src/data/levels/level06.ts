@@ -213,6 +213,9 @@ export const LEVEL_06: LevelDef = {
   }),
 
   environment: {
+    // Low western light lengthens shadows; the reserved northern strip holds the falling star.
+    weather: { kind: 'loess', color: '#b58d66', sky: '#ba9e87', sun: '#ffc084', sunIntensity: 2.6,
+      fogNear: 1500, fogFar: 3100, wind: 22, sunPosition: [-800, 360, 200], framing: 1.2 },
     landscape: 'loess',
     // 가을 위수 강가의 마른 들 — 이 게임의 마지막 색은 저물녘이다
     skyColor: '#c8b39a',

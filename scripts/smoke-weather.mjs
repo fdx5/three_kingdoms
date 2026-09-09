@@ -96,6 +96,18 @@ try {
       assert.ok(cloud.after > cloud.before);
       await page.screenshot({ path: 'artifacts/weather-2-lubu.png' });
     }
+    if (level === '6') {
+      const star = await page.evaluate(() => {
+        const g = window.game, w = g.scene.weather;
+        g.applyPreset('high'); w.waveStarted(g.level.waves.length, g.level.waves.length);
+        const start = w.starStarted;
+        for (let i = 0; i < 60; i++) w.update(.1);
+        w.enemySpawned('zhugeliang'); g.render(1, 0);
+        return { once: w.starStarted === start, progress: w.starProgress.value };
+      });
+      assert.ok(star.once && star.progress > .4 && star.progress < .6);
+      await page.screenshot({ path: 'artifacts/weather-6-star.png' });
+    }
     assert.deepEqual(errors, []);
     report.push({ level, snapshots });
     console.log(`Chapter ${level}: 3 presets, resource lifetime, batching, low timing passed`);

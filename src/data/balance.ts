@@ -416,6 +416,10 @@ export const BALANCE = {
       windCount: 240, dustHeight: 14, dustWidth: 54, dustThickness: 5, dustOpacity: .12,
       cloudScale: .006, cloudSpeed: .12, cloudShade: .22, cloudSunShade: .12,
       bossCloudSec: 5, bossCloudShade: .25, grassLean: 3.5, flagFlutter: 3.0, gustSpeed: 3.8,
+      // The finale is intentionally emptier than the plateau; only one pooled quad becomes the omen.
+      loessCount: 110, loessOpacity: .085, starSec: 12, starSize: 105,
+      starStart: [930, 290, -80], starEnd: [560, 50, -80], starColor: '#ff9a58', starBrightness: 2.6,
+      starCore: .065, starTrail: .05,
     },
     deathAnimDuration: 0.35,
     /**
