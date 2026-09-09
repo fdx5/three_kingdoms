@@ -336,6 +336,13 @@ export interface SimResult {
   gateUpgrades: number;
   /** 성문 강화에 쓴 총 골드 */
   goldOnGate: number;
+  /** 습격조에게 무너진 망루 수 — 공성전이 얼마나 세게 물렸는지의 척도다 */
+  towersLost: number;
+  /** 망루 수리 횟수와 거기 쓴 골드 */
+  towerRepairs: number;
+  goldOnTowerRepair: number;
+  /** 망루가 받은 총 피해 */
+  towerDamageTaken: number;
 }
 
 /** 다음 업그레이드를 살 돈. 수리와 계략은 이걸 남기고 남는 골드로만 쓴다. */
@@ -361,6 +368,17 @@ const MIN_FIELD_HP: Record<string, number> = {
   ice_storm: 700,
   rally: 900,
 };
+
+/**
+ * 이 비율 아래로 깎이면 고친다.
+ *
+ * 절반쯤에서 고치는 것이 값이 가장 싸다: 한 번 수리로 채울 수 있는 양이
+ * 최대 체력의 절반(BALANCE.towerCombat.repairFraction)이라, 더 기다리면
+ * 한 번으로 못 채우고 더 일찍 고치면 채울 자리가 없어 낭비된다.
+ */
+const TOWER_REPAIR_AT = 0.55;
+/** 이 아래로는 예산을 깨고라도 고친다 — 여기서 더 맞으면 그냥 사라진다. */
+const TOWER_REPAIR_URGENT = 0.25;
 
 function liveEnemyHp(world: World): number {
   let sum = 0;
@@ -410,8 +428,19 @@ export function runSim(args: Partial<Args> = {}): SimResult {
   const rows: WaveRow[] = [];
   let leaksAtWaveStart = 0;
   let repaired = 0;
+  let towersLost = 0;
+  let towerRepairs = 0;
+  let goldOnTowerRepair = 0;
+  let towerDamageTaken = 0;
   const leaksByUnit: Record<string, number> = {};
   let castleHpAtLastSpawn = level.castle.hp;
+
+  world.bus.on('tower:destroyed', () => {
+    towersLost++;
+  });
+  world.bus.on('tower:damaged', ({ amount }) => {
+    towerDamageTaken += amount;
+  });
 
   world.bus.on('enemy:leaked', ({ unitId }) => {
     leaksByUnit[unitId] = (leaksByUnit[unitId] ?? 0) + 1;
@@ -519,6 +548,33 @@ export function runSim(args: Partial<Args> = {}): SimResult {
       }
     }
 
+    /*
+     * 3.5) 망루 수리 — 가장 많이 깎인 것부터.
+     *
+     * 순서가 중요하다. 이 단계는 건설·업그레이드·성문 강화 **다음**이고, 남는
+     * 골드로만 한다. 반대로 두면(수리를 먼저) 4~6장에서 성문 강화가 영영 밀려
+     * 그 장의 교훈("성문을 안 올리면 진다")이 수리 정책의 부작용으로 뒤집힌다.
+     *
+     * 무너지기 직전(urgentAt)만 예외다. 그때는 예산을 깨고 고친다 — 망루 하나를
+     * 통째로 잃는 것은 업그레이드 한 번을 미루는 것과 비교가 안 되기 때문이다.
+     */
+    if (a.repair) {
+      const hurt = [...world.towers.values()]
+        .filter((t) => t.hpRatio <= TOWER_REPAIR_AT)
+        .sort((p, q) => p.hpRatio - q.hpRatio || p.slotId.localeCompare(q.slotId));
+      const gateCost = level.castleUpgrade ? world.castle.nextUpgradeCost ?? 0 : 0;
+      for (const t of hurt) {
+        if (world.repairTowerStatus(t.slotId) !== 'ok') continue;
+        const cost = t.repairCost;
+        const urgent = t.hpRatio <= TOWER_REPAIR_URGENT;
+        const reserve = upgradeReserve(world) + gateCost;
+        if (!urgent && world.economy.gold < reserve + cost) continue;
+        if (world.repairTower(t.slotId) <= 0) continue;
+        towerRepairs++;
+        goldOnTowerRepair += cost;
+      }
+    }
+
     // 4) 계략 — 업그레이드 예산을 남기고, 쓸 만큼 적이 모였을 때만.
     //    "쿨다운이 돌면 무조건"으로 두면 1파에 매복을 던지는 식이라
     //    계략의 값이 아니라 낭비를 측정하게 된다. 사람이 하는 판단의 하한이다.
@@ -575,6 +631,10 @@ export function runSim(args: Partial<Args> = {}): SimResult {
     castleLevel: world.castle.level,
     gateUpgrades,
     goldOnGate,
+    towersLost,
+    towerRepairs,
+    goldOnTowerRepair,
+    towerDamageTaken: Math.round(towerDamageTaken),
   };
 }
 
@@ -628,6 +688,10 @@ function main(): void {
       (r.repaired > 0 ? `   수리 ${r.repaired}HP` : ''),
   );
   console.log(`  타워 ${towers || '(없음)'}`);
+  console.log(
+    `  공성 망루 파괴 ${r.towersLost}   수리 ${r.towerRepairs}회 (${r.goldOnTowerRepair} G)` +
+      `   망루가 받은 피해 ${r.towerDamageTaken}`,
+  );
   if (r.goldOnCards > 0) {
     const used = Object.entries(r.cardsUsed)
       .map(([id, n]) => `${getStratagem(id).displayName} x${n}`)

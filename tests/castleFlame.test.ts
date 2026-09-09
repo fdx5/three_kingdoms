@@ -90,7 +90,10 @@ describe('성벽 화염', () => {
     // 값은 유닛 정의에서 읽는다 — 밸런스를 손볼 때마다 테스트가 깨지면 안 된다.
     const boss = SHU_UNITS.zhugeliang;
     const flame = boss.traits!.castleFlame!;
-    const strike = Math.max(1, Math.round(boss.castleDamage * BALANCE.castleCombat.bossStrikeDamageMul));
+    // castleDamage 는 Enemy.init 에서 difficulty.unitDamageMul 이 곱해진 뒤 쓰인다 —
+    // "유닛의 공격력"은 성문이든 망루든 한 값이고, 그 값이 여기 불의 총량이 된다.
+    const attack = boss.castleDamage * BALANCE.difficulty.unitDamageMul;
+    const strike = Math.max(1, Math.round(attack * BALANCE.castleCombat.bossStrikeDamageMul));
     expect(dps[0]).toBeCloseTo((strike * flame.damageMul) / flame.duration, 5);
   });
 

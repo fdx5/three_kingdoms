@@ -2,6 +2,7 @@ import { StratagemStorm } from './vfx/StratagemStorm';
 import * as THREE from 'three';
 import type { World } from '../sim/World';
 import type { Enemy } from '../sim/Enemy';
+import type { Tower } from '../sim/Tower';
 import type { Projectile } from '../sim/Projectile';
 import type { PerformancePreset } from '../data/balance';
 import { BALANCE } from '../data/balance';
@@ -41,6 +42,10 @@ export interface GameSceneCallbacks {
   onCastleHit: (unitId: string, isBoss: boolean) => void;
   /** 무기가 성벽에 부딪혀 불꽃이 튀었다 */
   onCastleSpark: (isBoss: boolean) => void;
+  /** 망루가 한 대 맞았다 (화면 좌표는 피해 숫자를 띄우기 위한 것) */
+  onTowerHit: (unitId: string, isBoss: boolean, screenX: number, screenY: number, amount: number) => void;
+  /** 망루가 무너졌다 */
+  onTowerDestroyed: (towerId: string, level: number, lostGold: number) => void;
 }
 
 /**
@@ -79,6 +84,11 @@ export class GameScene {
 
   private castleView: CastleView;
   private towerViews = new Map<string, TowerView>();
+  /**
+   * 무너지는 연출이 남은 망루 뷰. 시뮬에서는 이미 사라졌다.
+   * 죽은 적 뷰(dyingViews)와 같은 규약이다 — 끝나면 스스로 걷힌다.
+   */
+  private collapsingTowers: TowerView[] = [];
 
   /** 살아있는 적 뷰 */
   private enemyViews = new Map<number, EnemyView>();
@@ -557,6 +567,8 @@ export class GameScene {
         const tower = this.world.towers.get(slotId);
         if (!tower) return;
         const view = new TowerView(getTower(towerId), tower.x, tower.z, tower.level, this.terrain, this.assets);
+        // 불과 연기는 지면 화재와 같은 텍스처를 빌려 쓴다 — 뷰마다 굽지 않는다.
+        view.setFireAssets(this.groundFireAssets);
         view.mount(this.stage.root);
         this.towerViews.set(slotId, view);
         this.addTowerHit(slotId, tower.x, tower.z);
@@ -571,7 +583,48 @@ export class GameScene {
         const view = this.towerViews.get(slotId);
         view?.setLevel(level);
         if (view) this.fitHitVolume(slotId);
+        // 최대 체력이 늘었다 — 같은 남은 체력이라도 비율이 달라진다.
+        const tower = this.world.towers.get(slotId);
+        if (view && tower) view.setHealth(tower.hpRatio, tower.hpRatio < 1);
         this.particles.emit('upgrade_ray', worldPos.x, 10, worldPos.z, 1.2);
+      }),
+    );
+
+    // ── 공성: 망루가 맞고, 무너지고, 고쳐진다 ─────────────────────────
+    this.subs.add(bus.on('tower:damaged', (e) => this.onTowerDamaged(e)));
+    this.subs.add(bus.on('tower:destroyed', (e) => this.onTowerDestroyed(e)));
+
+    this.subs.add(
+      bus.on('tower:repaired', ({ slotId, hpRatio, worldPos }) => {
+        const view = this.towerViews.get(slotId);
+        view?.repaired(hpRatio);
+        /*
+         * 고쳐지는 그림 — 대패밥이 일고 빛 줄기가 오른다.
+         * 건설(upgrade_ray)과 같은 줄기를 쓰되 먼지를 얹어 "다시 세웠다"로 읽히게 한다.
+         */
+        this.particles.emit('repair_dust', worldPos.x, 12, worldPos.z, 1.1);
+        this.particles.emit('upgrade_ray', worldPos.x, 8, worldPos.z, 0.9);
+      }),
+    );
+
+    /*
+     * 적이 대열을 벗어나거나 다시 붙었다.
+     *
+     * 상태를 이벤트로 받는 이유: 클립 전환은 **바뀌는 순간**에 한 번만 일어나야
+     * 한다. 매 프레임 상태를 보고 갈아 끼우면 페이드가 계속 다시 시작되어
+     * 팔다리가 떨린다.
+     */
+    this.subs.add(
+      bus.on('enemy:siege', ({ enemyId, state, interval, slotId }) => {
+        const view = this.enemyViews.get(enemyId);
+        if (!view) return;
+        if (state === 'assault') view.startSiegeAttack(interval);
+        else view.stopSiegeAttack();
+        // 달려나가는 순간 발밑에서 흙이 튄다 — 대열을 벗어난 것이 눈에 띄어야 한다.
+        if (state === 'approach' && slotId) {
+          const p = view.object3d.position;
+          this.particles.emit('death_dust', p.x, 3, p.z, 0.5);
+        }
       }),
     );
 
@@ -582,6 +635,7 @@ export class GameScene {
           view.dispose();
           this.towerViews.delete(slotId);
         }
+
         this.pendingHitFit.delete(slotId);
         this.removeTowerHit(slotId);
         this.refreshBuildable();
@@ -594,6 +648,102 @@ export class GameScene {
         if (index === 1) this.ribbon.setArrowsHighlighted(false);
       }),
     );
+  }
+
+  // ── 공성 연출 ──────────────────────────────────────────────────────
+
+  /**
+   * 망루가 한 대 맞았다.
+   *
+   * 세 겹이 겹쳐야 "부딪혔다"가 된다.
+   *   1) 망루가 맞은 반대쪽으로 밀렸다 돌아온다 (TowerView.hit)
+   *   2) 맞은 **자리**에서 파편이 튄다 — 때린 적과 망루를 잇는 선 위,
+   *      기둥 표면쯤. 망루 한가운데서 터지면 안에서 터진 것으로 보인다.
+   *   3) 무엇으로 지었는지에 따라 튀는 것이 다르다 (나뭇조각 / 돌조각)
+   *
+   * 파편을 매번 다 뿌리지는 않는다. 여덟 기가 2초마다 치면 초당 네 번인데
+   * 망루 여섯 기면 초당 스물넷이다 — 그때는 화면이 파편으로 덮인다.
+   * 그래서 큰 타격(장수)과 결정적인 순간에만 전부 뿌리고, 잡몹의 잔타는 줄인다.
+   */
+  private onTowerDamaged(e: {
+    slotId: string;
+    towerId: string;
+    unitId: string;
+    amount: number;
+    hpRatio: number;
+    worldPos: { x: number; y: number; z: number };
+    attackerPos: { x: number; y: number; z: number };
+  }): void {
+    const view = this.towerViews.get(e.slotId);
+    if (!view) return;
+    const def = getUnit(e.unitId);
+    const boss = def.kind !== 'minion';
+
+    view.hit(e.attackerPos.x, e.attackerPos.z, boss ? 1 : 0.5);
+    view.setHealth(e.hpRatio, true);
+
+    // 무기가 닿는 자리 = 망루 중심에서 때린 쪽으로 반지름만큼.
+    const dx = e.attackerPos.x - e.worldPos.x;
+    const dz = e.attackerPos.z - e.worldPos.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const reach = BALANCE.towerCombat.surroundRadius * 0.62;
+    const hx = e.worldPos.x + (dx / len) * reach;
+    const hz = e.worldPos.z + (dz / len) * reach;
+    const hy = this.terrain.heightAt(hx, hz) + 16 * def.scale;
+
+    // 돌로 쌓은 진지는 돌조각이, 목조 망루는 나뭇조각이 튄다.
+    const stone = e.towerId === 'cannon_tower' || e.towerId === 'caltrop_camp';
+    const power = boss ? 1.5 : 0.7;
+    this.particles.emit(stone ? 'stone_chip' : 'wood_splinter', hx, hy, hz, power);
+    this.particles.emit('weapon_spark', hx, hy, hz, boss ? 0.9 : 0.35);
+    // 체력이 얼마 안 남은 망루는 맞을 때마다 먼지가 인다 — 무너지기 직전의 소리다.
+    if (e.hpRatio < BALANCE.fx.towerDamage.criticalAt && Math.random() < 0.5) {
+      this.particles.emit('ground_smoke', hx, hy, hz, 0.5);
+    }
+    if (boss && this.shakeEnabled) this.stage.addShake(BALANCE.fx.cameraShakeOnLeak * 0.5);
+
+    this.project(e.worldPos.x, this.terrain.heightAt(e.worldPos.x, e.worldPos.z) + 46, e.worldPos.z);
+    this.cb.onTowerHit(e.unitId, boss, this.screenBuf.x, this.screenBuf.y, e.amount);
+  }
+
+  /**
+   * 망루가 무너졌다 — 판에서 가장 큰 사건 중 하나다.
+   *
+   * 시뮬에서는 이미 사라졌으므로 뷰를 towerViews 에서 떼어 무너지는 목록으로
+   * 옮긴다. 그동안에도 계속 렌더되지만 탭 판정과 시뮬 조회에서는 빠진다 —
+   * 없는 망루를 누를 수 있으면 안 되기 때문이다.
+   */
+  private onTowerDestroyed(e: {
+    slotId: string;
+    towerId: string;
+    level: number;
+    lostGold: number;
+    worldPos: { x: number; y: number; z: number };
+  }): void {
+    const view = this.towerViews.get(e.slotId);
+    const { x, z } = e.worldPos;
+    const groundY = this.terrain.heightAt(x, z);
+
+    if (view) {
+      this.towerViews.delete(e.slotId);
+      view.startCollapse();
+      this.collapsingTowers.push(view);
+    }
+    this.pendingHitFit.delete(e.slotId);
+    this.removeTowerHit(e.slotId);
+    this.refreshBuildable();
+    if (this.selectedSlot === e.slotId) this.setSelected(null);
+
+    // 잔해가 쏟아지고 흙먼지 기둥이 선다. 충격파는 무너진 자리를 넓게 알린다.
+    this.impacts.emit(x, groundY + 2, z, 92, true);
+    this.particles.emit('tower_rubble', x, groundY + 26, z, 1.5);
+    this.particles.emit('splash_burst', x, groundY + 12, z, 1.4);
+    this.particles.emit('ground_smoke', x, groundY + 10, z, 2.2);
+    this.particles.emit('fire_burst', x, groundY + 20, z, 1.3);
+    this.particles.emit('weapon_spark', x, groundY + 24, z, 1.1);
+    if (this.shakeEnabled) this.stage.addShake(BALANCE.fx.cameraShakeOnBossLeak * 1.15);
+
+    this.cb.onTowerDestroyed(e.towerId, e.level, e.lostGold);
   }
 
   // ── 적 뷰 풀 ───────────────────────────────────────────────────────
@@ -681,12 +831,16 @@ export class GameScene {
        * 앞으로 뻗은 순간이라, 등갑병의 검이든 감녕의 철퇴든 그 무기 끝에서 튄다.
        * 둘은 박자가 다르다 — 클립이 먼저 닿고 피해가 뒤따른다.
        */
-      if (enemy.atCastle && view.takeCastleImpact()) {
+      if ((enemy.atCastle || enemy.siege === 'assault') && view.takeCastleImpact()) {
         const def = getUnit(enemy.defId);
         const p = view.object3d.position;
-        const c = this.world.castlePosition();
-        const dx = c.x - p.x;
-        const dz = c.z - p.z;
+        /*
+         * 무엇을 때리고 있는가 — 성벽인가 망루인가.
+         * 시뮬이 faceX/faceZ 로 "지금 무엇을 보고 있는지"를 이미 알려 주므로
+         * 목표를 되찾을 필요 없이 그 방향으로 무기를 뻗으면 된다.
+         */
+        const dx = enemy.faceX;
+        const dz = enemy.faceZ;
         const len = Math.hypot(dx, dz) || 1;
         // 무기는 몸에서 성 쪽으로 이만큼 뻗어 있다 — 덩치가 클수록 멀리 닿는다
         const reach = 10 * def.scale;
@@ -720,8 +874,10 @@ export class GameScene {
             def.scale,
           );
         }
+        // 화면 흔들림은 성벽을 칠 때만. 망루 쪽은 tower:damaged 가 제 몫으로 흔든다 —
+        // 둘 다 흔들면 여덟 기가 둘러싼 망루 하나에 초당 네 번씩 화면이 요동친다.
         this.cb.onCastleSpark(def.kind !== 'minion');
-        if (this.shakeEnabled && def.kind !== 'minion') {
+        if (enemy.atCastle && this.shakeEnabled && def.kind !== 'minion') {
           this.stage.addShake(BALANCE.fx.cameraShakeOnBossLeak);
         }
       }
@@ -769,7 +925,20 @@ export class GameScene {
 
     for (const [slotId, view] of this.towerViews) {
       const tower = this.world.towers.get(slotId);
-      if (tower) view.sync(tower, alpha, dt);
+      if (tower) view.sync(tower, alpha, dt, this.stage.camera);
+    }
+
+    /*
+     * 무너지는 중인 망루. 시뮬에는 없으므로 더미 하나로 sync 시그니처만 맞춘다 —
+     * 죽은 적 뷰(dyingViews)와 같은 규약이다. 연출이 끝나면 스스로 걷힌다.
+     */
+    for (let i = this.collapsingTowers.length - 1; i >= 0; i--) {
+      const view = this.collapsingTowers[i];
+      view.sync(_deadTower, alpha, dt, this.stage.camera);
+      if (view.isCollapseFinished) {
+        view.dispose();
+        this.collapsingTowers.splice(i, 1);
+      }
     }
 
     this.castleView.sync(this.world.castle, alpha, dt);
@@ -931,7 +1100,11 @@ export class GameScene {
 
   /** 선택 표시: 고른 타워의 사거리 링을 흰색으로 켠다. */
   setSelected(slotId: string | null): void {
-    if (this.selectedSlot) this.towerViews.get(this.selectedSlot)?.ring.setVisible(false);
+    if (this.selectedSlot) {
+      const prev = this.towerViews.get(this.selectedSlot);
+      prev?.ring.setVisible(false);
+      prev?.setBarPinned(false);
+    }
     this.selectedSlot = slotId;
     if (!slotId) return;
 
@@ -939,6 +1112,8 @@ export class GameScene {
     if (!towerView) return;
     towerView.ring.setMode('selected');
     towerView.ring.setVisible(true);
+    // 고른 망루는 체력바를 계속 띄운다 — 지금 고칠지 말지를 판단하는 중이다.
+    towerView.setBarPinned(true);
   }
 
   /**
@@ -1034,6 +1209,8 @@ export class GameScene {
 
     for (const v of this.towerViews.values()) v.dispose();
     this.towerViews.clear();
+    for (const v of this.collapsingTowers) v.dispose();
+    this.collapsingTowers.length = 0;
 
     this.buildable.dispose();
 
@@ -1057,3 +1234,5 @@ export class GameScene {
 
 // 사망 연출 중인 뷰는 시뮬 엔티티가 없다. sync 시그니처를 맞추기 위한 더미.
 const _deadEnemy = { prevDistance: 0, distance: 0, speed: 0 } as Enemy;
+// 무너지는 중인 망루도 마찬가지다 — TowerView.sync 는 무너지는 동안 인자를 안 본다.
+const _deadTower = {} as Tower;

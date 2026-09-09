@@ -375,6 +375,8 @@ export const TOWERS: Record<string, TowerDef> = {
     targeting: 'first',
     projectile: { speed: 320, arcHeight: 18 },
     levels: ARCHER_LEVELS,
+    // 목조 망루 — 단단함의 기준점(1.0)이다.
+    toughness: 1,
   },
 
   catapult: {
@@ -389,6 +391,8 @@ export const TOWERS: Record<string, TowerDef> = {
     projectile: { speed: 190, arcHeight: 95 },
     levels: CATAPULT_LEVELS,
     effect: { type: 'splash', params: { radius: 62, falloff: 0.55 } },
+    // 묵직한 목재 틀과 돌추 — 망루보다 버틼다.
+    toughness: 1.15,
     unlockedIn: 'level02',
   },
 
@@ -411,6 +415,8 @@ export const TOWERS: Record<string, TowerDef> = {
      * dpsPerLevel 1.5 — 5레벨이면 불의 화력이 5배가 된다.
      */
     ignite: { fromLevel: 1, radius: 52, dps: 26, duration: 3.6, dpsPerLevel: 1.5, source: 'flame' },
+    // 기름과 불을 지고 서 있는 나무 망루 — 가장 잘 타고 가장 잘 무너진다.
+    toughness: 0.9,
     // 화염은 입의 분사와 지면의 연소로 표현한다. 포탄 폭발은 사용하지 않는다.
     unlockedIn: 'level04',
   },
@@ -432,6 +438,8 @@ export const TOWERS: Record<string, TowerDef> = {
     ignite: { fromLevel: 3, radius: 66, dps: 30, duration: 4.6, dpsPerLevel: 1.35, source: 'shell' },
     /** 화공 망루보다 굵은 포다. 섬광도 연기도 크고 화면도 더 흔들린다. */
     muzzleBlast: { flash: 1.4, smoke: 1.6, shake: 0.3 },
+    // 돌로 쌓은 포진지. 가장 비싸고 가장 단단하다.
+    toughness: 1.3,
     unlockedIn: 'level05',
   },
 
@@ -453,6 +461,17 @@ export const TOWERS: Record<string, TowerDef> = {
      * 실측: 0.55배 1.2초로는 슬롯 하나 값을 못 했다(누수 21 vs 미설치 13).
      */
     effect: { type: 'slow', params: { speedMul: 0.42, duration: 2.6 } },
+    /*
+     * 땅에 깔아 둔 마름쇠다 — 부술 기둥도 태울 목재도 없다. 그래서 가장 질기다.
+     *
+     * 처음에는 반대로 잡았다(0.6). 값이 싸니 무를 것이라고 본 것인데, 이 진지는
+     * 피해가 0이라 자기를 때리는 적을 하나도 못 죽인다 — 무르게 두면 습격조가
+     * 아무 저항 없이 갈아버리고, 플레이어는 그 자리를 수리비로만 계속 물게 된다
+     * (실측: 4장에서 7파까지 긴급 수리 여덟 번, 615G).
+     * 질기게 두면 반대가 된다: 습격조가 아무것도 못 부수면서 20초를 허비하는
+     * **미끼**가 되어, 늦추는 진지가 앞에 서는 이유가 하나 더 늘어난다.
+     */
+    toughness: 2.2,
     unlockedIn: 'level02',
   },
 };

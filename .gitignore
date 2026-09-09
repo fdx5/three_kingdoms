@@ -28,3 +28,5 @@ manual/*.pdf
 
 # 로컬에서 서버를 띄울 때 남는 로그
 .server.log
+# 배포 확인 러너가 남기는 로그
+.deploy.log

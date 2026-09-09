@@ -18,6 +18,11 @@ export default [
     languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
   },
   {
+    // 눈 검사 러너 — 노드에서 브라우저를 몰고 다닌다
+    files: ['scripts/smoke-siege.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly', window: 'readonly', document: 'readonly' } },
+  },
+  {
     files: ['**/*.ts'],
     languageOptions: {
       parser: tsparser,

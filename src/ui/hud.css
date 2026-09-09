@@ -253,6 +253,87 @@ button:focus-visible {
   background: rgba(20, 17, 13, 0.72);
 }
 
+/*
+ * 수리 — 목재와 밧줄의 색.
+ *
+ * 업그레이드(금색)와 판매(붉은색) 사이에서 자기 색이 있어야 한다. 셋이 같은
+ * 회색이면 "부서지는 중"이라는 급한 판단이 나머지 두 버튼에 묻힌다.
+ */
+.btn-repair {
+  background: linear-gradient(180deg, #3f6f52, #2a4c39);
+  border-color: rgba(120, 200, 150, 0.55);
+  color: #d8f2e2;
+  font-weight: 700;
+}
+
+.btn-repair:hover:not(:disabled) {
+  background: linear-gradient(180deg, #4c8462, #325a43);
+}
+
+/*
+ * 내구도 줄 — 막대 하나와 숫자 하나.
+ *
+ * 망루 머리 위의 3D 체력바가 "위험하다"를 말한다면 이쪽은 "얼마나 남았나"를
+ * 말한다. 수리를 살지 말지는 숫자로 정하는 판단이라 둘 다 필요하다.
+ */
+.durability {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.86em;
+}
+
+.durability__label {
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.durability__track {
+  flex: 1;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+
+.durability__fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.25s ease-out;
+}
+
+.durability__fill--ok {
+  background: linear-gradient(90deg, #3f9f6d, #66d79b);
+}
+
+.durability__fill--warn {
+  background: linear-gradient(90deg, #b98615, #f0c04a);
+}
+
+/* 무너지기 직전 — 숨을 쉬듯 깜박여 눈을 끈다 */
+.durability__fill--crit {
+  background: linear-gradient(90deg, #a02a20, #ff6a5a);
+  animation: durability-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes durability-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.durability__value {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .durability__fill { transition: none; }
+  .durability__fill--crit { animation: none; }
+}
+
 .seg {
   display: flex;
   gap: 4px;

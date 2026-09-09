@@ -57,10 +57,16 @@ export class EnemyView implements EntityView<Enemy> {
   private deathGroundY = 0;
   private deathScale = 1;
   private deathTilt = 0;
-  /** 성 공격 연출 — 시뮬에는 없는 뷰만의 상태 */
+  /**
+   * 공격 연출 — 시뮬에는 없는 뷰만의 상태.
+   *
+   * 성벽과 망루가 같은 상태를 쓴다. 시뮬에서는 완전히 다른 두 전투지만
+   * 화면에서 벌어지는 일은 하나다: 제자리에 서서 앞의 것을 주기적으로 친다.
+   * 다른 것은 무엇을 바라보는가뿐이고, 그건 시뮬이 faceX/faceZ 로 알려 준다.
+   */
   private attacking = false;
   private attackTime = 0;
-  /** 무기가 성벽에 닿는 순간을 한 번만 알리기 위한 플래그 */
+  /** 무기가 목표에 닿는 순간을 한 번만 알리기 위한 플래그 */
   private impactPending = false;
   /**
    * 한 번 때리고 다음까지의 간격(초). 시뮬의 타격 주기와 같은 값을 받는다 —
@@ -68,6 +74,13 @@ export class EnemyView implements EntityView<Enemy> {
    * "때리는 시늉만 한다"로 보인다. 장수는 2초, 잡몹은 16초다.
    */
   private attackInterval = 1;
+  /**
+   * 자리는 잡았지만 아직 칠 차례가 아닌 부대 (망루 바깥 고리).
+   * 무기를 든 채 서서 몸을 들썩이며 기다린다 — 얼어붙은 인형이 아니라
+   * "다음 차례를 노리는 놈"으로 보여야 포위가 무리로 읽힌다.
+   */
+  private waiting = false;
+  private waitPhase = 0;
   /** 지금까지 몇 번째 타격인가 — 이 값이 바뀔 때 클립을 다시 튼다 */
   private attackCycle = 0;
   private baseScale = 1;
@@ -179,22 +192,35 @@ export class EnemyView implements EntityView<Enemy> {
       return;
     }
     if (this.attacking) {
-      this.path.directionAt(enemy.distance, this.dir);
       const groundY = this.terrain.heightAt(enemy.worldX, enemy.worldZ) + RIBBON_LIFT;
       this.object3d.position.set(enemy.worldX, groundY, enemy.worldZ);
-      this.object3d.rotation.set(0, Math.atan2(this.dir.x, this.dir.z), 0);
-      if (this.mixer) this.mixer.timeScale = 1;
+      // 때리는 동안은 시뮬이 알려 준 쪽을 본다 — 성벽이든 망루든 표적이 앞이다.
+      this.object3d.rotation.set(0, Math.atan2(enemy.faceX, enemy.faceZ), 0);
+      // 기다리는 부대는 반 박자 느리게 — 때리는 무리와 대기하는 무리가 갈려 보인다
+      if (this.mixer) this.mixer.timeScale = this.waiting ? 0.5 : 1;
       this.updateAttack(dt);
       this.mixer?.update(dt);
       this.updateFlash(dt);
       return;
     }
 
-    const d = enemy.prevDistance + (enemy.distance - enemy.prevDistance) * alpha;
-    this.path.positionAt(d, this.pos);
-    this.path.directionAt(d, this.dir);
-    this.pos.x += this.dir.z * enemy.laneOffset;
-    this.pos.z -= this.dir.x * enemy.laneOffset;
+    /*
+     * 위치. 길 위에 있으면 distance 를 보간해 경로에서 뽑고, 길을 벗어났으면
+     * (망루로 달려가는 중) 월드 좌표를 직접 보간한다 — 그 순간 경로는
+     * 이 적이 어디 있는지에 대해 아무것도 모른다.
+     */
+    if (enemy.detached) {
+      this.pos.x = enemy.prevWorldX + (enemy.worldX - enemy.prevWorldX) * alpha;
+      this.pos.z = enemy.prevWorldZ + (enemy.worldZ - enemy.prevWorldZ) * alpha;
+      this.dir.x = enemy.faceX;
+      this.dir.z = enemy.faceZ;
+    } else {
+      const d = enemy.prevDistance + (enemy.distance - enemy.prevDistance) * alpha;
+      this.path.positionAt(d, this.pos);
+      this.path.directionAt(d, this.dir);
+      this.pos.x += this.dir.z * enemy.laneOffset;
+      this.pos.z -= this.dir.x * enemy.laneOffset;
+    }
 
     // 길 리본은 지형보다 RIBBON_LIFT 만큼 떠 있다. 적을 지형 높이에 두면
     // 발이 길 표면 아래로 들어가 다리가 잘려 보인다.
@@ -323,19 +349,61 @@ export class EnemyView implements EntityView<Enemy> {
   }
 
   /**
-   * 성에 닿았다. 시뮬은 이미 이 적을 지웠고 성도 이미 피해를 입었다 —
-   * 여기서는 창을 한 번 내지르는 여운만 남긴다.
+   * 목표 앞에 붙었다 — 성벽이든 망루든. 그 자리에서 주기적으로 휘두른다.
    * 클립이 없으면(프리미티브) 앞으로 찌르는 절차적 동작으로 대신한다.
+   *
+   * interval 0 은 "아직 칠 차례가 아니다"라는 뜻이다 (망루 바깥 고리에서 대기).
+   * 그때는 클립을 틀지 않고 무기를 든 채 서서 몸만 들썩인다 — 그래야 안쪽에서
+   * 때리는 놈과 밖에서 기다리는 놈이 화면에서 구분된다.
    */
-  startCastleAttack(interval: number): void {
+  startSiegeAttack(interval: number): void {
+    const waiting = interval <= 0;
+    // 이미 같은 자세로 붙어 있으면 박자를 처음부터 다시 세지 않는다 —
+    // 자리를 옮길 때마다 리셋하면 영영 첫 타격이 나가지 않는다.
+    if (this.attacking && this.waiting === waiting) {
+      if (!waiting) this.attackInterval = Math.max(BALANCE.fx.castleAttackDuration, interval);
+      return;
+    }
     this.attacking = true;
+    this.waiting = waiting;
     this.attackTime = 0;
     this.attackCycle = 0;
     // 클립 한 번보다 짧은 간격은 없다 — 있으면 동작이 잘려 어정쩡해진다
-    this.attackInterval = Math.max(BALANCE.fx.castleAttackDuration, interval);
-    this.impactPending = true;
+    this.attackInterval = waiting ? 1 : Math.max(BALANCE.fx.castleAttackDuration, interval);
+    this.impactPending = !waiting;
+    this.model.position.set(0, 0, 0);
+    this.model.rotation.set(0, 0, 0);
+    if (waiting) {
+      // 기다리는 자세 — idle 이 있으면 그걸, 없으면 걷기를 아주 느리게 돌린다.
+      this.playState(this.actions.has('idle') ? 'idle' : 'walk');
+      return;
+    }
     this.playState('attack');
     this.replayAttackClip();
+  }
+
+  /** 예전 이름. 성문 전투 쪽 호출부가 그대로 쓴다. */
+  startCastleAttack(interval: number): void {
+    this.startSiegeAttack(interval);
+  }
+
+  /** 목표를 잃고 다시 걷기 시작한다 (망루가 무너졌거나 포위를 풀었다) */
+  stopSiegeAttack(): void {
+    if (!this.attacking) return;
+    this.attacking = false;
+    this.waiting = false;
+    this.impactPending = false;
+    this.attackTime = 0;
+    this.attackCycle = 0;
+    this.model.position.set(0, 0, 0);
+    this.model.rotation.set(0, 0, 0);
+    if (this.mixer) this.mixer.timeScale = 1;
+    this.playState('walk');
+  }
+
+  /** 지금 목표를 때리는 중인가 (대기 중은 제외) */
+  get isStriking(): boolean {
+    return this.attacking && !this.waiting;
   }
 
   /**
@@ -380,6 +448,18 @@ export class EnemyView implements EntityView<Enemy> {
   private updateAttack(dt: number): void {
     this.attackTime += dt;
 
+    /*
+     * 대기 중 — 때리지 않는다. 무게 중심만 좌우로 옮기며 몸을 들썩인다.
+     * 완전히 멈춰 세우면 스무 기가 둘러선 그림이 인형 진열대가 된다.
+     */
+    if (this.waiting) {
+      this.waitPhase += dt * 1.6;
+      const sway = Math.sin(this.waitPhase) * 0.055;
+      this.model.rotation.z = sway;
+      this.model.position.y = Math.abs(Math.sin(this.waitPhase * 2)) * 0.7;
+      return;
+    }
+
     // 다음 타격 차례가 왔으면 클립을 다시 튼다
     const cycle = Math.floor(this.attackTime / this.attackInterval);
     if (cycle > this.attackCycle) {
@@ -404,6 +484,7 @@ export class EnemyView implements EntityView<Enemy> {
   /** 시뮬은 이미 죽였다. 뷰만 남아 연출한다. 끝나면 true를 반환한다. */
   startDeath(): void {
     this.attacking = false;
+    this.waiting = false;
     this.dying = true;
     this.dieTime = 0;
     this.deathGroundY = this.object3d.position.y;
@@ -439,6 +520,8 @@ export class EnemyView implements EntityView<Enemy> {
     this.dying = false;
     this.dieTime = 0;
     this.attacking = false;
+    this.waiting = false;
+    this.waitPhase = 0;
     this.attackTime = 0;
     this.attackCycle = 0;
     this.impactPending = false;

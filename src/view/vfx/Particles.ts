@@ -16,7 +16,11 @@ export type ParticlePreset =
   | 'blood_spray'
   | 'blood_mist'
   | 'muzzle_smoke'
-  | 'ground_smoke';
+  | 'ground_smoke'
+  | 'wood_splinter'
+  | 'stone_chip'
+  | 'tower_rubble'
+  | 'repair_dust';
 
 interface PresetSpec {
   count: number;
@@ -64,6 +68,24 @@ const PRESETS: Record<ParticlePreset, PresetSpec> = {
   muzzle_smoke: { count: 12, color: 0x9a958c, size: 9.5, life: [0.6, 1.15], speed: [30, 78], up: 0.3, gravity: 26, spread: 1 },
   // 착탄 지점에서 피어오르는 연기 기둥. 위로 곧게 서야 폭발로 읽힌다.
   ground_smoke: { count: 14, color: 0x6f6a63, size: 12, life: [0.8, 1.5], speed: [26, 70], up: 0.8, gravity: 34, spread: 1 },
+  /*
+   * 도끼가 기둥을 찍을 때 튀는 나뭇조각.
+   *
+   * 불티(weapon_spark)와 다르게 무겁고 느리다. 쇠가 쇠를 칠 때는 빛이 튀지만
+   * 쇠가 나무를 칠 때는 조각이 떨어진다 — 망루가 **목조**라는 것이
+   * 이 한 프리셋으로 읽힌다. 그래서 수명이 길고 중력이 세다: 튀었다가
+   * 눈에 보이는 속도로 떨어져야 무게가 있다.
+   */
+  wood_splinter: { count: 14, color: 0x7a5632, size: 4.2, life: [0.35, 0.7], speed: [60, 165], up: 0.5, gravity: -420, spread: 1 },
+  // 돌로 쌓은 진지(화포)를 칠 때. 나뭇조각보다 밝고 작고 더 빨리 떨어진다.
+  stone_chip: { count: 12, color: 0x9a938a, size: 3.6, life: [0.28, 0.55], speed: [70, 180], up: 0.45, gravity: -520, spread: 1 },
+  /*
+   * 망루가 무너질 때 쏟아지는 잔해. 이 게임에서 가장 큰 입자다 —
+   * 기둥과 지붕이 통째로 부서지는 것이라 흙먼지(splash_burst)로는 모자란다.
+   */
+  tower_rubble: { count: 34, color: 0x6b4f32, size: 9.5, life: [0.6, 1.25], speed: [90, 260], up: 0.6, gravity: -380, spread: 1 },
+  // 수리 — 대패밥과 먼지가 위로 인다. 골드를 썼다는 것이 눈에 보여야 한다.
+  repair_dust: { count: 16, color: 0xe6d3a8, size: 5.0, life: [0.45, 0.85], speed: [30, 80], up: 0.9, gravity: 30, spread: 0.5 },
 };
 
 /**

@@ -4,7 +4,7 @@ import { World } from './sim/World';
 import { getLevel, nextLevelId, isTowerAvailable, LEVELS } from './data/levels';
 import { BALANCE, type PerformancePresetName } from './data/balance';
 import { placementReason, spotKey } from './sim/Placement';
-import { TOWER_LIST } from './data/towers';
+import { TOWER_LIST, getTower } from './data/towers';
 import { getStratagem } from './data/stratagems';
 import { getUnit } from './data/units';
 import type { LevelDef } from './types/level';
@@ -15,7 +15,7 @@ import { CameraControls } from './view/CameraControls';
 import { AudioManager } from './audio/AudioManager';
 import { Hud, type HudSettings } from './ui/Hud';
 import { trackViewport } from './ui/viewport';
-import { TowerPanel } from './ui/TowerPanel';
+import { TowerPanel, type RepairState } from './ui/TowerPanel';
 import { ScreenFx } from './ui/ScreenFx';
 import { LevelSelect } from './ui/LevelSelect';
 import { Community } from './ui/Community';
@@ -28,6 +28,15 @@ import type { TargetingMode, TowerDef } from './types/towers';
 
 const PRESET_KEY = 'samtd.preset';
 const SETTINGS_KEY = 'samtd.settings';
+
+/**
+ * 열어 둔 망루 패널을 다시 그리는 주기(초).
+ *
+ * 짧으면 손가락 밑에서 버튼이 다시 만들어져 탭이 씹히고, 길면 수리비를 낼 수
+ * 있게 된 뒤에도 버튼이 회색으로 남는다. 0.35초면 사람이 버튼을 누르는 동작
+ * 한 번보다 길고, 내구도가 눈에 띄게 달라지기 전에 한 번은 돈다.
+ */
+const PANEL_REFRESH_SEC = 0.35;
 
 class Game {
   private container: HTMLElement;
@@ -68,6 +77,10 @@ class Game {
    * 자유 배치라 "고른 자리"가 곧 좌표이고, 지어지는 순간 자리 id 를 얻는다.
    */
   private pendingSpot: { x: number; z: number } | null = null;
+  /** 열린 망루 패널을 다시 그릴 때까지 모아 둔 시간 */
+  private panelRefreshTimer = 0;
+  /** 그 패널이 마지막으로 그린 내용의 서명 — 같으면 다시 그리지 않는다 */
+  private panelSignature = '';
   private frames = 0;
   private fpsAccum = 0;
   private fps = 0;
@@ -414,6 +427,20 @@ class Game {
         this.hud.announce(`망루를 판매해 ${refund} 골드를 회수했습니다`);
         this.clearSelection();
       },
+      onRepair: (slotId) => {
+        const healed = this.world.repairTower(slotId);
+        if (healed <= 0) {
+          this.hud.announce('지금은 수리할 수 없습니다');
+          return;
+        }
+        this.audio.play('tower:built');
+        const tower = this.world.towers.get(slotId);
+        this.hud.announce(
+          `${tower?.def.displayName ?? '망루'} 내구도를 ${healed} 회복했습니다`,
+        );
+        // 남은 골드가 줄었으므로 업그레이드 버튼의 판정도 다시 그려야 한다.
+        this.refreshPanel();
+      },
       onTargeting: (slotId, mode: TargetingMode) => {
         this.world.setTargeting(slotId, mode);
         this.refreshPanel();
@@ -463,6 +490,25 @@ class Game {
       onCastleSpark: (isBoss) => {
         this.audio.play('castle:spark', undefined, 0.4);
         if (isBoss) this.fx.flashVignette();
+      },
+      onTowerHit: (unitId, isBoss, sx, sy, amount) => {
+        /*
+         * 망루가 맞은 것도 피해 숫자로 띄운다 — 적이 맞을 때와 같은 어휘다.
+         * 붉게 칠하는 이유: 같은 숫자라도 **내가 잃는 쪽**은 색이 달라야
+         * 전장 한가운데서 한눈에 갈린다 (fire 플래그를 그 색으로 쓴다).
+         */
+        this.fx.showDamage(sx, sy, amount, isBoss, true);
+        this.audio.play('enemy:castle-attack', unitId, 0.28, getUnit(unitId).kind);
+      },
+      onTowerDestroyed: (towerId, level, lostGold) => {
+        const name = getTower(towerId).displayName;
+        this.audio.play('tower:destroyed');
+        this.fx.flashVignette();
+        // 배너까지 띄운다. 망루 한 기를 잃는 것은 웨이브가 바뀌는 것만큼 큰 사건이다.
+        this.hud.showBanner(`${name} 파괴 — ${lostGold} 골드 손실`, true);
+        this.hud.announce(`Lv${level} ${name}이(가) 무너졌습니다`);
+        // 세워 둔 망루 수가 줄었으니 다시 지을 수 있다.
+        this.hud.setTowers(this.world.towerCount, this.world.maxTowers);
       },
     });
 
@@ -579,9 +625,13 @@ class Game {
       this.audio.play('castle:fired', kind, this.panOf(gate.x));
     });
 
-    // 망루 수는 짓거나 팔 때만 바뀐다.
+    // 망루 수는 짓거나 팔거나 무너질 때 바뀐다.
     bus.on('tower:built', () => this.hud.setTowers(this.world.towerCount, this.world.maxTowers));
     bus.on('tower:sold', () => this.hud.setTowers(this.world.towerCount, this.world.maxTowers));
+    bus.on('tower:destroyed', ({ slotId }) => {
+      // 고르고 있던 망루가 무너졌으면 패널을 닫는다 — 없는 것의 수리비를 물을 수는 없다.
+      if (this.selectedSlot === slotId) this.clearSelection();
+    });
 
     bus.on('wave:started', ({ index, total, banner, isBossWave }) => {
       this.hud.setWave(index, total);
@@ -635,6 +685,7 @@ class Game {
   /** 세워진 타워를 고른다 (업그레이드·판매·타게팅 패널) */
   private selectTower(slotId: string, sx = 0, sy = 0): void {
     this.pendingSpot = null;
+    this.panelSignature = '';
     this.scene.hideBuildPreview();
     this.selectedSlot = slotId;
     this.scene.setSelected(slotId);
@@ -664,6 +715,7 @@ class Game {
 
   private clearSelection(): void {
     this.selectedSlot = null;
+    this.panelSignature = '';
     this.pendingSpot = null;
     this.scene.setSelected(null);
     this.scene.hideBuildPreview();
@@ -674,8 +726,12 @@ class Game {
     const slotId = this.selectedSlot;
     if (slotId) {
       const tower = this.world.towers.get(slotId);
-      if (!tower) return;
-      this.panel.showTower(tower, this.world.economy.gold);
+      // 고른 망루가 그 사이에 무너졌으면 패널을 닫는다 — 없는 것을 고칠 수는 없다.
+      if (!tower) {
+        this.clearSelection();
+        return;
+      }
+      this.panel.showTower(tower, this.world.economy.gold, this.repairState(slotId));
       this.scene.setSelected(slotId);
       this.scene.hideBuildPreview();
       return;
@@ -686,6 +742,35 @@ class Game {
     // 고른 타워의 사거리를 그 자리에 그려 준다. 골드가 모자라면 붉게.
     const def = this.panel.pickedTower;
     this.scene.showBuildPreview(spot.x, spot.z, def.id, this.world.economy.canAfford(def.buildCost));
+  }
+
+  /**
+   * 수리 버튼이 지금 어떤 상태인가.
+   *
+   * 판정은 전부 시뮬(World.repairTowerStatus)이 한다. 여기서는 그 답을 버튼이
+   * 읽을 모양으로 옮기기만 한다 — UI가 자기만의 조건을 다시 쓰면
+   * "눌리는데 아무 일도 안 일어나는" 버튼이 생긴다.
+   */
+  private repairState(slotId: string): RepairState {
+    const tower = this.world.towers.get(slotId);
+    if (!tower) return { kind: 'hidden' };
+    const status = this.world.repairTowerStatus(slotId);
+    switch (status) {
+      case 'ok': {
+        const quote = this.world.repairTowerQuote(slotId)!;
+        return { kind: 'ok', cost: quote.cost, hp: quote.hp };
+      }
+      case 'no_gold': {
+        const cost = tower.repairCost;
+        return { kind: 'no_gold', cost, short: cost - this.world.economy.gold };
+      }
+      case 'cooldown':
+        return { kind: 'cooldown' };
+      case 'full':
+        return { kind: 'full' };
+      default:
+        return { kind: 'hidden' };
+    }
   }
 
   // ── 입력 ───────────────────────────────────────────────────────────
@@ -834,6 +919,32 @@ class Game {
 
     // 대기 중일 때만 조기 소집 버튼 활성
     this.hud.setCallEnabled(this.world.waveRunner.isWaiting && this.world.over === 'none');
+
+    /*
+     * 열어 둔 망루 패널을 살아 있게 유지한다.
+     *
+     * 공성이 붙으면 내구도가 초당 몇 번씩 깎이고 수리비를 낼 수 있는지도 그때마다
+     * 달라진다. 그런데 tower:damaged 마다 다시 그리면 여덟 기가 때릴 때 패널 DOM 을
+     * 초당 스무 번 갈아 끼우게 되어 버튼이 손가락 밑에서 사라진다.
+     * 그래서 이벤트가 아니라 여기서 일정 간격으로만 다시 그린다.
+     */
+    if (this.selectedSlot && this.panel.isOpen) {
+      this.panelRefreshTimer += dt;
+      if (this.panelRefreshTimer >= PANEL_REFRESH_SEC) {
+        this.panelRefreshTimer = 0;
+        /*
+         * 달라진 것이 없으면 그리지 않는다. 다시 그리는 순간 버튼이 새 노드로
+         * 갈리므로, 마침 손가락이 올라가 있던 탭이 통째로 사라진다. 서명이
+         * 같으면 화면도 같으니 그대로 두는 편이 언제나 낫다.
+         */
+        const tower = this.world.towers.get(this.selectedSlot);
+        const sig = tower ? `${Math.ceil(tower.hp)}/${tower.maxHp}/${this.world.economy.gold}/${tower.repairCooldown > 0}` : '';
+        if (sig !== this.panelSignature) {
+          this.panelSignature = sig;
+          this.refreshPanel();
+        }
+      }
+    }
 
     // 성벽 수리 버튼 (레벨 2부터)
     if (this.level.allowRepair) {

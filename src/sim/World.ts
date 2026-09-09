@@ -25,7 +25,7 @@ import {
   type PlacementContext,
   type Spot,
 } from './Placement';
-import { Enemy } from './Enemy';
+import { Enemy, type EnemyRole } from './Enemy';
 import { Projectile } from './Projectile';
 import { FireZone } from './FireZone';
 import { Tower, assignArrows } from './Tower';
@@ -40,6 +40,14 @@ import { WaveRunner } from './WaveRunner';
  */
 export type BuildResult = 'ok' | 'no_gold' | 'locked' | 'game_over' | PlacementCheck;
 export type UpgradeResult = 'ok' | 'max_level' | 'no_gold' | 'no_tower' | 'game_over';
+/** 망루 수리가 왜 안 되는가. 'full' 은 멀쩡하다는 뜻이다. */
+export type TowerRepairStatus =
+  | 'ok'
+  | 'full'
+  | 'no_gold'
+  | 'cooldown'
+  | 'no_tower'
+  | 'game_over';
 export type CastleUpgradeStatus = 'ok' | 'disabled' | 'max_level' | 'no_gold';
 
 /**
@@ -47,6 +55,7 @@ export type CastleUpgradeStatus = 'ok' | 'disabled' | 'max_level' | 'no_gold';
  * 뷰가 "이건 타워가 아니라 성이 쏜 것"을 이 값 하나로 구분한다.
  */
 export const CASTLE_SLOT_ID = '__castle__';
+
 
 /** 시뮬의 피해 종류 + 불 종류를 뷰가 그릴 모습으로 옮긴다. */
 function projectileVisual(kind: DamageKind, source: FireSource): ProjectileVisual {
@@ -166,6 +175,7 @@ export class World {
   //   1) 스폰 큐 소비 (WaveRunner)
   //   2) 상태이상 시간 감소 (감속 / 돌진)
   //   3) 적 이동 (감속·돌진이 반영된 실제 속도로)
+  //  3.5) 공성 — 망루를 노리는 적의 표적 선정·접근·타격
   //   4) 누수 판정 -> 성 피해 -> 적 제거
   //   5) SpatialGrid 갱신
   //   6) 회복 오라 (도사) — 타워가 쏘기 전에 회복시켜야 "회복을 뚫는" 판정이 된다
@@ -175,6 +185,8 @@ export class World {
   //  10) 웨이브 상태 갱신
   // 8)에서 준 피해가 9)에서 사망으로 수거되도록 순서를 이렇게 둔다.
   // 2)가 3)보다 먼저여야 감속이 걸린 그 스텝부터 느려진다.
+  // 3.5)가 3)과 4) 사이인 이유: 길을 벗어난 적은 3)에서 움직이지 않고 여기서
+  // 움직이며, 그 결과가 4)의 누수 판정에 그 스텝부터 반영되어야 한다.
   // -------------------------------------------------------------------
   step(dt: number): void {
     if (this.over !== 'none') return;
@@ -184,10 +196,14 @@ export class World {
     this.waveRunner.step(dt);
 
     if (this.repairCooldown > 0) this.repairCooldown = Math.max(0, this.repairCooldown - dt);
+    for (const t of this.towers.values()) {
+      if (t.repairCooldown > 0) t.repairCooldown = Math.max(0, t.repairCooldown - dt);
+    }
     this.tickStratagems(dt);
 
     this.updateStatusEffects(dt); // 2)
     this.moveEnemies(dt); // 3)
+    this.updateSiege(dt); // 3.5)
     this.updateCastleCombat(dt); // 4)
     if (this.over !== 'none') return;
     this.rebuildGrid(); // 5)
@@ -261,13 +277,34 @@ export class World {
   private spawnEnemy(spawn: WaveSpawn): void {
     const def: UnitDef = getUnit(spawn.unitId);
     const e = this.enemyPool.acquire();
-    e.init(this.nextEnemyId++, def, spawn.hpMul, spawn.speedMul, spawn.laneOffset ?? 0);
+    e.init(this.nextEnemyId++, def, spawn.hpMul, spawn.speedMul, spawn.laneOffset ?? 0, this.nextRole());
     this.path.positionAt(0, this.posBuf);
     this.path.directionAt(0, this.dirBuf);
     e.worldX = this.posBuf.x + this.dirBuf.z * e.laneOffset;
     e.worldZ = this.posBuf.z - this.dirBuf.x * e.laneOffset;
+    e.prevWorldX = e.worldX;
+    e.prevWorldZ = e.worldZ;
+    e.faceX = this.dirBuf.x;
+    e.faceZ = this.dirBuf.z;
     this.enemies.push(e);
     this.bus.emit('enemy:spawned', { enemyId: e.id, unitId: e.defId, distance: 0 });
+  }
+
+  /**
+   * 이번에 나오는 적은 습격조인가 돌파조인가 — 스폰 때 딱 한 번 정해진다.
+   *
+   * 난수는 World.rng 에서만 나온다. 시드에서 나오므로 같은 시드는 같은 전투가
+   * 된다 — 헤드리스 밸런스 러너와 리플레이가 그 위에 서 있다. "지금 근처에
+   * 망루가 있으면 습격"처럼 판 상태로 정하면 그 결정이 프레임률과 얽혀
+   * 재현되지 않는다.
+   *
+   * 열 장짜리 주머니에서 뽑아(항상 정확히 일곱과 셋) 몰림을 없애 보기도 했다.
+   * 비율은 더 정확해지지만 여섯 장의 밸런스가 그 위에서 성립하지 않았다 —
+   * 각 장의 수치표가 "평균 7할"을 전제로 맞춰져 있고, 몰림이 사라지면서
+   * 길에 남는 적의 분포 자체가 달라진다. 동전이 이 판의 전제다.
+   */
+  private nextRole(): EnemyRole {
+    return this.rng.next() < BALANCE.towerCombat.raiderRatio ? 'raider' : 'runner';
   }
 
   // 3) 이동
@@ -275,12 +312,329 @@ export class World {
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       e.prevDistance = e.distance;
+      e.prevWorldX = e.worldX;
+      e.prevWorldZ = e.worldZ;
+      // 길을 벗어난 적은 updateSiege 가 직접 민다. 여기서 건드리면 두 번 움직인다.
+      if (e.detached) continue;
       if (!e.atCastle) e.distance += e.effectiveSpeed * dt;
       this.path.positionAt(e.distance, this.posBuf);
       this.path.directionAt(e.distance, this.dirBuf);
       e.worldX = this.posBuf.x + this.dirBuf.z * e.laneOffset;
       e.worldZ = this.posBuf.z - this.dirBuf.x * e.laneOffset;
+      e.faceX = this.dirBuf.x;
+      e.faceZ = this.dirBuf.z;
     }
+  }
+
+  // -------------------------------------------------------------------
+  // 3.5) 공성 — 망루를 부수러 가는 적들
+  //
+  // 한 스텝에 하는 일은 넷이고 순서가 있다.
+  //   a) 표적이 사라진(무너졌거나 팔린) 적을 놓아준다
+  //   b) 아직 표적이 없는 습격조가 사거리 안의 망루를 고른다
+  //   c) 달려가는 적을 목적지 쪽으로 민다
+  //   d) 붙은 적이 주기마다 한 대씩 친다
+  // -------------------------------------------------------------------
+  private updateSiege(dt: number): void {
+    const tc = BALANCE.towerCombat;
+
+    /*
+     * 체력이 바닥난 망루를 걷는다.
+     *
+     * 지금은 strikeTower 가 그 자리에서 destroyTower 를 부르므로 이 쓸기는 대개
+     * 아무 일도 하지 않는다. 그래도 두는 이유는 **불변식을 한 곳에서 지키기**
+     * 위해서다: "체력 0인 망루는 판 위에 없다". 앞으로 다른 것이 망루를 깎게
+     * 되면(적의 광역 공격, 계략의 반동 같은 것) 그쪽마다 파괴 처리를 다시
+     * 적어야 하는데, 한 번이라도 빠뜨리면 부술 수 없는 유령 망루가 남는다.
+     * 망루는 많아야 여덟 기라 매 스텝 훑어도 비용이 없다.
+     */
+    let broken: Tower | null = null;
+    for (const tower of this.towers.values()) {
+      if (tower.destroyed) {
+        broken = tower;
+        break;
+      }
+    }
+    // 대개 아무것도 없다. 있을 때만 사본을 떠서 지운다 — 순회 중에 Map 을 지우면
+    // 이터레이터가 어긋나고, 매 스텝 사본을 뜨면 프레임마다 배열이 하나씩 생긴다.
+    if (broken) {
+      for (const tower of [...this.towers.values()]) {
+        if (tower.destroyed) this.destroyTower(tower);
+      }
+    }
+
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (!e.alive) continue;
+
+      // a) 표적 검증 — 망루가 없어졌으면 길로 돌아간다
+      if (e.targetSlotId !== null) {
+        const t = this.towers.get(e.targetSlotId);
+        if (!t || t.destroyed) this.abandonSiege(e);
+      }
+
+      if (e.freezeTimer > 0) continue;
+      // 성문에 닿은 적은 더 이상 망루를 보지 않는다 — 눈앞에 성벽이 있다.
+      if (e.atCastle) continue;
+
+      /*
+       * b) 표적 선정 — 매 스텝 본다.
+       *
+       * 0.25초에 한 번만 보게 줄여 봤다(망루 여덟 기 x 적 300기의 거리 계산이
+       * 아까워 보였다). 그 사이에 적이 12유닛을 더 걸어 사거리를 지나쳐 버리고,
+       * 놓친 습격조는 그대로 성문으로 가는 돌파조가 된다 — 2·3·4장이 그 자리에서
+       * 패배로 뒤집혔다. 아끼려던 계산은 망루 여덟 번의 제곱거리 비교이고,
+       * 그건 같은 스텝의 SpatialGrid 조회보다 싸다. 최적화할 곳이 아니었다.
+       */
+      if (e.siege === 'none' && e.role === 'raider' && this.towers.size > 0) {
+        this.acquireSiegeTarget(e);
+      }
+
+      if (!e.detached) continue;
+
+      const tower = e.targetSlotId ? this.towers.get(e.targetSlotId) ?? null : null;
+
+      // c) 이동 — 접근이든 복귀든 목적지로 곧장 간다
+      if (e.siege === 'approach' || e.siege === 'return') {
+        if (tower && e.siege === 'approach') tower.siegePoint(e.siegeSlotIndex, this.posBuf);
+        else {
+          this.posBuf.x = e.moveToX;
+          this.posBuf.z = e.moveToZ;
+        }
+        e.moveToX = this.posBuf.x;
+        e.moveToZ = this.posBuf.z;
+        const dx = this.posBuf.x - e.worldX;
+        const dz = this.posBuf.z - e.worldZ;
+        const dist = Math.hypot(dx, dz);
+        const step = e.effectiveSpeed * dt;
+        if (dist > 1e-6) {
+          e.faceX = dx / dist;
+          e.faceZ = dz / dist;
+        }
+        if (dist <= Math.max(step, tc.arriveRadius)) {
+          e.worldX = this.posBuf.x;
+          e.worldZ = this.posBuf.z;
+          if (e.siege === 'return') this.rejoinPath(e);
+          else this.beginAssault(e, tower);
+        } else {
+          e.worldX += (dx / dist) * step;
+          e.worldZ += (dz / dist) * step;
+        }
+        continue;
+      }
+
+      // d) 타격 (안쪽 고리) / 대기 (바깥 고리)
+      if (e.siege === 'assault' && tower) {
+        /*
+         * 물러날 때가 됐는가.
+         *
+         * 이 한 줄이 "긴박한 공성"과 "끝나지 않는 웨이브"를 가른다. 시간 제한이
+         * 없으면 습격조가 망루 앞에 눌러앉아 웨이브가 영영 정리되지 않는다.
+         * 물러난 부대는 돌파조가 된다 — 한 망루에서 물러나 옆 망루로 옮겨 다니면
+         * 그건 물러난 것이 아니라 순회하는 것이다.
+         */
+        e.siegeElapsed += dt;
+        if (e.siegeElapsed >= tc.assaultSeconds) {
+          e.role = 'runner';
+          this.abandonSiege(e);
+          continue;
+        }
+        // 붙어 있는 동안은 계속 망루를 본다 — 발밑이 아니라 표적을 향해야 한다.
+        const dx = tower.x - e.worldX;
+        const dz = tower.z - e.worldZ;
+        const len = Math.hypot(dx, dz) || 1;
+        e.faceX = dx / len;
+        e.faceZ = dz / len;
+
+        if (!Tower.isAssaultSlot(e.siegeSlotIndex)) {
+          // 바깥 고리 — 무기만 든 채 기다린다. 안쪽이 비면 그 자리로 파고든다.
+          const next = tower.promoteSiegeSlot(e.id, e.siegeSlotIndex, e.worldX, e.worldZ);
+          if (next >= 0) {
+            e.siegeSlotIndex = next;
+            e.siege = 'approach';
+            tower.siegePoint(next, this.posBuf);
+            e.moveToX = this.posBuf.x;
+            e.moveToZ = this.posBuf.z;
+            this.bus.emit('enemy:siege', {
+              enemyId: e.id,
+              unitId: e.defId,
+              slotId: tower.slotId,
+              state: 'approach',
+              interval: e.towerStrikeInterval,
+            });
+          }
+          continue;
+        }
+
+        e.towerAttackCooldown -= dt;
+        if (e.towerAttackCooldown > 0) continue;
+        e.towerAttackCooldown += e.towerStrikeInterval;
+        this.strikeTower(tower, e);
+      }
+    }
+  }
+
+  /**
+   * 사거리 안에서 칠 만한 망루를 고른다.
+   *
+   * 고르는 기준은 **가까움** 하나다. 체력이 적은 것을 노리게 하면 무리가 한 망루에
+   * 몰려 순서대로 지워지고, 강한 것을 노리게 하면 앞의 망루를 그냥 지나친다.
+   * 가까운 것부터 치는 쪽이 눈에 자연스럽고, 결과적으로 "길에 붙여 지은 망루가
+   * 먼저 맞는다"는 배치의 판단을 만든다.
+   *
+   * 자리가 다 찬 망루는 건너뛴다 — 열 기가 한 망루에 겹쳐 서면 무리가 아니라 덩어리다.
+   */
+  private acquireSiegeTarget(e: Enemy): void {
+    const range2 = BALANCE.towerCombat.aggroRange ** 2;
+    let best: Tower | null = null;
+    let bestD2 = range2;
+    for (const t of this.towers.values()) {
+      if (t.destroyed || !t.siegeSlotsFree) continue;
+      const d2 = (t.x - e.worldX) ** 2 + (t.z - e.worldZ) ** 2;
+      // 동률은 자리 id 로 가른다 — Map 순회 순서에 기대면 재현되지 않는다.
+      if (d2 < bestD2 || (d2 === bestD2 && best && t.slotId < best.slotId)) {
+        bestD2 = d2;
+        best = t;
+      }
+    }
+    if (!best) return;
+    const slot = best.claimSiegeSlot(e.id, e.worldX, e.worldZ);
+    if (slot < 0) return;
+    e.targetSlotId = best.slotId;
+    e.siegeSlotIndex = slot;
+    e.siege = 'approach';
+    e.detached = true;
+    e.siegeElapsed = 0;
+    best.siegePoint(slot, this.posBuf);
+    e.moveToX = this.posBuf.x;
+    e.moveToZ = this.posBuf.z;
+    this.bus.emit('enemy:siege', {
+      enemyId: e.id,
+      unitId: e.defId,
+      slotId: best.slotId,
+      state: 'approach',
+      interval: e.towerStrikeInterval,
+    });
+  }
+
+  /**
+   * 자리에 붙었다.
+   *
+   * 안쪽 고리면 여기서부터 때리고, 바깥 고리면 서서 기다린다 — 상태는 둘 다
+   * 'assault' 다. 뷰에는 interval 0 으로 알려 "무기를 든 채 서 있다"를 그리게 한다.
+   */
+  private beginAssault(e: Enemy, tower: Tower | null): void {
+    if (!tower) {
+      this.abandonSiege(e);
+      return;
+    }
+    const striking = Tower.isAssaultSlot(e.siegeSlotIndex);
+    e.siege = 'assault';
+    e.attackInterval = striking ? e.towerStrikeInterval : 0;
+    e.towerAttackCooldown = BALANCE.towerCombat.firstImpactDelay;
+    this.bus.emit('enemy:siege', {
+      enemyId: e.id,
+      unitId: e.defId,
+      slotId: tower.slotId,
+      state: 'assault',
+      interval: e.attackInterval,
+    });
+  }
+
+  /**
+   * 표적을 잃었다 — 길로 돌아간다.
+   *
+   * 돌아갈 지점은 **지금 서 있는 곳에서 가장 가까운 길 위**이되, 이미 지나온
+   * 거리보다 뒤로는 가지 않는다(max). 뒤로 가면 같은 구간을 두 번 걷게 되어
+   * "밀려 내려갔다"로 보이고, 타워 사거리 계산도 두 번 겹친다.
+   *
+   * 도착할 때까지 distance 를 올리지 않는 이유: 목적지가 같이 도망가면 영영
+   * 따라잡지 못한다. 멈춰 있는 점으로 걸어가 닿는 순간 다시 길 위의 적이 된다.
+   */
+  private abandonSiege(e: Enemy): void {
+    this.releaseSiegeSlot(e);
+    if (!e.detached) {
+      e.siege = 'none';
+      return;
+    }
+    e.siege = 'return';
+    const nearest = Math.max(e.distance, this.path.nearestDistance(e.worldX, e.worldZ));
+    e.distance = nearest;
+    e.prevDistance = nearest;
+    this.path.positionAt(nearest, this.posBuf);
+    this.path.directionAt(nearest, this.dirBuf);
+    e.moveToX = this.posBuf.x + this.dirBuf.z * e.laneOffset;
+    e.moveToZ = this.posBuf.z - this.dirBuf.x * e.laneOffset;
+    this.bus.emit('enemy:siege', {
+      enemyId: e.id,
+      unitId: e.defId,
+      slotId: null,
+      state: 'return',
+      interval: 0,
+    });
+  }
+
+  /** 길 위로 복귀 완료 — 다시 distance 가 위치의 진실이 된다 */
+  private rejoinPath(e: Enemy): void {
+    e.detached = false;
+    e.siege = 'none';
+    e.targetSlotId = null;
+    e.siegeSlotIndex = -1;
+    this.path.directionAt(e.distance, this.dirBuf);
+    e.faceX = this.dirBuf.x;
+    e.faceZ = this.dirBuf.z;
+    this.bus.emit('enemy:siege', {
+      enemyId: e.id,
+      unitId: e.defId,
+      slotId: null,
+      state: 'none',
+      interval: 0,
+    });
+  }
+
+  private releaseSiegeSlot(e: Enemy): void {
+    if (e.targetSlotId === null) return;
+    this.towers.get(e.targetSlotId)?.releaseSiegeSlot(e.siegeSlotIndex, e.id);
+    e.targetSlotId = null;
+    e.siegeSlotIndex = -1;
+  }
+
+  /** 한 대 친다. 망루가 무너지면 붙어 있던 적들을 전부 놓아준다. */
+  private strikeTower(tower: Tower, e: Enemy): void {
+    const applied = tower.takeDamage(e.towerStrikeDamage);
+    this.bus.emit('tower:damaged', {
+      slotId: tower.slotId,
+      towerId: tower.def.id,
+      enemyId: e.id,
+      unitId: e.defId,
+      amount: applied,
+      hp: tower.hp,
+      maxHp: tower.maxHp,
+      hpRatio: tower.hpRatio,
+      worldPos: { x: tower.x, y: 0, z: tower.z },
+      attackerPos: { x: e.worldX, y: 0, z: e.worldZ },
+    });
+    if (tower.destroyed) this.destroyTower(tower);
+  }
+
+  /**
+   * 망루가 무너졌다.
+   *
+   * 판매와 달리 골드가 돌아오지 않는다 — 그게 이 규칙의 값이다. 부서지기 전에
+   * 고치거나(repairTower) 팔아서 절반이라도 건지는 판단이 생긴다.
+   */
+  private destroyTower(tower: Tower): void {
+    this.towers.delete(tower.slotId);
+    for (const other of this.enemies) {
+      if (other.targetSlotId === tower.slotId) this.abandonSiege(other);
+    }
+    this.bus.emit('tower:destroyed', {
+      slotId: tower.slotId,
+      towerId: tower.def.id,
+      level: tower.level,
+      lostGold: tower.totalInvested,
+      worldPos: { x: tower.x, y: 0, z: tower.z },
+    });
   }
 
   // 4) 성문 전투 — 도착한 적은 사라지지 않고 죽을 때까지 성을 반복 공격한다.
@@ -571,10 +925,21 @@ export class World {
     // 감속·돌진이 걸린 적은 실제 속도로 예측해야 빗나가지 않는다.
     const dist = Math.hypot(target.worldX - tower.x, target.worldZ - tower.z);
     const flightTime = dist / proj.speed;
-    this.path.positionAt(target.distance + target.effectiveSpeed * flightTime, this.predictBuf);
-    this.path.directionAt(target.distance + target.effectiveSpeed * flightTime, this.dirBuf);
-    this.predictBuf.x += this.dirBuf.z * target.laneOffset;
-    this.predictBuf.z -= this.dirBuf.x * target.laneOffset;
+    if (target.detached) {
+      /*
+       * 길을 벗어난 적은 경로로 예측할 수 없다 — 지금 향하는 방향으로 곧장 민다.
+       * 경로 예측을 그대로 쓰면 망루로 달려드는 적을 향해 쏜 화살이 엉뚱하게
+       * 길 위의 빈 자리로 날아간다.
+       */
+      const lead = target.effectiveSpeed * flightTime;
+      this.predictBuf.x = target.worldX + target.faceX * lead;
+      this.predictBuf.z = target.worldZ + target.faceZ * lead;
+    } else {
+      this.path.positionAt(target.distance + target.effectiveSpeed * flightTime, this.predictBuf);
+      this.path.directionAt(target.distance + target.effectiveSpeed * flightTime, this.dirBuf);
+      this.predictBuf.x += this.dirBuf.z * target.laneOffset;
+      this.predictBuf.z -= this.dirBuf.x * target.laneOffset;
+    }
 
     const p = this.projectilePool.acquire();
     /*
@@ -930,9 +1295,59 @@ export class World {
     const refund = tower.sellValue();
     const pos: WorldPos = { x: tower.x, y: 0, z: tower.z };
     this.towers.delete(slotId);
+    // 둘러싸고 있던 적들은 표적을 잃는다 — 안 놓아주면 빈 자리를 계속 때린다.
+    for (const e of this.enemies) if (e.targetSlotId === slotId) this.abandonSiege(e);
     this.grantGold(refund, 'sell', pos);
     this.bus.emit('tower:sold', { slotId, towerId: tower.def.id, refund, worldPos: pos });
     return refund;
+  }
+
+  // ── 망루 수리 ───────────────────────────────────────────────────────
+
+  /**
+   * 망루를 고친다. 실제로 회복한 양을 반환한다 (0이면 아무 일도 없었다).
+   *
+   * 값은 그 망루에 부은 총 골드의 절반이고, 한 번에 최대 체력의 절반을 채운다.
+   * 성벽 수리(BALANCE.repair)와 달리 웨이브 한복판에도 쓸 수 있다 —
+   * 망루는 **지금 무너지고 있는 것**이라 나중에 고칠 기회가 없기 때문이다.
+   * 대신 값이 비싸고 같은 망루에는 쿨다운이 걸린다.
+   */
+  repairTower(slotId: string): number {
+    if (this.repairTowerStatus(slotId) !== 'ok') return 0;
+    const tower = this.towers.get(slotId)!;
+    const cost = tower.repairCost;
+    const pos: WorldPos = { x: tower.x, y: 0, z: tower.z };
+    if (!this.spendGold(cost, 'tower_repair', pos)) return 0;
+    const healed = tower.repair();
+    this.bus.emit('tower:repaired', {
+      slotId,
+      towerId: tower.def.id,
+      amount: healed,
+      hp: tower.hp,
+      maxHp: tower.maxHp,
+      hpRatio: tower.hpRatio,
+      cost,
+      worldPos: pos,
+    });
+    return healed;
+  }
+
+  /** 왜 지금 못 고치는가. 패널이 버튼에 이유를 적는다. */
+  repairTowerStatus(slotId: string): TowerRepairStatus {
+    if (this.over !== 'none') return 'game_over';
+    const tower = this.towers.get(slotId);
+    if (!tower) return 'no_tower';
+    if (tower.missingHp <= 0) return 'full';
+    if (tower.repairCooldown > 0) return 'cooldown';
+    if (!this.economy.canAfford(tower.repairCost)) return 'no_gold';
+    return 'ok';
+  }
+
+  /** 이 망루를 한 번 고치는 값과 회복량 (버튼 표시용). 고칠 게 없으면 null. */
+  repairTowerQuote(slotId: string): { hp: number; cost: number } | null {
+    const tower = this.towers.get(slotId);
+    if (!tower || tower.missingHp <= 0) return null;
+    return { hp: tower.repairAmount, cost: tower.repairCost };
   }
 
   setTargeting(slotId: string, targeting: TargetingMode): void {

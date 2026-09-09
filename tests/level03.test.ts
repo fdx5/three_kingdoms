@@ -15,14 +15,15 @@ describe('레벨 3 맵', () => {
    * 표에 적힌 배율에 전역 difficulty.bossHpMul 이 곱해진 값이 실제 장수의 체력이다.
    * 그래서 표의 숫자가 아니라 곱한 결과를 재는 것이 맞다 — 어느 쪽을 움직여도 걸린다.
    */
-  it('15개 웨이브이며 중간보스 2.5배·최종보스 3배가 적용된다', () => {
+  /* 표의 배율(1.25 / 1.5) x difficulty.bossHpMul 2.6. 2.6이 된 사연은 level02 참조. */
+  it('15개 웨이브이며 중간보스 3.25배·최종보스 3.9배가 적용된다', () => {
     const boss = BALANCE.difficulty.bossHpMul;
     expect(LEVEL_03.waves).toHaveLength(15);
     const yanliang = LEVEL_03.waves[7].spawns.find((s) => s.unitId === 'yanliang')!;
     const yuanshao = LEVEL_03.waves[14].spawns.find((s) => s.unitId === 'yuanshao')!;
-    expect(yanliang.hpMul * boss).toBeCloseTo(2.5, 6);
-    // 원소는 3배가 이 장의 상한이다 — 더 올리면 15파에서 성문에 붙는 순간 뒤집힌다.
-    expect(yuanshao.hpMul * boss).toBeCloseTo(3, 6);
+    expect(yanliang.hpMul * boss).toBeCloseTo(3.25, 6);
+    // 원소는 표의 1.5가 이 장의 상한이다 — 더 올리면 15파에서 성문에 붙는 순간 뒤집힌다.
+    expect(yuanshao.hpMul * boss).toBeCloseTo(3.9, 6);
   });
   const path = new Path(LEVEL_03.path);
 

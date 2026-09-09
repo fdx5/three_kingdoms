@@ -47,6 +47,11 @@ export const SOUND_MAP: Record<string, SoundMapping> = {
     boss: 'sfx_castle_strike_boss',
   },
   'castle:spark': 'sfx_spark',
+  /*
+   * 망루가 무너지는 소리. 대포 소리를 빌려 쓴다 — 목재가 통째로 꺾이는 굉음에
+   * 가진 음원 중 가장 가깝고, 한 판에 몇 번 안 나므로 포성과 헷갈리지 않는다.
+   */
+  'tower:destroyed': 'sfx_cannon',
   'tower:built': 'sfx_build',
   'tower:upgraded': 'sfx_upgrade',
   'tower:sold': 'sfx_sell',

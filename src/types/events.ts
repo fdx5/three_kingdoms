@@ -81,6 +81,54 @@ export interface GameEvents {
   'tower:upgraded': { slotId: string; towerId: string; level: number; cost: number; worldPos: WorldPos };
   'tower:sold': { slotId: string; towerId: string; refund: number; worldPos: WorldPos };
   'tower:targeting': { slotId: string; targeting: string };
+  /**
+   * 망루가 한 대 맞았다.
+   *
+   * attackerPos 를 같이 싣는 이유: 뷰는 **어느 쪽에서 맞았는지**를 알아야 한다.
+   * 망루가 뒤로 밀리는 방향, 파편이 튀는 방향, 불꽃이 이는 자리가 전부 여기서 나온다.
+   */
+  'tower:damaged': {
+    slotId: string;
+    towerId: string;
+    enemyId: number;
+    unitId: string;
+    amount: number;
+    hp: number;
+    maxHp: number;
+    hpRatio: number;
+    worldPos: WorldPos;
+    attackerPos: WorldPos;
+  };
+  /** 망루가 무너졌다. lostGold 는 되찾지 못한 총 투자액이다. */
+  'tower:destroyed': {
+    slotId: string;
+    towerId: string;
+    level: number;
+    lostGold: number;
+    worldPos: WorldPos;
+  };
+  'tower:repaired': {
+    slotId: string;
+    towerId: string;
+    amount: number;
+    hp: number;
+    maxHp: number;
+    hpRatio: number;
+    cost: number;
+    worldPos: WorldPos;
+  };
+  /**
+   * 적의 공성 상태가 바뀌었다 — 뷰가 걷기/달리기/공격 클립을 갈아 끼운다.
+   * slotId 는 노리는 망루(approach·assault), 길로 돌아갈 때는 null 이다.
+   */
+  'enemy:siege': {
+    enemyId: number;
+    unitId: string;
+    slotId: string | null;
+    state: 'approach' | 'assault' | 'return' | 'none';
+    /** assault 일 때의 타격 주기(초). 뷰가 클립 박자를 여기에 맞춘다. */
+    interval: number;
+  };
   /** aura 타워가 적에게 효과를 걸었다 */
   'tower:aura': { slotId: string; towerId: string; affected: number; worldPos: WorldPos };
 

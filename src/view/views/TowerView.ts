@@ -4,7 +4,11 @@ import type { TowerDef } from '../../types/towers';
 import type { AssetRegistry } from '../AssetRegistry';
 import type { Terrain } from '../Terrain';
 import type { EntityView, ViewState } from '../EntityView';
+import { BALANCE } from '../../data/balance';
 import { RangeRing } from './RangeRing';
+import { TowerHealthBar } from './TowerHealthBar';
+import { TowerDamageFx } from '../vfx/TowerDamageFx';
+import type { GroundFireAssets } from './GroundFireView';
 
 /**
  * 타워 뷰.
@@ -56,6 +60,33 @@ export class TowerView implements EntityView<Tower> {
   private displayAngle = 0;
   private level: number;
 
+  // ── 피격 / 파괴 ────────────────────────────────────────────────────
+  /**
+   * 지금 얼마나 부서졌는가 (0 = 멀쩡, 1 = 무너지기 직전).
+   * 이 값 하나에서 그을음·기울기·불·연기가 전부 파생된다.
+   */
+  private damage = 0;
+  /** 한 대 맞은 여운 — 뒤로 밀렸다 돌아오는 0..1 */
+  private flinch = 0;
+  /** 밀려나는 방향 (때린 쪽의 반대) */
+  private flinchX = 0;
+  private flinchZ = 0;
+  /** 맞는 순간의 흰 섬광 0..1 */
+  private hitFlash = 0;
+  /** 무너지는 중이면 0..1, 아니면 -1 */
+  private collapse = -1;
+  private collapseAxis = 0;
+  private damageFx: TowerDamageFx | null = null;
+  private fireAssets: GroundFireAssets | null = null;
+  private readonly bar: TowerHealthBar;
+  /** 그을림·번쩍임을 걸기 위해 복제해 둔 재질 (레지스트리 캐시를 공유하면 안 된다) */
+  private tintMats: THREE.MeshStandardMaterial[] = [];
+  private baseColor: THREE.Color[] = [];
+  private baseEmissive: THREE.Color[] = [];
+  private baseOpacity: { opacity: number; transparent: boolean; depthWrite: boolean }[] = [];
+  /** measureBounds 가 마지막으로 잰 크기 — 체력바 높이와 불의 크기가 여기서 나온다 */
+  private bounds = { height: 60, radius: 22 };
+
   /** GLTF 망루(쇠뇌·대포)일 때만 채워진다. 비어 있으면 프리미티브 동작을 쓴다. */
   private bows: BowRig[] = [];
   /** 이번 일제사격이 몇 번 무기부터 시작하는가 (돌아가며 쏘게 하는 값) */
@@ -74,6 +105,9 @@ export class TowerView implements EntityView<Tower> {
 
   readonly ring: RangeRing;
   private readonly groundY: number;
+  /** 세운 자리 — 흔들리고 나면 반드시 여기로 돌아온다 */
+  private readonly baseX: number;
+  private readonly baseZ: number;
   private readonly worldBuf = new THREE.Vector3();
 
   constructor(
@@ -86,16 +120,135 @@ export class TowerView implements EntityView<Tower> {
   ) {
     this.level = level;
     this.groundY = terrain.heightAt(x, z);
+    this.baseX = x;
+    this.baseZ = z;
     this.object3d.position.set(x, this.groundY, z);
 
     this.model = this.buildLevelModel(level);
     this.object3d.add(this.model);
     this.setupBows();
     this.applyBowCount(level, false);
+    this.collectTintMaterials();
 
     this.ring = new RangeRing(def.levels[level - 1].range, terrain);
     this.ring.group.position.set(x, 0, z);
     this.ring.setVisible(false);
+
+    this.bar = new TowerHealthBar(this.bounds.height * BALANCE.fx.towerDamage.barHeightMul);
+    this.object3d.add(this.bar.group);
+  }
+
+  /**
+   * 그을림과 피격 섬광을 걸 재질을 복제해 둔다.
+   *
+   * AssetRegistry 의 재질은 같은 종류의 망루 전부가 **공유**한다. 그대로 색을
+   * 바꾸면 한 기가 맞을 때 판 위의 궁노 망루가 전부 같이 검게 탄다.
+   * (적 뷰가 같은 이유로 같은 일을 한다 — EnemyView 생성자 참고.)
+   */
+  private collectTintMaterials(): void {
+    for (const m of this.tintMats) m.dispose();
+    this.tintMats = [];
+    this.baseColor = [];
+    this.baseEmissive = [];
+    this.baseOpacity = [];
+    this.model.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const clone = (mat: THREE.Material): THREE.Material => {
+        const std = mat as THREE.MeshStandardMaterial;
+        if (!std.isMeshStandardMaterial) return mat;
+        const c = std.clone();
+        this.tintMats.push(c);
+        this.baseColor.push(c.color.clone());
+        this.baseEmissive.push(c.emissive.clone());
+        this.baseOpacity.push({ opacity: c.opacity, transparent: c.transparent, depthWrite: c.depthWrite });
+        return c;
+      };
+      mesh.material = Array.isArray(mesh.material)
+        ? mesh.material.map(clone)
+        : clone(mesh.material);
+    });
+  }
+
+  // ── 피격 / 파괴 ────────────────────────────────────────────────────
+
+  /**
+   * 불과 연기를 쓸 수 있게 한다. 지면 화재와 같은 텍스처를 빌려 쓰므로
+   * GameScene 이 자기 자산을 넘겨 준다 — 뷰마다 텍스처를 굽지 않는다.
+   */
+  setFireAssets(assets: GroundFireAssets): void {
+    this.fireAssets = assets;
+  }
+
+  /**
+   * 남은 체력 비율. 이 한 값이 그을림·기울기·불·연기·체력바를 전부 움직인다.
+   * @param flashBar 방금 맞아서 체력바를 띄워야 하면 true
+   */
+  setHealth(hpRatio: number, flashBar = false): void {
+    this.damage = THREE.MathUtils.clamp(1 - hpRatio, 0, 1);
+    this.bar.set(hpRatio, flashBar ? 3.2 : 0);
+    this.ensureDamageFx();
+    this.damageFx?.setDamage(this.damage);
+  }
+
+  /**
+   * 한 대 맞았다. (fromX, fromZ) 는 때린 쪽 — 망루는 그 반대로 밀린다.
+   *
+   * 밀리는 방향이 없으면 그냥 위아래로 덜컹거리는 것이 되어 "어디서 맞았는지"가
+   * 안 보인다. 여덟 방향에서 둘러싸여 맞을 때 이게 있어야 무리의 위치가 읽힌다.
+   */
+  hit(fromX: number, fromZ: number, power = 1): void {
+    const dx = this.object3d.position.x - fromX;
+    const dz = this.object3d.position.z - fromZ;
+    const len = Math.hypot(dx, dz) || 1;
+    this.flinchX = dx / len;
+    this.flinchZ = dz / len;
+    this.flinch = Math.min(1, this.flinch + power);
+    this.hitFlash = 1;
+  }
+
+  /** 수리했다 — 불이 잦아들고 체력바가 한 번 뜬다 */
+  repaired(hpRatio: number): void {
+    this.setHealth(hpRatio, true);
+  }
+
+  /** 골라 둔 망루는 체력바를 계속 띄운다 */
+  setBarPinned(on: boolean): void {
+    this.bar.setPinned(on);
+  }
+
+  /**
+   * 무너지기 시작한다. 시뮬에서는 이미 사라진 망루이고 여기서는 여운만 남는다.
+   * 끝났는지는 isCollapseFinished 로 묻는다.
+   */
+  startCollapse(): void {
+    if (this.collapse >= 0) return;
+    this.collapse = 0;
+    // 마지막으로 밀린 방향으로 넘어간다. 맞은 적이 없으면(판매 등) 아무 쪽으로나.
+    this.collapseAxis = Math.atan2(this.flinchX, this.flinchZ);
+    this.ring.setVisible(false);
+    this.bar.hide();
+    this.damageFx?.setDamage(1);
+  }
+
+  get isCollapsing(): boolean {
+    return this.collapse >= 0;
+  }
+
+  get isCollapseFinished(): boolean {
+    return this.collapse >= 1;
+  }
+
+  private ensureDamageFx(): void {
+    if (this.damageFx || !this.fireAssets) return;
+    if (this.damage < BALANCE.fx.towerDamage.smokeAt * 0.5) return;
+    this.damageFx = new TowerDamageFx(
+      this.fireAssets,
+      this.bounds.height,
+      Math.max(10, this.bounds.radius * 0.8),
+      Math.round(this.object3d.position.x + this.object3d.position.z),
+    );
+    this.object3d.add(this.damageFx.object3d);
   }
 
   /** 쇠뇌가 달린 GLTF 모델인가 */
@@ -255,6 +408,8 @@ export class TowerView implements EntityView<Tower> {
       this.model = this.buildLevelModel(level);
       this.object3d.add(this.model);
       this.setupBows();
+      // 모델이 통째로 바뀌었다 — 그을림을 걸 재질도 새로 복제해야 한다.
+      this.collectTintMaterials();
 
       // 새로 생긴 표식만 스케일 0에서 시작해 팝 인 (화살대 + 촉 둘 다)
       this.newMarks = [];
@@ -272,6 +427,8 @@ export class TowerView implements EntityView<Tower> {
 
     this.ring.setRadius(this.def.levels[level - 1].range);
     this.ring.pulse();
+    // 새 재질에도 지금까지의 그을림을 다시 얹는다 (강화해도 부서진 자국은 남는다)
+    this.applyScorch();
   }
 
   /**
@@ -349,7 +506,11 @@ export class TowerView implements EntityView<Tower> {
     }
   }
 
-  sync(_tower: Tower, _alpha: number, dt: number): void {
+  sync(_tower: Tower, _alpha: number, dt: number, camera?: THREE.Camera): void {
+    if (this.collapse >= 0) {
+      this.updateCollapse(dt, camera);
+      return;
+    }
     if (this.hasBows) {
       this.syncBows(dt);
     } else if (this.mixer) {
@@ -398,7 +559,115 @@ export class TowerView implements EntityView<Tower> {
       }
     }
 
+    this.updateDamage(dt, camera);
     this.ring.update(dt);
+  }
+
+  /**
+   * 부서진 정도가 몸에 드러나는 곳.
+   *
+   *   그을림   목재가 타서 검어진다. 색을 그냥 어둡게 하는 것이 아니라 **재의
+   *            색**으로 끌어당긴다 — 어둡게만 하면 밤이 된 것처럼 보인다.
+   *   달아오름 임계점을 넘으면 이음새가 붉게 달아오른다 (emissive).
+   *   기울기   기둥이 상해 한쪽으로 눕는다. 마지막에 넘어갈 방향의 예고다.
+   *   덜컹임   맞는 순간 그 반대로 밀렸다 돌아온다.
+   */
+  private updateDamage(dt: number, camera?: THREE.Camera): void {
+    const td = BALANCE.fx.towerDamage;
+
+    /*
+     * 밀렸다 돌아온다. **절대 위치로** 쓴다 — 매 프레임 더하면 망루가 맞을 때마다
+     * 조금씩 옆으로 걸어가서, 한 판이 끝날 때쯤 세운 자리에 없다.
+     */
+    if (this.flinch > 0) {
+      this.flinch = Math.max(0, this.flinch - dt * 5.5);
+      // 튕겨 돌아오는 감쇠 진동 — 목재가 한 번 흔들리고 멎는다
+      const k = this.flinch * this.flinch;
+      const wobble = Math.sin(this.flinch * Math.PI * 3) * k;
+      this.object3d.position.x = this.baseX + this.flinchX * wobble * td.flinch;
+      this.object3d.position.z = this.baseZ + this.flinchZ * wobble * td.flinch;
+      if (this.flinch === 0) {
+        this.object3d.position.x = this.baseX;
+        this.object3d.position.z = this.baseZ;
+      }
+    }
+
+    if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt * 7);
+
+    // 임계 구간에서만 눕는다 — 조금 맞았다고 기우는 망루는 부실 공사로 보인다
+    const lean = THREE.MathUtils.clamp((this.damage - td.fireAt) / (1 - td.fireAt), 0, 1);
+    if (lean > 0 || this.model.rotation.x !== 0 || this.model.rotation.z !== 0) {
+      const amount = lean * lean * td.maxLean;
+      // 흔들림은 피해가 클수록 커진다. 무너지기 직전의 망루는 가만히 서 있지 않는다.
+      const shiver = Math.sin(performance.now() * 0.004) * lean * 0.012;
+      this.model.rotation.z = this.flinchX * amount + shiver;
+      this.model.rotation.x = -this.flinchZ * amount;
+    }
+
+    this.applyScorch();
+
+    if (this.damageFx && camera) this.damageFx.update(dt, camera);
+    if (camera) this.bar.update(dt, camera);
+  }
+
+  /**
+   * 그을음 + 피격 섬광을 재질에 얹는다.
+   *
+   * 그을음이 주역이고 달아오름은 조역이다. 처음에는 반대로 잡았다가
+   * (emissive 를 0.55까지 섞었다) 망루가 통째로 분홍빛으로 빛나서, 타는 것이
+   * 아니라 붉게 칠한 것으로 보였다. 불의 붉은빛은 TowerDamageFx 의 불꽃이
+   * 이미 충분히 뿌리고 있다 — 몸통이 할 일은 **검어지는 것**이다.
+   */
+  private applyScorch(): void {
+    if (this.tintMats.length === 0) return;
+    const soot = THREE.MathUtils.clamp((this.damage - 0.1) / 0.9, 0, 1);
+    const glow = THREE.MathUtils.clamp((this.damage - BALANCE.fx.towerDamage.fireAt) / 0.5, 0, 1);
+    const flash = this.hitFlash;
+    for (let i = 0; i < this.tintMats.length; i++) {
+      const m = this.tintMats[i];
+      m.color.copy(this.baseColor[i]).lerp(_soot, soot * 0.86);
+      if (flash > 0) m.color.lerp(_white, flash * 0.45);
+      // 이음새가 아주 옅게 달아오르는 정도. 몸통이 광원이 되면 안 된다.
+      m.emissive.copy(this.baseEmissive[i]).lerp(_ember, glow * 0.22);
+      m.emissiveIntensity = 0.2 + glow * 0.3 + flash * 0.5;
+    }
+  }
+
+  /**
+   * 무너진다. 한쪽으로 기울어 쓰러지면서 땅으로 꺼지고 흐려진다.
+   *
+   * 그냥 사라지게 두면 "부서졌다"가 아니라 "지워졌다"로 보인다. 넘어가는 방향은
+   * 마지막으로 맞은 쪽의 반대다 — 때린 무리가 밀어 넘긴 것으로 읽힌다.
+   */
+  private updateCollapse(dt: number, camera?: THREE.Camera): void {
+    const td = BALANCE.fx.towerDamage;
+    this.collapse = Math.min(1, this.collapse + dt / td.collapseSec);
+    const t = this.collapse;
+    // 처음엔 주저앉듯 천천히, 그다음 한 번에 넘어간다
+    const fall = t * t * (3 - 2 * t);
+    const tip = Math.sin(fall * Math.PI * 0.5) * 1.35;
+    this.model.rotation.z = Math.sin(this.collapseAxis) * tip;
+    this.model.rotation.x = -Math.cos(this.collapseAxis) * tip;
+    this.object3d.position.y = this.groundY - fall * this.bounds.height * 0.22;
+    // 넘어가면서 좌우로 조금 흔들린다
+    this.object3d.rotation.y += dt * 0.6 * (1 - fall);
+
+    const fade = 1 - THREE.MathUtils.smoothstep(t, 0.55, 1);
+    for (let i = 0; i < this.tintMats.length; i++) {
+      const m = this.tintMats[i];
+      m.transparent = true;
+      m.opacity = this.baseOpacity[i].opacity * fade;
+      m.depthWrite = this.baseOpacity[i].depthWrite && fade > 0.5;
+      m.color.copy(this.baseColor[i]).lerp(_soot, 0.85);
+    }
+    // 무너지는 동안 체력바는 거둔다 — 0인 막대가 잔해 위에 떠 있으면 잔상으로 보인다.
+    this.bar.hide();
+    if (this.damageFx) {
+      // 불은 끝까지 타다가 마지막에 함께 꺼진다
+      this.damageFx.setDamage(fade > 0.2 ? 1 : 0);
+      if (camera) this.damageFx.update(dt, camera);
+    }
+    for (const b of this.bows) if (b.string) b.string.visible = false;
   }
 
   /** 쇠뇌 조준 회전, 팝 인, 시위 갱신 */
@@ -485,6 +754,15 @@ export class TowerView implements EntityView<Tower> {
       }
     });
 
+    /*
+     * 잰 값을 기억해 둔다 — 체력바 높이와 불이 붙는 범위가 여기서 나온다.
+     * GameScene 이 건설·업그레이드 다음 프레임에 이걸 부르므로(fitHitVolume),
+     * 그 시점에 뷰의 두 장식도 같이 실제 크기를 얻는다.
+     */
+    this.bounds.height = height;
+    this.bounds.radius = radius;
+    this.bar.setHeight(height * BALANCE.fx.towerDamage.barHeightMul);
+    this.damageFx?.setSize(height, Math.max(10, radius * 0.8));
     return { height, radius };
   }
 
@@ -496,6 +774,11 @@ export class TowerView implements EntityView<Tower> {
 
   dispose(): void {
     this.object3d.removeFromParent();
+    this.bar.dispose();
+    this.damageFx?.dispose();
+    this.damageFx = null;
+    for (const m of this.tintMats) m.dispose();
+    this.tintMats.length = 0;
     this.mixer?.stopAllAction();
     this.mixer = null;
     this.idleAction = null;
@@ -512,3 +795,9 @@ export class TowerView implements EntityView<Tower> {
     this.object3d.clear();
   }
 }
+
+const _white = new THREE.Color(0xffffff);
+/** 탄 목재의 색 — 검정이 아니라 젖은 재의 회갈색이다 */
+const _soot = new THREE.Color(0x241d18);
+/** 이음새가 달아오른 색 */
+const _ember = new THREE.Color(0xc23a12);

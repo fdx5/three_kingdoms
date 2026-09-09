@@ -115,16 +115,21 @@ describe('레벨 2 웨이브 구성', () => {
     expect(firstWaveWith('xl_healer')).toBe(8);
   });
 
-  /* 표의 배율 x 전역 difficulty.bossHpMul 이 실제 체력이다 (2.5배 / 3.5배). */
-  it('7파 중간보스는 체력 2.5배, 14파 최종보스는 3.5배다', () => {
+  /*
+   * 표의 배율 x 전역 difficulty.bossHpMul 이 실제 체력이다 (3.25배 / 4.55배).
+   * 공성전이 들어오면서 bossHpMul 이 2.0 -> 2.6 으로 올랐다 — 장수는 이제 망루도
+   * 부수는데, 그러려면 망루 앞에서 몇 초는 버텨야 하기 때문이다. 표(1.25 / 1.75)는
+   * 그대로다: 이 장이 정한 것은 "화웅보다 여포가 1.4배"라는 비율이지 절대치가 아니다.
+   */
+  it('7파 중간보스는 체력 3.25배, 14파 최종보스는 4.55배다', () => {
     const boss = BALANCE.difficulty.bossHpMul;
     const hua = LEVEL_02.waves[6].spawns.filter((s) => s.unitId === 'huaxiong');
     const lu = LEVEL_02.waves[13].spawns.filter((s) => s.unitId === 'lubu');
     expect(hua).toHaveLength(1);
     expect(lu).toHaveLength(1);
-    expect(hua[0].hpMul * boss).toBeCloseTo(2.5, 6);
-    // 3.5배가 이 장의 상한 — 4배면 여포가 성문에 붙는 순간 14파에서 진다.
-    expect(lu[0].hpMul * boss).toBeCloseTo(3.5, 6);
+    expect(hua[0].hpMul * boss).toBeCloseTo(3.25, 6);
+    // 표의 1.75가 이 장의 상한 — 2.0이면 여포가 성문에 붙는 순간 14파에서 진다.
+    expect(lu[0].hpMul * boss).toBeCloseTo(4.55, 6);
     for (let i = 0; i < 14; i++) {
       if (i === 6 || i === 13) continue;
       const bosses = LEVEL_02.waves[i].spawns.filter(

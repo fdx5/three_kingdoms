@@ -7,9 +7,21 @@ export interface TowerPanelCallbacks {
   onBuild: (slotId: string, towerId: string) => void;
   onUpgrade: (slotId: string) => void;
   onSell: (slotId: string) => void;
+  onRepair: (slotId: string) => void;
   onTargeting: (slotId: string, mode: TargetingMode) => void;
   onClose: () => void;
 }
+
+/**
+ * 수리 버튼이 지금 어떤 상태인가. World.repairTowerStatus 와 같은 어휘를 쓴다 —
+ * 패널이 자기만의 판정을 다시 만들면 "눌리는데 아무 일도 안 일어나는" 버튼이 생긴다.
+ */
+export type RepairState =
+  | { kind: 'ok'; cost: number; hp: number }
+  | { kind: 'full' }
+  | { kind: 'no_gold'; cost: number; short: number }
+  | { kind: 'cooldown' }
+  | { kind: 'hidden' };
 
 const TARGETING_LABELS: Record<TargetingMode, string> = {
   first: '선두',
@@ -35,6 +47,8 @@ export class TowerPanel {
   private picked: TowerDef;
   /** place()가 요청한 화면 좌표. 화면 밖 보정은 이 값 기준으로 다시 계산한다. */
   private anchor: { x: number; y: number } | null = null;
+  /** 판매 확인처럼 패널을 다시 그릴 때 수리 상태를 잃지 않기 위한 마지막 값 */
+  private lastRepair: RepairState = { kind: 'hidden' };
 
   constructor(
     parent: HTMLElement,
@@ -202,8 +216,9 @@ export class TowerPanel {
     this.clampIntoView();
   }
 
-  /** 건설된 타워 — 업그레이드/판매 패널 */
-  showTower(tower: Tower, gold: number): void {
+  /** 건설된 타워 — 업그레이드/수리/판매 패널 */
+  showTower(tower: Tower, gold: number, repair: RepairState = { kind: 'hidden' }): void {
+    this.lastRepair = repair;
     const slotId = tower.slotId;
     this.slotId = slotId;
     this.clearHandlers();
@@ -259,6 +274,7 @@ export class TowerPanel {
         );
 
     const sellValue = tower.sellValue();
+    const hurt = tower.hp < tower.maxHp;
 
     this.root.replaceChildren(
       ...([
@@ -266,6 +282,7 @@ export class TowerPanel {
           el('span', { text: def.displayName }),
           el('span', { class: 'panel__level', text: tower.isMaxLevel ? '최대 레벨' : `Lv ${tower.level}` }),
         ]),
+        this.durabilityRow(tower),
         isAura ? null : this.bowRow(cur.arrows, def.levels.length, def),
         el('div', { class: 'statgrid' }, rows),
         targetingRow,
@@ -273,6 +290,7 @@ export class TowerPanel {
         tower.isMaxLevel
           ? this.button('최대', 'btn-ghost', true, () => {})
           : this.button(`업그레이드 ${cost} G`, 'btn-primary', !affordable, () => this.cb.onUpgrade(slotId)),
+        this.repairButton(slotId, repair),
         this.button(
           this.sellConfirming ? `정말 판매? +${sellValue} G` : `판매 +${sellValue} G`,
           'btn-danger',
@@ -281,24 +299,69 @@ export class TowerPanel {
             // 한 번 더 확인받는다
             if (!this.sellConfirming) {
               this.sellConfirming = true;
-              this.showTower(tower, gold);
+              this.showTower(tower, gold, this.lastRepair);
               return;
             }
             this.cb.onSell(slotId);
           },
         ),
-      ]),
-        tower.isMaxLevel
-          ? el('p', { class: 'panel__note', text: '이 진지는 더 강해질 수 없습니다.' })
-          : affordable
-            ? el('p', { class: 'panel__note', text: this.upgradeHint(def, next!) })
-            : el('p', { class: 'panel__note panel__note--warn', text: `⚠ 골드 ${short} 부족` }),
+      ].filter(Boolean) as Node[]),
+        /*
+         * 안내 한 줄. 무엇이 지금 가장 급한가로 고른다 —
+         * 부서지는 중이면 업그레이드 설명보다 "고쳐라"가 먼저다.
+         */
+        hurt && repair.kind === 'no_gold'
+          ? el('p', { class: 'panel__note panel__note--warn', text: `⚠ 수리에 골드 ${repair.short} 부족 — 무너지면 투자한 골드가 사라집니다` })
+          : hurt && repair.kind === 'ok'
+            ? el('p', { class: 'panel__note panel__note--warn', text: `⚠ 파손 — ${repair.cost} G로 ${repair.hp} 회복합니다` })
+            : tower.isMaxLevel
+              ? el('p', { class: 'panel__note', text: '이 진지는 더 강해질 수 없습니다.' })
+              : affordable
+                ? el('p', { class: 'panel__note', text: this.upgradeHint(def, next!) })
+                : el('p', { class: 'panel__note panel__note--warn', text: `⚠ 골드 ${short} 부족` }),
       ].filter(Boolean) as Node[]),
     );
 
     this.root.style.display = 'block';
     this.addCloseButton();
     this.clampIntoView();
+  }
+
+  /**
+   * 내구도 한 줄 — 막대와 숫자.
+   *
+   * 3D 체력바가 이미 머리 위에 뜨지만 그건 "지금 위험하다"만 말한다.
+   * 수리를 살지 말지는 **얼마나 남았고 얼마가 드는가**로 정하는 판단이라
+   * 패널에는 숫자가 있어야 한다.
+   */
+  private durabilityRow(tower: Tower): HTMLElement {
+    const ratio = Math.max(0, Math.min(1, tower.hpRatio));
+    const level = ratio > 0.6 ? 'ok' : ratio > 0.3 ? 'warn' : 'crit';
+    const fill = el('div', { class: `durability__fill durability__fill--${level}` });
+    fill.style.width = `${Math.round(ratio * 100)}%`;
+    return el('div', { class: 'durability', 'aria-label': `내구도 ${Math.round(ratio * 100)}%` }, [
+      el('span', { class: 'durability__label', text: '내구도' }),
+      el('div', { class: 'durability__track' }, [fill]),
+      el('span', { class: 'durability__value', text: `${Math.ceil(tower.hp)} / ${tower.maxHp}` }),
+    ]);
+  }
+
+  /**
+   * 수리 버튼. 멀쩡하면 아예 만들지 않는다 —
+   * 늘 회색으로 떠 있는 버튼은 자리만 먹고 아무것도 알려 주지 않는다.
+   */
+  private repairButton(slotId: string, repair: RepairState): HTMLElement | null {
+    switch (repair.kind) {
+      case 'hidden':
+      case 'full':
+        return null;
+      case 'cooldown':
+        return this.button('수리 대기', 'btn-ghost', true, () => {});
+      case 'no_gold':
+        return this.button(`수리 ${repair.cost} G`, 'btn-repair', true, () => {});
+      case 'ok':
+        return this.button(`수리 ${repair.cost} G`, 'btn-repair', false, () => this.cb.onRepair(slotId));
+    }
   }
 
   /** 다음 레벨에서 무엇이 좋아지는지 한 줄로 */
