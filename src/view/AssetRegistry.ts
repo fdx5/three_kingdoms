@@ -30,6 +30,16 @@ interface LoadedModel {
  * public/assets/manifest.json 에 항목을 한 줄 추가하면 그 유닛이 GLTF로 바뀌고,
  * 지우면 프리미티브로 돌아온다. 코드 수정은 필요 없다.
  */
+/**
+ * 스킨 메시 바운딩 스피어의 여유 배수.
+ *
+ * 1이면 바인드 포즈에 딱 맞고, 팔을 뻗거나 무기를 휘두르는 순간 그 밖으로 나가
+ * 화면 가장자리에서 깜빡인다. 2.5 면 어떤 공격 클립도 안에 들어온다 —
+ * 실제로 필요한 것은 1.4 안팎이지만, 여기서 아끼면 "가끔 병사가 사라진다"가 되고
+ * 그건 드로우콜 몇 개와 바꿀 것이 아니다.
+ */
+const SPHERE_SLACK = 2.5;
+
 export class AssetRegistry {
   private manifest: Manifest = {};
   private models = new Map<string, LoadedModel>();
@@ -223,22 +233,48 @@ export class AssetRegistry {
   }
 
   /**
-   * 스킨 메시의 프러스텀 컬링을 끈다. **이걸 안 하면 GLB 모델이 통째로 안 보인다.**
+   * 스킨 메시에 **넉넉한 바운딩 스피어를 손으로 박는다.**
    *
-   * 우리 모델은 크기를 전부 뼈(stand)가 들고 있고 메시 노드 자체는 스케일 1이다.
-   * 그래서 three가 재는 바인드 포즈 바운딩 스피어는 1유닛짜리 점이 된다.
-   * 게다가 three는 그 값을 **첫 프러스텀 판정 때 한 번만** 재고 영영 캐시하므로,
-   * 하필 그 순간 뼈 행렬이 아직 서 있지 않으면 점 크기로 굳어 버린다.
+   * 왜 필요한가. 우리 모델은 크기를 전부 뼈(stand)가 들고 있고 메시 노드 자체는
+   * 스케일 1이다. 그래서 three 가 재는 바인드 포즈 바운딩 스피어는 1유닛짜리 점이
+   * 된다. 게다가 three 는 그 값을 **첫 프러스텀 판정 때 한 번만** 재고 영영
+   * 캐시하므로, 하필 그 순간 뼈 행렬이 아직 서 있지 않으면 점 크기로 굳어 버린다.
    * 카메라가 1000유닛 밖에 있는 부감 뷰에서 1유닛짜리 점은 사실상 항상 화면 밖이라,
    * 병사도 망루도 화면 한가운데 있는데 그려지지 않는다.
    * (지형·나무·성은 프리미티브라 멀쩡하니 "GLB만 안 보이는" 모양으로 나타난다.)
    *
-   * 매 프레임 정확한 스피어를 다시 재는 건 비싸고, 화면에 도는 스킨 메시는
-   * 많아야 수십 개다. 컬링을 끄는 편이 싸고 확실하다.
+   * 한동안은 `frustumCulled = false` 로 막았다. 확실하지만 값을 치른다 —
+   * **화면 밖의 병사까지 전부 그린다.** 맵 전체가 보이는 기본 시점에서는 어차피
+   * 다 보이니 손해가 없지만, 줌을 당겨 한 구석의 전투를 볼 때도 반대편 끝의
+   * 병사가 그대로 그려진다. 실측으로 줌인 상태에서 그리는 스킨 메시가
+   * 160개 중 160개였다.
+   *
+   * 그래서 컬링을 되살리되 스피어를 우리가 준다. 반지름은 모델의 실제 크기에
+   * SPHERE_SLACK 을 곱한 값이다 — 팔을 뻗고 무기를 휘두르는 어떤 포즈도 이 안에
+   * 들어오므로 화면 가장자리에서 병사가 사라지는 일이 없다. 넉넉히 잡아 손해 볼
+   * 것은 가장자리에서 몇 기를 더 그리는 것뿐이고, 그건 안 보이는 것보다 훨씬 싸다.
    */
   private unleashSkinnedMeshes(root: THREE.Object3D): void {
+    // 뼈가 들고 있는 크기까지 포함한 실제 화면상 크기를 잰다.
+    root.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(root);
+    const size = box.getSize(new THREE.Vector3());
+    // 비어 있거나(아직 안 선 뼈) 재기 실패하면 예전처럼 컬링을 끈다 — 안 보이는 것이 최악이다.
+    const span = Math.max(size.x, size.y, size.z);
+    if (!Number.isFinite(span) || span <= 0) {
+      root.traverse((o) => {
+        if ((o as THREE.SkinnedMesh).isSkinnedMesh) o.frustumCulled = false;
+      });
+      return;
+    }
+    const radius = (span / 2) * SPHERE_SLACK;
     root.traverse((o) => {
-      if ((o as THREE.SkinnedMesh).isSkinnedMesh) o.frustumCulled = false;
+      const mesh = o as THREE.SkinnedMesh;
+      if (!mesh.isSkinnedMesh) return;
+      const geometry = mesh.geometry;
+      // three 가 다시 재지 않도록 우리가 만든 스피어를 그대로 남긴다.
+      geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), radius);
+      mesh.frustumCulled = true;
     });
   }
 
