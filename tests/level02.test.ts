@@ -538,12 +538,17 @@ describe('레벨 2 밸런스 (헤드리스 14웨이브)', () => {
     expect(r.won).toBe(false);
   });
 
-  it('성벽 수리가 성 체력을 유의미하게 지켜준다 (골드 소비처)', () => {
+  it('수리가 성 체력을 유의미하게 지켜준다 (골드 소비처)', () => {
     const withRepair = runSim({ level: 'level02' });
     const without = runSim({ level: 'level02', repair: false });
     expect(withRepair.castleHp).toBeGreaterThan(without.castleHp);
-    // 수리를 안 하면 골드가 그만큼 남아돈다 — 그게 소비처가 필요한 이유다
-    expect(without.gold).toBeGreaterThan(withRepair.gold);
+    /*
+     * 예전에는 여기서 "수리를 안 하면 골드가 남아돈다"를 봤다. 지금은 아니다 —
+     * 망루가 부서지는 물건이 된 뒤로, 안 고치면 그 망루를 잃고 **다시 세우는 데**
+     * 돈이 든다. 그래서 남는 골드는 오히려 더 적다(실측 216 vs 624).
+     * 소비처가 사라진 게 아니라 소비처가 바뀐 것이다: 고치거나, 잃고 다시 세우거나.
+     */
+    expect(without.towersLost).toBeGreaterThan(withRepair.towersLost);
   });
 
   it('마지막 웨이브는 성에 흔적을 남긴다 (그게 성적이 된다)', () => {
@@ -566,10 +571,16 @@ describe('레벨 2 밸런스 (헤드리스 14웨이브)', () => {
     expect(stars.three).toBeGreaterThan(stars.two);
   });
 
-  it('보스전에 집중하면 계략을 실제로 천 골드 이상 사용한다', () => {
+  it('보스전에 집중하면 계략에 실제로 골드를 쓴다', () => {
     const boss = runSim({ level: 'level02', cards: 'boss' });
     expect(boss.won).toBe(true);
-    expect(boss.goldOnCards).toBeGreaterThan(1000);
+    /*
+     * 기준이 1000 이었다가 500 으로 내려왔다. 공성전이 조여지면서 망루 수리가
+     * 상시 지출이 됐고(봇은 예산을 남기고서만 계략을 쓴다), 그만큼 계략에 갈 돈이
+     * 줄었다. 이 수치가 재는 것은 "계략이 쓸 만한가"이지 절대 액수가 아니므로,
+     * 장수 웨이브마다 한 번은 쓸 수 있다는 선(가장 싼 계략의 두 배)만 지킨다.
+     */
+    expect(boss.goldOnCards).toBeGreaterThan(500);
   });
 
   it('계략 사용 시점에 따라 성의 최종 체력이 달라진다', () => {

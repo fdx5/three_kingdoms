@@ -468,6 +468,25 @@ export function runSim(args: Partial<Args> = {}): SimResult {
   });
 
   const buildQueue = [...chosen];
+
+  /*
+   * 무너진 망루는 다시 세운다.
+   *
+   * 공성전이 들어오기 전에는 이 줄이 필요 없었다 — 망루는 부서지지 않았고,
+   * 건설 대기열은 판이 시작될 때 한 번 비면 끝이었다. 지금은 습격조가 망루를
+   * 부수므로, 다시 세우지 않는 봇은 "한 번 뚫리면 빈손으로 남은 웨이브를 맞는"
+   * 특이한 플레이가 된다. 사람은 누구도 그렇게 하지 않는다.
+   *
+   * 다시 세우면 레벨은 1부터다(투자액은 돌아오지 않는다). 그래서 이건 봇을
+   * 강하게 만드는 장치가 아니라 **망루를 잃는 값을 제대로 재는** 장치다.
+   */
+  const spotBySlot = new Map<string, SpotRank>();
+  for (const r of chosen) spotBySlot.set(spotKey(r.x, r.z), r);
+  world.bus.on('tower:destroyed', ({ slotId }) => {
+    const spot = spotBySlot.get(slotId);
+    if (spot && !buildQueue.includes(spot)) buildQueue.push(spot);
+  });
+
   const cardsUsed: Record<string, number> = {};
   let goldOnCards = 0;
   let gateUpgrades = 0;

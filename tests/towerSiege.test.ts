@@ -62,9 +62,23 @@ describe('망루 체력', () => {
     const archer = towerMaxHp(TOWERS.archer_tower, 1);
     const cannon = towerMaxHp(TOWERS.cannon_tower, 1);
     // 화포 진지는 세 배 비싸고 더 단단하다 (buildCost 300 vs 100, toughness 1.3 vs 1)
-    expect(cannon).toBeGreaterThan(archer * 3);
+    expect(cannon).toBeGreaterThan(archer);
     // 철질려는 값이 싸지만 부술 것이 없어 가장 질기다 (toughness 2.2)
     expect(TOWERS.caltrop_camp.toughness!).toBeGreaterThan(TOWERS.archer_tower.toughness!);
+    expect(towerMaxHp(TOWERS.caltrop_camp, 1)).toBeGreaterThan(archer);
+  });
+
+  /*
+   * 종류 간 폭은 좁다 — 이게 이 표의 핵심이다.
+   *
+   * 예전에는 건설비에 그냥 비례시켜서 궁노 600, 화포 진지 2340 이었다.
+   * 값이 세 배면 체력도 세 배라 "어느 망루를 세우는가"가 곧 "얼마나 오래
+   * 버티는가"였고, 싼 망루는 공성전에서 쓸 수 없는 물건이 됐다.
+   * 지금은 바닥값(hpBase)이 격차를 눌러 준다.
+   */
+  it('가장 질긴 망루도 가장 무른 망루의 두 배를 넘지 않는다', () => {
+    const hps = Object.values(TOWERS).map((t) => towerMaxHp(t, 1));
+    expect(Math.max(...hps) / Math.min(...hps)).toBeLessThan(2);
   });
 
   it('레벨이 오르면 체력도 오르되 투자 총액에 비례하지는 않는다', () => {
@@ -76,8 +90,25 @@ describe('망루 체력', () => {
      * 비례시키면 다 올린 망루를 무엇으로도 못 부숴 공성전이 그림으로만 남는다.
      */
     expect(lv5 / lv1).toBeLessThan(5);
-    // 반올림이 섞이므로 소수 둘째 자리까지만 본다
-    expect(lv5 / lv1).toBeCloseTo(Math.pow(BALANCE.towerCombat.levelHpMul, 4), 2);
+    // 뚜껑(levelHpMax)에 걸린다 — 지수를 그대로 쓰지 않는다
+    expect(lv5 / lv1).toBeCloseTo(BALANCE.towerCombat.levelHpMax, 1);
+  });
+
+  /*
+   * 뚜껑이 실제로 물려야 한다.
+   *
+   * levelHpMul^4 가 levelHpMax 보다 작으면 상한은 한 번도 걸리지 않고 장식이 된다.
+   * 그러면 "업그레이드해도 체력은 어디선가 멈춘다"는 규칙이 코드에는 있고 판에는
+   * 없는 상태가 된다 — 실제로 한 번 그렇게 두었다가 5레벨 체력이 뚜껑 아래로
+   * 지나가는 것을 못 보고 지나칠 뻔했다.
+   */
+  it('업그레이드 체력에는 실제로 걸리는 상한이 있다', () => {
+    const tc = BALANCE.towerCombat;
+    expect(Math.pow(tc.levelHpMul, 4)).toBeGreaterThan(tc.levelHpMax);
+    // 마지막 한 칸은 맷집을 거의 주지 않는다 — 그때부터의 강화는 화력이다
+    const lv4 = towerMaxHp(TOWERS.archer_tower, 4);
+    const lv5 = towerMaxHp(TOWERS.archer_tower, 5);
+    expect(lv5 / lv4).toBeLessThan(1.1);
   });
 
   it('업그레이드는 부서진 양을 그대로 두고 늘어난 만큼만 채운다', () => {
@@ -85,7 +116,7 @@ describe('망루 체력', () => {
     world.economy.add(100000);
     world.build(LEVEL_02.buildSlots[0], 'archer_tower');
     const tower = [...world.towers.values()][0];
-    const lost = 200;
+    const lost = Math.round(tower.maxHp * 0.4);
     tower.takeDamage(lost);
     const beforeMax = tower.maxHp;
     world.upgrade(tower.slotId);
@@ -319,7 +350,7 @@ describe('망루가 무너진다', () => {
 });
 
 describe('망루 수리', () => {
-  it('총 투자액의 절반을 내고 최대 체력의 절반을 채운다', () => {
+  it('최대로 고치면 투자액 x repairCostRatio 를 내고 repairFraction 만큼 채운다', () => {
     const world = new World({ level: LEVEL_02, seed: 1 });
     world.economy.add(100000);
     world.build(LEVEL_02.buildSlots[0], 'archer_tower');
@@ -332,6 +363,30 @@ describe('망루 수리', () => {
     const healed = world.repairTower(tower.slotId);
     expect(healed).toBe(Math.round(tower.maxHp * BALANCE.towerCombat.repairFraction));
     expect(world.economy.gold).toBe(gold - cost);
+  });
+
+  /*
+   * 값은 되돌리는 체력에 비례한다 — 긁힌 망루를 고치는 데 만원을 내지 않는다.
+   *
+   * 예전에는 깎인 양과 무관하게 투자액의 절반이었다. 망루 체력을 1/3로 줄이자
+   * 그 규칙이 무너졌다: 한 대에 깎이는 비율이 세 배가 되니 수리를 부르는 횟수도
+   * 세 배가 되고, 회당 값이 그대로면 골드가 전부 수리로 빠진다.
+   */
+  it('덜 깎였으면 그만큼만 낸다', () => {
+    const world = new World({ level: LEVEL_02, seed: 1 });
+    world.economy.add(100000);
+    world.build(LEVEL_02.buildSlots[0], 'archer_tower');
+    const tower = [...world.towers.values()][0];
+
+    tower.hp = 1;
+    const full = tower.repairCost;
+    tower.hp = tower.maxHp - Math.round(tower.maxHp * 0.1);
+    const scratch = tower.repairCost;
+
+    expect(scratch).toBeLessThan(full);
+    // 최대 회복량의 1/5 만 되돌리므로 값도 대략 1/5 이다 (올림 오차만 허용)
+    const fraction = BALANCE.towerCombat.repairFraction;
+    expect(scratch).toBeCloseTo(full * (0.1 / fraction), 0);
   });
 
   it('부족분이 회복량보다 적으면 그만큼만 채운다 (넘치지 않는다)', () => {

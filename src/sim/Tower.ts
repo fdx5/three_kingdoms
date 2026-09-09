@@ -3,21 +3,37 @@ import type { Enemy } from './Enemy';
 import { BALANCE } from '../data/balance';
 
 /**
- * 이 망루의 최대 체력. 건설비 x 종류 x 레벨, 셋의 곱이다.
+ * 이 망루의 최대 체력. 바닥값 + 건설비, 종류, 레벨, 셋을 얹는다.
  *
- * 표에 체력을 적지 않고 값에서 끌어내는 이유는 TowerDef.toughness 주석에 있다 —
- * 요약하면 "비싼 것이 단단하다"가 규칙이어야 설명이 필요 없기 때문이다.
+ * 예전에는 건설비에 그냥 비례시켰다(비용 x 6 x toughness). 그래서 궁노 600,
+ * 화포 진지 2340 — 네 배 가까이 벌어졌고, 5레벨이면 2000~7700 이 됐다.
+ * 그 크기에서는 여덟이 붙어 20초를 때려도 눈금이 거의 안 움직인다.
+ * 공성전이 "망루가 무너질 수 있다"가 아니라 "망루가 긁힌다"가 됐다는 뜻이다.
  *
- * 레벨은 **투자 총액이 아니라 지수**로 얹는다. 총액에 비례시켜 봤더니 1레벨에서
- * 5레벨로 가며 투자가 여덟 배가 되어 체력도 여덟 배가 됐고, 그러면 다 올린 망루는
- * 무엇으로도 부술 수 없는 물건이 된다(실측: 여섯 장 전부 최저 체력 90% 아래로 내려간
- * 망루가 없었다 — 공성전이 그림으로만 남는다). levelHpMul 1.35 면 5레벨이 1레벨의
- * 3.3배로, 업그레이드가 분명히 단단해지되 여전히 부술 수 있는 크기에 머문다.
+ * 그래서 셋을 한꺼번에 눕혔다.
+ *   1) 바닥값(hpBase)을 두고 비용의 기울기(hpPerGold)를 크게 낮춘다. "비싼 것이
+ *      단단하다"는 규칙은 남기되, 비용 세 배가 체력 세 배가 되지는 않는다.
+ *   2) 종류 차이(toughness)를 절반만 반영한다(toughnessSpread). 철질려가 여전히
+ *      가장 질기지만 궁노의 두 배가 넘지는 않는다.
+ *   3) 레벨 배수에 상한(levelHpMax)을 씌운다. 아래 참조.
+ * 결과: 1레벨 195~351 (예전 600~2340 의 1/3 이하)이고 5레벨 448~807
+ * (예전 1993~7772). 종류 간 폭은 3.9배에서 1.8배로 좁아졌다.
+ *
+ * 레벨은 **투자 총액이 아니라 지수**로 얹고, 그 지수에 다시 뚜껑을 덮는다.
+ * 총액에 비례시켜 봤더니 1->5레벨 투자가 여덟 배가 되어 체력도 여덟 배가 됐고,
+ * 그러면 다 올린 망루는 무엇으로도 부술 수 없는 물건이 된다(실측: 여섯 장 전부
+ * 최저 체력 90% 아래로 내려간 망루가 없었다 — 공성전이 그림으로만 남는다).
+ * 지수만으로도 부족했다. 1.35^4 = 3.3 배라 5레벨 화포는 7772 가 됐다.
+ * 지금은 레벨당 1.3 배로 오르다 2.3 배에서 멈춘다(levelHpMax). 1.3^4 = 2.86 이라
+ * 뚜껑은 5레벨에서 물리고, 마지막 한 칸은 체력을 4.7% 만 준다 — 맷집을 사는
+ * 업그레이드는 4레벨에서 끝나고 그 위는 화력이다.
  */
 export function towerMaxHp(def: TowerDef, level: number): number {
   const tc = BALANCE.towerCombat;
-  const base = def.buildCost * tc.hpPerGold * (def.toughness ?? 1);
-  return Math.max(tc.minHp, Math.round(base * Math.pow(tc.levelHpMul, level - 1)));
+  const kind = 1 + ((def.toughness ?? 1) - 1) * tc.toughnessSpread;
+  const base = (tc.hpBase + def.buildCost * tc.hpPerGold) * kind;
+  const levelMul = Math.min(Math.pow(tc.levelHpMul, level - 1), tc.levelHpMax);
+  return Math.max(tc.minHp, Math.round(base * levelMul));
 }
 
 /**
@@ -79,9 +95,25 @@ export class Tower {
     return applied;
   }
 
-  /** 이 망루를 한 번 고치는 값. 되돌리는 데 부은 돈의 절반이 든다. */
+  /**
+   * 이 망루를 한 번 고치는 값 — **되돌리는 체력만큼** 낸다.
+   *
+   * 예전에는 깎인 양과 무관하게 투자액의 절반이었다. 망루 체력이 크던 시절에는
+   * 그래도 됐다: 한 번 맞아 깎이는 양이 최대 체력에 비해 작아서, 수리를 부르는
+   * 상황이 곧 "많이 깎였다"였기 때문이다. 체력을 1/3로 줄이자 그 전제가 깨졌다 —
+   * 긁힌 망루를 고치는 데도 만원이 들어 봇이 골드를 전부 수리에 태우고 업그레이드를
+   * 못 했다(1장 실측: 수리 2회 575G -> 21회 1050G, 그리고 5레벨 망루가 한 기도 없었다).
+   *
+   * repairFraction 으로 나누므로 "한 번에 최대로 고치면 투자액의 절반"이라는
+   * 원래 규칙은 그대로다. 달라지는 것은 덜 깎였을 때뿐이다.
+   */
   get repairCost(): number {
-    return Math.ceil(this.totalInvested * BALANCE.towerCombat.repairCostRatio);
+    const tc = BALANCE.towerCombat;
+    if (this.maxHp <= 0 || tc.repairFraction <= 0) return 0;
+    // 반올림 때문에 회복량이 repairFraction 을 아주 조금 넘을 수 있다 —
+    // 한 번 수리에 최대치보다 더 내는 일은 없어야 하므로 1로 자른다.
+    const share = Math.min(1, this.repairAmount / this.maxHp / tc.repairFraction);
+    return Math.ceil(this.totalInvested * tc.repairCostRatio * share);
   }
 
   /** 한 번 수리로 회복할 양. 부족분이 더 적으면 그만큼만. */
